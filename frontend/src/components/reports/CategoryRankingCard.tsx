@@ -80,16 +80,21 @@ export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSe
                         {formatCurrency(item.amount)}
                       </span>
                     </button>
-                    {hasChildren && (
-                      <button
-                        type="button"
-                        aria-label={t("common.expand")}
-                        onClick={() => setBreakdownItem(item)}
-                        className="mr-1 shrink-0 rounded-md p-1.5 text-text-muted hover:text-text-primary"
-                      >
-                        <ChevronRight size={14} />
-                      </button>
-                    )}
+                    {/* Fixed-width slot on every row, populated or not — a
+                        chevron shown only on rows with children would shift
+                        their amount left relative to every other row's. */}
+                    <span className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center">
+                      {hasChildren && (
+                        <button
+                          type="button"
+                          aria-label={t("common.expand")}
+                          onClick={() => setBreakdownItem(item)}
+                          className="rounded-md p-1.5 text-text-muted hover:text-text-primary"
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      )}
+                    </span>
                   </div>
                 </li>
               );

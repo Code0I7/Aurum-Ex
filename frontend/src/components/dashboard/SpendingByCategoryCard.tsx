@@ -89,16 +89,21 @@ export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
                     <span className="shrink-0 text-sm font-medium tabular-nums text-text-primary">
                       {formatCurrency(item.amount)}
                     </span>
-                    {hasChildren && (
-                      <button
-                        type="button"
-                        aria-label={t("common.expand")}
-                        onClick={() => setBreakdownItem(item)}
-                        className="shrink-0 rounded-md p-1 text-text-muted hover:bg-surface-2 hover:text-text-primary"
-                      >
-                        <ChevronRight size={15} />
-                      </button>
-                    )}
+                    {/* Fixed-width slot on every row, populated or not — a
+                        chevron shown only on rows with children would shift
+                        their amount left relative to every other row's. */}
+                    <span className="flex h-6 w-5 shrink-0 items-center justify-center">
+                      {hasChildren && (
+                        <button
+                          type="button"
+                          aria-label={t("common.expand")}
+                          onClick={() => setBreakdownItem(item)}
+                          className="rounded-md p-0.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                        >
+                          <ChevronRight size={15} />
+                        </button>
+                      )}
+                    </span>
                   </li>
                 );
               })}
