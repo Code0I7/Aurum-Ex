@@ -35,3 +35,32 @@ class Transaction(Base, TimestampMixin):
     transfer_account: Mapped["Account | None"] = relationship(foreign_keys=[transfer_account_id])
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
     tags: Mapped[list["Tag"]] = relationship(secondary=transaction_tags, back_populates="transactions")
+    splits: Mapped[list["TransactionSplit"]] = relationship(
+        back_populates="transaction", cascade="all, delete-orphan", order_by="TransactionSplit.id"
+    )
+
+
+class TransactionSplit(Base):
+    """One category's slice of a transaction whose amount is divided across
+    several categories (one receipt, several kinds of goods) — an
+    alternative to Transaction.category_id, not an addition to it: a split
+    transaction has category_id=NULL and two or more of these instead, and
+    their amounts must add up to the parent's amount exactly (see
+    schemas/transaction.py's split_rule_violation).
+
+    category_id is nullable + SET NULL, same as Transaction.category_id
+    itself — deleting a category must not break *reading* a split that used
+    to point at it, only creating/editing one requires a live category (see
+    routes/transactions.py, and the same lesson already applied to
+    transfer_account_id)."""
+
+    __tablename__ = "transaction_splits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    amount: Mapped[Numeric] = mapped_column(Numeric(14, 2), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    transaction: Mapped["Transaction"] = relationship(back_populates="splits")
+    category: Mapped["Category | None"] = relationship()

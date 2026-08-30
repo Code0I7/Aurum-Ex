@@ -70,6 +70,16 @@ class TransactionBackup(BaseModel):
     tag_ids: list[int] = Field(default_factory=list)
 
 
+class TransactionSplitBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    transaction_id: int
+    category_id: int | None
+    amount: Decimal
+    note: str | None
+
+
 class AssetBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -202,6 +212,9 @@ class BackupPayload(BaseModel):
     # cleanly under the same format version.
     tags: list[TagBackup] = Field(default_factory=list)
     transactions: list[TransactionBackup]
+    # Defaulted so a backup exported before transaction splitting existed
+    # still imports cleanly under the same format version.
+    transaction_splits: list[TransactionSplitBackup] = Field(default_factory=list)
     assets: list[AssetBackup]
     asset_valuations: list[AssetValuationBackup]
     # Defaulted so a backup exported before crypto holdings existed still

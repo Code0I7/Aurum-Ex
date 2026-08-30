@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -8,7 +9,8 @@ import { useCategories } from "@/hooks/useCategories";
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
-import type { Category, Tag, Transaction, TransactionInput, TransactionType } from "@/types";
+import { formatCurrency } from "@/lib/format";
+import type { Category, Tag, Transaction, TransactionInput, TransactionSplitInput, TransactionType } from "@/types";
 
 interface TransactionFormModalProps {
   open: boolean;
@@ -32,6 +34,25 @@ const EMPTY_FORM = {
   date: todayIso(),
 };
 
+interface SplitRowState {
+  key: string;
+  category_id: string;
+  amount: string;
+  note: string;
+}
+
+function emptySplitRow(): SplitRowState {
+  return { key: crypto.randomUUID(), category_id: "", amount: "", note: "" };
+}
+
+// Cents, not floats — a plain Number sum of "0.10" + "0.20" style amounts can
+// drift from the transaction total by fractions of a cent, which would
+// falsely trip the "must add up exactly" check the backend also enforces.
+function toCents(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
+}
+
 export function TransactionFormModal({ open, onClose, transaction }: TransactionFormModalProps) {
   const { t, language } = useTranslation();
   const { data: accounts } = useAccounts();
@@ -41,6 +62,8 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitRows, setSplitRows] = useState<SplitRowState[]>([emptySplitRow(), emptySplitRow()]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,9 +81,23 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         date: transaction.date,
       });
       setTags(transaction.tags);
+      const hasSplits = transaction.splits.length > 0;
+      setSplitMode(hasSplits);
+      setSplitRows(
+        hasSplits
+          ? transaction.splits.map((split) => ({
+              key: String(split.id),
+              category_id: split.category_id ? String(split.category_id) : "",
+              amount: split.amount,
+              note: split.note ?? "",
+            }))
+          : [emptySplitRow(), emptySplitRow()]
+      );
     } else {
       setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
       setTags([]);
+      setSplitMode(false);
+      setSplitRows([emptySplitRow(), emptySplitRow()]);
     }
     setError(null);
   }, [open, transaction, accounts]);
@@ -81,6 +118,22 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
 
+  function updateSplitRow(key: string, patch: Partial<SplitRowState>) {
+    setSplitRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
+
+  function addSplitRow() {
+    setSplitRows((prev) => [...prev, emptySplitRow()]);
+  }
+
+  function removeSplitRow(key: string) {
+    setSplitRows((prev) => (prev.length <= 2 ? prev : prev.filter((row) => row.key !== key)));
+  }
+
+  const isSplitEditingNow = form.type !== "transfer" && splitMode;
+  const splitAllocatedCents = splitRows.reduce((sum, row) => sum + toCents(row.amount), 0);
+  const splitRemainingCents = toCents(form.amount) - splitAllocatedCents;
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -98,10 +151,44 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       return;
     }
 
+    // Undefined -> leave the transaction's existing splits untouched on
+    // update, and create a normal single-category transaction. [] -> clears
+    // splits that used to be there (the user turned split mode off, or
+    // switched the transaction to a transfer, which can't carry splits).
+    let splits: TransactionSplitInput[] | undefined;
+    if (isSplitEditingNow) {
+      const filledRows = splitRows.filter((row) => row.category_id || row.amount);
+      if (filledRows.length < 2) {
+        setError(t("transactions.form.errorSplitMinRows"));
+        return;
+      }
+      if (filledRows.some((row) => !row.category_id || !row.amount || Number(row.amount) <= 0)) {
+        setError(t("transactions.form.errorSplitIncomplete"));
+        return;
+      }
+      const allocatedCents = filledRows.reduce((sum, row) => sum + toCents(row.amount), 0);
+      if (allocatedCents !== toCents(form.amount)) {
+        setError(t("transactions.form.errorSplitMismatch"));
+        return;
+      }
+      splits = filledRows.map((row) => ({
+        category_id: Number(row.category_id),
+        amount: row.amount,
+        note: row.note || null,
+      }));
+    } else if (transaction && transaction.splits.length > 0) {
+      splits = [];
+    }
+
     const payload: TransactionInput = {
       type: form.type,
       account_id: Number(form.account_id),
-      category_id: form.type === "transfer" ? null : form.category_id ? Number(form.category_id) : null,
+      category_id:
+        form.type === "transfer" || (splits && splits.length > 0)
+          ? null
+          : form.category_id
+            ? Number(form.category_id)
+            : null,
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
       amount: form.amount,
       description: form.description,
@@ -109,6 +196,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       notes: form.notes || null,
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
+      splits,
     };
 
     try {
@@ -135,9 +223,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           <Select
             id="type"
             value={form.type}
-            onChange={(event) =>
-              setForm((prev) => ({ ...prev, type: event.target.value as TransactionType, category_id: "" }))
-            }
+            onChange={(event) => {
+              const nextType = event.target.value as TransactionType;
+              setForm((prev) => ({ ...prev, type: nextType, category_id: "" }));
+              if (nextType === "transfer") setSplitMode(false);
+            }}
           >
             <option value="expense">{t("transactions.form.typeExpense")}</option>
             <option value="income">{t("transactions.form.typeIncome")}</option>
@@ -223,20 +313,106 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           </div>
         ) : (
           <div>
-            <Label htmlFor="category">{t("transactions.form.categoryLabel")}</Label>
-            <Select
-              id="category"
-              value={form.category_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
-            >
-              <option value="">{t("transactions.form.noCategory")}</option>
-              {relevantCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.indented ? `    ↳ ` : ""}
-                  {translateCategoryName(category.name)}
-                </option>
-              ))}
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="category">{t("transactions.form.categoryLabel")}</Label>
+              <button
+                type="button"
+                className="mb-1 text-xs text-series-1 hover:underline"
+                onClick={() => setSplitMode((prev) => !prev)}
+              >
+                {splitMode ? t("transactions.form.splitToggleOff") : t("transactions.form.splitToggle")}
+              </button>
+            </div>
+
+            {!splitMode ? (
+              <Select
+                id="category"
+                value={form.category_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
+              >
+                <option value="">{t("transactions.form.noCategory")}</option>
+                {relevantCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.indented ? `    ↳ ` : ""}
+                    {translateCategoryName(category.name)}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-text-muted">{t("transactions.form.splitHint")}</p>
+                {splitRows.map((row) => (
+                  <div key={row.key} className="space-y-1.5 rounded-lg border border-border bg-surface-1 p-2">
+                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                      <Select
+                        aria-label={t("transactions.form.splitCategoryPlaceholder")}
+                        className="sm:flex-1"
+                        value={row.category_id}
+                        onChange={(event) => updateSplitRow(row.key, { category_id: event.target.value })}
+                      >
+                        <option value="" disabled>
+                          {t("transactions.form.splitCategoryPlaceholder")}
+                        </option>
+                        {relevantCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.indented ? `    ↳ ` : ""}
+                            {translateCategoryName(category.name)}
+                          </option>
+                        ))}
+                      </Select>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          className="w-24"
+                          placeholder={t("transactions.form.amountLabel")}
+                          value={row.amount}
+                          onChange={(event) => updateSplitRow(row.key, { amount: event.target.value })}
+                        />
+                        <button
+                          type="button"
+                          aria-label={t("transactions.form.splitRemoveRow")}
+                          onClick={() => removeSplitRow(row.key)}
+                          disabled={splitRows.length <= 2}
+                          className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-30"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </div>
+                    <Input
+                      className="text-xs"
+                      placeholder={t("transactions.form.splitNotePlaceholder")}
+                      value={row.note}
+                      onChange={(event) => updateSplitRow(row.key, { note: event.target.value })}
+                    />
+                  </div>
+                ))}
+
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={addSplitRow}
+                    className="flex items-center gap-1 rounded-md py-1 text-xs text-series-1 hover:underline"
+                  >
+                    <Plus size={14} />
+                    {t("transactions.form.splitAddRow")}
+                  </button>
+                  <p className={`text-xs ${splitRemainingCents === 0 ? "text-success" : "text-text-muted"}`}>
+                    {splitRemainingCents > 0
+                      ? t("transactions.form.splitRemainingLabel", {
+                          amount: formatCurrency(splitRemainingCents / 100),
+                        })
+                      : splitRemainingCents < 0
+                        ? t("transactions.form.splitOverAllocatedLabel", {
+                            amount: formatCurrency(Math.abs(splitRemainingCents) / 100),
+                          })
+                        : t("transactions.form.splitFullyAllocatedLabel")}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

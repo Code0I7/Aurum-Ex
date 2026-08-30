@@ -4,23 +4,24 @@ and how much in total over N years" (single-category detail), and "which
 categories cost the most over this whole period" (ranking, across all
 categories of one kind at once, not just the current month).
 """
+from collections import defaultdict
 from datetime import date as date_
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import extract, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.reports import (
     CategoryRankingItem,
     CategoryRankingReport,
     CategorySpendingPoint,
     CategorySpendingReport,
 )
+from app.services.category_rollup import rollup_spending_by_top_level_category
 
 
 def _next_month(year: int, month: int) -> tuple[int, int]:
@@ -44,51 +45,56 @@ async def get_category_spending_report(
         ).scalars().all()
         category_ids.extend(child_ids)
 
-    bounds_stmt = select(func.min(Transaction.date), func.max(Transaction.date)).where(
+    # Plain transactions filed directly under one of these categories, plus
+    # split lines that assign part of a transaction to one of them — same
+    # two sources category_rollup.py unions for the Dashboard/ranking report.
+    plain_stmt = select(Transaction.id, Transaction.date, Transaction.amount).where(
         Transaction.category_id.in_(category_ids)
     )
+    split_stmt = (
+        select(TransactionSplit.transaction_id, Transaction.date, TransactionSplit.amount)
+        .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
+        .where(TransactionSplit.category_id.in_(category_ids))
+    )
     if start_date:
-        bounds_stmt = bounds_stmt.where(Transaction.date >= start_date)
+        plain_stmt = plain_stmt.where(Transaction.date >= start_date)
+        split_stmt = split_stmt.where(Transaction.date >= start_date)
     if end_date:
-        bounds_stmt = bounds_stmt.where(Transaction.date <= end_date)
-    min_date, max_date = (await session.execute(bounds_stmt)).one()
+        plain_stmt = plain_stmt.where(Transaction.date <= end_date)
+        split_stmt = split_stmt.where(Transaction.date <= end_date)
 
-    effective_start = start_date or min_date
-    effective_end = end_date or max_date
+    plain_rows = (await session.execute(plain_stmt)).all()
+    split_rows = (await session.execute(split_stmt)).all()
+    contributions = [(r[0], r[1], r[2]) for r in plain_rows] + [(r[0], r[1], r[2]) for r in split_rows]
 
     empty = CategorySpendingReport(
         category_id=category.id,
         category_name=category.name,
         category_color=category.color,
         category_icon=category.icon,
-        start_date=effective_start,
-        end_date=effective_end,
+        start_date=start_date,
+        end_date=end_date,
         total_amount=Decimal("0"),
         transaction_count=0,
         average_per_month=Decimal("0"),
         series=[],
     )
-    if effective_start is None or effective_end is None:
+    if not contributions:
         return empty
 
-    rows_stmt = (
-        select(
-            extract("year", Transaction.date).label("year"),
-            extract("month", Transaction.date).label("month"),
-            func.sum(Transaction.amount).label("amount"),
-            func.count(Transaction.id).label("cnt"),
-        )
-        .where(
-            Transaction.category_id.in_(category_ids),
-            Transaction.date >= effective_start,
-            Transaction.date <= effective_end,
-        )
-        .group_by("year", "month")
-    )
-    rows = (await session.execute(rows_stmt)).all()
-    by_month: dict[tuple[int, int], Decimal] = {(int(row.year), int(row.month)): row.amount for row in rows}
-    total_amount = sum((row.amount for row in rows), Decimal("0"))
-    total_count = sum(row.cnt for row in rows)
+    dates = [txn_date for _, txn_date, _ in contributions]
+    effective_start = start_date or min(dates)
+    effective_end = end_date or max(dates)
+
+    by_month: dict[tuple[int, int], Decimal] = defaultdict(Decimal)
+    for _, txn_date, amount in contributions:
+        by_month[(txn_date.year, txn_date.month)] += amount
+
+    total_amount = sum((amount for _, _, amount in contributions), Decimal("0"))
+    # Distinct transactions, not rows — a transaction split across two of
+    # these categories (e.g. parent + one of its children) must count once,
+    # the same as a plain transaction filed under just one of them.
+    total_count = len({transaction_id for transaction_id, _, _ in contributions})
 
     series: list[CategorySpendingPoint] = []
     year, month = effective_start.year, effective_start.month
@@ -126,36 +132,15 @@ async def get_category_ranking_report(
     arbitrary period — "which category costs the most" across the whole
     range, unlike the month-scoped Dashboard breakdown or the
     single-category detail above."""
-    # Same subcategory-into-parent rollup as the Dashboard breakdown — see
-    # dashboard_service.get_dashboard_summary.
-    Parent = aliased(Category)
-    effective_id = func.coalesce(Category.parent_id, Category.id)
-    effective_name = func.coalesce(Parent.name, Category.name)
-    effective_color = func.coalesce(Parent.color, Category.color)
-    effective_icon = func.coalesce(Parent.icon, Category.icon)
-    effective_sort = func.coalesce(Parent.sort_order, Category.sort_order)
-
-    stmt = (
-        select(
-            effective_id.label("category_id"),
-            effective_name.label("name"),
-            effective_color.label("color"),
-            effective_icon.label("icon"),
-            func.sum(Transaction.amount).label("amount"),
-            func.count(Transaction.id).label("cnt"),
-        )
-        .join(Category, Category.id == Transaction.category_id)
-        .outerjoin(Parent, Parent.id == Category.parent_id)
-        .where(Category.kind == kind, Transaction.type == _KIND_TO_TRANSACTION_TYPE[kind])
+    # A transaction's type already restricts it to categories of the
+    # matching kind (enforced at write time by _ensure_category_matches_type
+    # in routes/transactions.py), so filtering by transaction_type below is
+    # enough — no separate kind filter needed, and the shared rollup already
+    # unions plain transactions with split lines the same way the Dashboard
+    # breakdown does.
+    rows = await rollup_spending_by_top_level_category(
+        session, transaction_type=_KIND_TO_TRANSACTION_TYPE[kind], start_date=start_date, end_date=end_date
     )
-    if start_date:
-        stmt = stmt.where(Transaction.date >= start_date)
-    if end_date:
-        stmt = stmt.where(Transaction.date <= end_date)
-    stmt = stmt.group_by(effective_id, effective_name, effective_color, effective_icon, effective_sort)
-    stmt = stmt.order_by(func.sum(Transaction.amount).desc(), effective_sort)
-
-    rows = (await session.execute(stmt)).all()
     total_amount = sum((row.amount for row in rows), Decimal("0"))
 
     def _percent(amount: Decimal) -> float:
@@ -163,17 +148,15 @@ async def get_category_ranking_report(
 
     items = [
         CategoryRankingItem(
-            category_id=cat_id,
-            name=name,
-            color=color,
-            icon=icon,
-            amount=amount,
-            percent=_percent(amount),
-            transaction_count=cnt,
+            category_id=row.category_id,
+            name=row.name,
+            color=row.color,
+            icon=row.icon,
+            amount=row.amount,
+            percent=_percent(row.amount),
+            transaction_count=row.transaction_count,
         )
-        for cat_id, name, color, icon, amount, cnt in rows
+        for row in rows
     ]
 
-    return CategoryRankingReport(
-        start_date=start_date, end_date=end_date, total_amount=total_amount, items=items
-    )
+    return CategoryRankingReport(start_date=start_date, end_date=end_date, total_amount=total_amount, items=items)

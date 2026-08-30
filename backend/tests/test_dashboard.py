@@ -125,3 +125,34 @@ async def test_more_than_eight_expense_categories_roll_up_into_other(client: Asy
     # The 9th (smallest, index 8) category's 10.00 must be folded into Other,
     # not silently dropped from the total.
     assert money(other[0]["amount"]) == Decimal("10.00")
+
+
+async def test_split_transaction_counts_each_split_toward_its_own_category(
+    client: AsyncClient, account_id, categories
+):
+    """A hypermarket receipt split between Groceries and Shopping must show
+    up as two separate slices on the donut, not one lump under whichever
+    category happened to be picked."""
+    groceries = categories["Groceries"]["id"]
+    shopping = categories["Shopping"]["id"]
+    await client.post(
+        "/transactions",
+        json=_txn(
+            account_id,
+            amount="100.00",
+            category_id=None,
+            date="2026-08-01",
+            splits=[
+                {"category_id": groceries, "amount": "70.00"},
+                {"category_id": shopping, "amount": "30.00"},
+            ],
+        ),
+    )
+
+    resp = await client.get("/dashboard/summary", params={"year": 2026, "month": 8})
+    body = resp.json()
+    breakdown = {row["name"]: row for row in body["spending_by_category"]}
+
+    assert money(body["spent"]) == Decimal("100.00")
+    assert money(breakdown["Groceries"]["amount"]) == Decimal("70.00")
+    assert money(breakdown["Shopping"]["amount"]) == Decimal("30.00")

@@ -39,6 +39,37 @@ def transfer_rule_violation(
     return None
 
 
+def split_rule_violation(
+    *,
+    type: TransactionType,
+    amount: Decimal,
+    category_id: int | None,
+    split_count: int,
+    split_total: Decimal | None,
+) -> str | None:
+    """The split invariants in one place, same shape as transfer_rule_violation
+    above — checked on create, and against the row *as it would look after
+    a patch* on update (see routes/transactions.py), so an edit can't leave
+    a transaction whose splits no longer add up to its own amount.
+
+    Takes counts/totals rather than the split objects themselves: the
+    update path's "splits weren't touched by this patch" case has to check
+    the existing ORM rows, whose category_id can be None (the category was
+    since deleted) — nothing here needs a live category to check the sum.
+    """
+    if split_count == 0:
+        return None
+    if type == TransactionType.TRANSFER:
+        return "splits are not valid for transfer transactions"
+    if category_id is not None:
+        return "category_id must be omitted when splitting a transaction across categories"
+    if split_count < 2:
+        return "splitting a transaction needs at least 2 categories"
+    if split_total != amount:
+        return f"split amounts ({split_total}) must add up to the transaction amount ({amount})"
+    return None
+
+
 class TransactionFields(BaseModel):
     """A transaction's shape, without the rules that only make sense while
     writing one. Reading goes through this: rows already in the database can
@@ -83,8 +114,34 @@ class TransactionBase(TransactionFields):
         return self
 
 
+class TransactionSplitInput(BaseModel):
+    category_id: int
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    note: str | None = Field(default=None, max_length=200)
+
+
 class TransactionCreate(TransactionBase):
     tag_ids: list[int] = Field(default_factory=list)
+    # None/omitted -> a normal single-category transaction, unchanged from
+    # before. 2+ entries -> the amount is divided across categories instead
+    # of using category_id (which must then be omitted — see
+    # split_rule_violation). A single entry isn't accepted: that's just
+    # category_id with extra steps.
+    splits: list[TransactionSplitInput] | None = None
+
+    @model_validator(mode="after")
+    def _validate_splits(self) -> "TransactionCreate":
+        splits = self.splits or []
+        violation = split_rule_violation(
+            type=self.type,
+            amount=self.amount,
+            category_id=self.category_id,
+            split_count=len(splits),
+            split_total=sum((s.amount for s in splits), Decimal("0")) if splits else None,
+        )
+        if violation:
+            raise ValueError(violation)
+        return self
 
 
 class TransactionUpdate(BaseModel):
@@ -99,11 +156,25 @@ class TransactionUpdate(BaseModel):
     date: date_ | None = None
     # Omitted -> tags untouched; sent (even as []) -> replaces the full tag set.
     tag_ids: list[int] | None = None
+    # Omitted -> splits untouched; sent (even as []) -> replaces the full
+    # split set (send [] together with a category_id to turn a split
+    # transaction back into a normal single-category one).
+    splits: list[TransactionSplitInput] | None = None
 
     @field_validator("description")
     @classmethod
     def _capitalize_description(cls, value: str | None) -> str | None:
         return capitalize_first_letter(value) if value is not None else None
+
+
+class TransactionSplitRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category_id: int | None
+    category: CategoryRead | None = None
+    amount: Decimal
+    note: str | None
 
 
 class TransactionRead(TransactionFields):
@@ -113,6 +184,7 @@ class TransactionRead(TransactionFields):
     account: AccountRead
     category: CategoryRead | None = None
     tags: list[TagRead] = Field(default_factory=list)
+    splits: list[TransactionSplitRead] = Field(default_factory=list)
 
 
 class TransactionPage(BaseModel):

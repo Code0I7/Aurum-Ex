@@ -5,12 +5,11 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
-from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
 from app.schemas.dashboard import CategoryBreakdownItem, DashboardSummary
+from app.services.category_rollup import rollup_spending_by_top_level_category
 
 # Categorical slots are capped at 8 (dataviz skill: a 9th series folds into "Other",
 # never a generated hue) — this is also the exact size of the default category set.
@@ -38,36 +37,13 @@ async def get_dashboard_summary(session: AsyncSession, year: int, month: int) ->
     spent = totals.get(TransactionType.EXPENSE, Decimal("0"))
     transferred_out = totals.get(TransactionType.TRANSFER, Decimal("0"))
 
-    # A subcategory's spending rolls up into its parent's slice — Parent is a
-    # self-join to resolve each transaction's *top-level* category, falling
-    # back to the transaction's own category when it has no parent.
-    Parent = aliased(Category)
-    effective_id = func.coalesce(Category.parent_id, Category.id)
-    effective_name = func.coalesce(Parent.name, Category.name)
-    effective_color = func.coalesce(Parent.color, Category.color)
-    effective_icon = func.coalesce(Parent.icon, Category.icon)
-    effective_sort = func.coalesce(Parent.sort_order, Category.sort_order)
-
-    breakdown_stmt = (
-        select(
-            effective_id.label("category_id"),
-            effective_name.label("name"),
-            effective_color.label("color"),
-            effective_icon.label("icon"),
-            func.coalesce(func.sum(Transaction.amount), 0).label("amount"),
-        )
-        .join(Category, Category.id == Transaction.category_id)
-        .outerjoin(Parent, Parent.id == Category.parent_id)
-        .where(
-            Transaction.date >= start,
-            Transaction.date <= end,
-            Transaction.type == TransactionType.EXPENSE,
-        )
-        .group_by(effective_id, effective_name, effective_color, effective_icon, effective_sort)
-        .order_by(func.sum(Transaction.amount).desc(), effective_sort)
+    # A subcategory's spending rolls up into its parent's slice, and a split
+    # transaction's category_id=NULL means its category lives on its split
+    # lines instead — rollup_spending_by_top_level_category handles both
+    # the same way a plain transaction's category already was.
+    rows = await rollup_spending_by_top_level_category(
+        session, transaction_type=TransactionType.EXPENSE, start_date=start, end_date=end
     )
-    breakdown_result = await session.execute(breakdown_stmt)
-    rows = breakdown_result.all()
 
     top_rows, rest_rows = rows[:MAX_CHART_SLICES], rows[MAX_CHART_SLICES:]
 
@@ -76,9 +52,10 @@ async def get_dashboard_summary(session: AsyncSession, year: int, month: int) ->
 
     spending_by_category = [
         CategoryBreakdownItem(
-            category_id=cat_id, name=name, color=color, icon=icon, amount=amount, percent=_percent(amount)
+            category_id=row.category_id, name=row.name, color=row.color, icon=row.icon,
+            amount=row.amount, percent=_percent(row.amount),
         )
-        for cat_id, name, color, icon, amount in top_rows
+        for row in top_rows
     ]
 
     if rest_rows:

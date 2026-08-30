@@ -132,3 +132,28 @@ async def test_a_subcategory_keeps_its_own_budget_separate(client: AsyncClient, 
     assert items[child_id]["is_over_budget"] is True
     assert money(items[parent_id]["spent"]) == money("900.00")
     assert items[parent_id]["is_over_budget"] is False
+
+
+async def test_budget_status_counts_a_split_transactions_share(client: AsyncClient, account_id, categories):
+    """A receipt split between Groceries and Shopping must count its 70.00
+    slice toward the Groceries budget, not the full 100.00 or nothing."""
+    groceries = categories["Groceries"]["id"]
+    shopping = categories["Shopping"]["id"]
+    await client.post("/budgets", json={"category_id": groceries, "monthly_limit": "100.00"})
+    await client.post(
+        "/transactions",
+        json=txn_payload(
+            account_id,
+            amount="100.00",
+            category_id=None,
+            date="2026-08-10",
+            splits=[
+                {"category_id": groceries, "amount": "70.00"},
+                {"category_id": shopping, "amount": "30.00"},
+            ],
+        ),
+    )
+
+    resp = await client.get("/budgets/status", params={"year": 2026, "month": 8})
+    item = resp.json()["items"][0]
+    assert money(item["spent"]) == Decimal("70.00")

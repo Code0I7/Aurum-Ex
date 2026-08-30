@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.models.budget import Budget
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.budget import BudgetCreate, BudgetStatus, BudgetStatusResponse, BudgetUpdate
 
 _EAGER = (selectinload(Budget.category),)
@@ -92,7 +92,11 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
     counted_ids = set(budget_category_ids).union(
         child_id for children in children_by_parent.values() for child_id in children
     )
-    spent_stmt = (
+    # A split transaction has category_id=NULL on its own row — its spend
+    # lives on its split lines instead (see category_rollup.py), so a plain
+    # sum on Transaction.category_id alone would silently under-count a
+    # budget funded partly by split purchases.
+    plain_stmt = (
         select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount), 0))
         .where(
             Transaction.category_id.in_(counted_ids),
@@ -102,7 +106,22 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
         )
         .group_by(Transaction.category_id)
     )
-    spent_by_category: dict[int, Decimal] = {row[0]: row[1] for row in (await session.execute(spent_stmt)).all()}
+    split_stmt = (
+        select(TransactionSplit.category_id, func.coalesce(func.sum(TransactionSplit.amount), 0))
+        .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
+        .where(
+            TransactionSplit.category_id.in_(counted_ids),
+            Transaction.type == TransactionType.EXPENSE,
+            Transaction.date >= start,
+            Transaction.date <= end,
+        )
+        .group_by(TransactionSplit.category_id)
+    )
+    spent_by_category: dict[int, Decimal] = defaultdict(Decimal)
+    for category_id, amount in (await session.execute(plain_stmt)).all():
+        spent_by_category[category_id] += amount
+    for category_id, amount in (await session.execute(split_stmt)).all():
+        spent_by_category[category_id] += amount
 
     items = []
     for budget in budgets:

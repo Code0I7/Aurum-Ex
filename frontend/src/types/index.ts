@@ -62,6 +62,25 @@ export interface Tag {
   name: string;
 }
 
+// One category's slice of a transaction whose amount is divided across
+// several categories (one receipt, several kinds of goods) — see
+// TransactionInput.splits. category is null when the split's category was
+// since deleted; reading must still work even though creating/editing a
+// split always requires a live category.
+export interface TransactionSplit {
+  id: number;
+  category_id: number | null;
+  category: Category | null;
+  amount: string;
+  note: string | null;
+}
+
+export interface TransactionSplitInput {
+  category_id: number;
+  amount: string;
+  note?: string | null;
+}
+
 export interface Transaction {
   id: number;
   account_id: number;
@@ -76,6 +95,7 @@ export interface Transaction {
   account: Account;
   category: Category | null;
   tags: Tag[];
+  splits: TransactionSplit[];
 }
 
 export interface TransactionPage {
@@ -98,6 +118,11 @@ export interface TransactionInput {
   // Omitted -> tags untouched on update; sent (even as []) -> replaces the
   // full tag set. Always sent on create (defaults to []).
   tag_ids?: number[];
+  // Omitted -> a normal single-category transaction (unchanged). 2+ entries
+  // -> the amount is divided across categories instead, and category_id
+  // above must then be null. On update, omitted leaves existing splits
+  // untouched; sent (even as []) replaces the full split set.
+  splits?: TransactionSplitInput[] | null;
 }
 
 export interface RecurringTransaction {

@@ -1,4 +1,5 @@
 from datetime import date as date_
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,20 +11,27 @@ from app.api.deps import get_session
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.transaction import (
     TransactionBulkCreate,
     TransactionBulkCreateResult,
     TransactionCreate,
     TransactionPage,
     TransactionRead,
+    TransactionSplitInput,
     TransactionUpdate,
+    split_rule_violation,
     transfer_rule_violation,
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
-_EAGER = (selectinload(Transaction.account), selectinload(Transaction.category), selectinload(Transaction.tags))
+_EAGER = (
+    selectinload(Transaction.account),
+    selectinload(Transaction.category),
+    selectinload(Transaction.tags),
+    selectinload(Transaction.splits).selectinload(TransactionSplit.category),
+)
 
 
 async def _resolve_tags(session: AsyncSession, tag_ids: list[int]) -> list[Tag]:
@@ -62,6 +70,14 @@ async def _ensure_category_matches_type(
         )
 
 
+async def _build_splits(
+    session: AsyncSession, splits: list[TransactionSplitInput], transaction_type: TransactionType
+) -> list[TransactionSplit]:
+    for split in splits:
+        await _ensure_category_matches_type(session, split.category_id, transaction_type)
+    return [TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in splits]
+
+
 @router.get("", response_model=TransactionPage)
 async def list_transactions(
     year: int | None = Query(default=None, ge=2000, le=2100),
@@ -97,8 +113,15 @@ async def list_transactions(
         stmt = stmt.where(Transaction.account_id == account_id)
         count_stmt = count_stmt.where(Transaction.account_id == account_id)
     if category_id is not None:
-        stmt = stmt.where(Transaction.category_id == category_id)
-        count_stmt = count_stmt.where(Transaction.category_id == category_id)
+        # A split transaction has category_id=NULL on the row itself — the
+        # category lives on its split lines instead, so filtering by exact
+        # column match alone would silently drop it from a category filter
+        # it genuinely belongs to.
+        category_filter = or_(
+            Transaction.category_id == category_id, Transaction.splits.any(TransactionSplit.category_id == category_id)
+        )
+        stmt = stmt.where(category_filter)
+        count_stmt = count_stmt.where(category_filter)
     if tag_id is not None:
         stmt = stmt.where(Transaction.tags.any(Tag.id == tag_id))
         count_stmt = count_stmt.where(Transaction.tags.any(Tag.id == tag_id))
@@ -151,9 +174,11 @@ async def list_transaction_years(session: AsyncSession = Depends(get_session)) -
 @router.post("", response_model=TransactionRead, status_code=201)
 async def create_transaction(payload: TransactionCreate, session: AsyncSession = Depends(get_session)) -> Transaction:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    fields = payload.model_dump(exclude={"tag_ids"})
+    fields = payload.model_dump(exclude={"tag_ids", "splits"})
     transaction = Transaction(**fields)
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
+    if payload.splits:
+        transaction.splits = await _build_splits(session, payload.splits, payload.type)
     session.add(transaction)
     await session.commit()
     refreshed = await session.execute(
@@ -171,11 +196,17 @@ async def bulk_create_transactions(
     instead of leaving a half-imported statement behind."""
     for item in payload.items:
         await _ensure_category_matches_type(session, item.category_id, item.type)
+        for split in item.splits or []:
+            await _ensure_category_matches_type(session, split.category_id, item.type)
 
     transactions = []
     for item in payload.items:
-        transaction = Transaction(**item.model_dump(exclude={"tag_ids"}))
+        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits"}))
         transaction.tags = await _resolve_tags(session, item.tag_ids)
+        if item.splits:
+            transaction.splits = [
+                TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in item.splits
+            ]
         transactions.append(transaction)
 
     session.add_all(transactions)
@@ -187,13 +218,16 @@ async def bulk_create_transactions(
 async def update_transaction(
     transaction_id: int, payload: TransactionUpdate, session: AsyncSession = Depends(get_session)
 ) -> Transaction:
-    # Eager-loads tags — assigning transaction.tags below would otherwise lazy
-    # -load the current collection first to diff against, which async
-    # SQLAlchemy can't do outside an explicit await (MissingGreenlet).
-    transaction = await session.get(Transaction, transaction_id, options=[selectinload(Transaction.tags)])
+    # Eager-loads tags and splits — assigning transaction.tags/splits below
+    # would otherwise lazy-load the current collection first to diff
+    # against, which async SQLAlchemy can't do outside an explicit await
+    # (MissingGreenlet).
+    transaction = await session.get(
+        Transaction, transaction_id, options=[selectinload(Transaction.tags), selectinload(Transaction.splits)]
+    )
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits"})
     # Checks run against the row as it would look after the patch, not just
     # the fields sent: switching type alone can invalidate fields left
     # untouched.
@@ -201,6 +235,7 @@ async def update_transaction(
     effective_category_id = updates.get("category_id", transaction.category_id)
     effective_account_id = updates.get("account_id", transaction.account_id)
     effective_transfer_account_id = updates.get("transfer_account_id", transaction.transfer_account_id)
+    effective_amount = updates.get("amount", transaction.amount)
     await _ensure_category_matches_type(session, effective_category_id, effective_type)
     violation = transfer_rule_violation(
         type=effective_type,
@@ -210,10 +245,36 @@ async def update_transaction(
     )
     if violation:
         raise HTTPException(status_code=400, detail=violation)
+
+    if payload.splits is not None:
+        split_count = len(payload.splits)
+        split_total = sum((s.amount for s in payload.splits), Decimal("0")) if payload.splits else None
+    else:
+        # Splits weren't touched by this patch — check the existing rows as
+        # they stand. Reading straight off the ORM objects here (not
+        # rebuilding TransactionSplitInput) on purpose: an existing split's
+        # category_id can be None if that category was since deleted, and
+        # the sum check below needs none of that — only tags/category
+        # values that were actually just fetched from the caller could ever
+        # need to be re-validated, and those go through payload.splits above.
+        split_count = len(transaction.splits)
+        split_total = sum((s.amount for s in transaction.splits), Decimal("0")) if transaction.splits else None
+    split_violation = split_rule_violation(
+        type=effective_type,
+        amount=effective_amount,
+        category_id=effective_category_id,
+        split_count=split_count,
+        split_total=split_total,
+    )
+    if split_violation:
+        raise HTTPException(status_code=400, detail=split_violation)
+
     for field, value in updates.items():
         setattr(transaction, field, value)
     if payload.tag_ids is not None:
         transaction.tags = await _resolve_tags(session, payload.tag_ids)
+    if payload.splits is not None:
+        transaction.splits = await _build_splits(session, payload.splits, effective_type)
     await session.commit()
     refreshed = await session.execute(
         select(Transaction).options(*_EAGER).where(Transaction.id == transaction_id)

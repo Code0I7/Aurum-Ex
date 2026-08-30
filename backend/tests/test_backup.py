@@ -62,3 +62,32 @@ async def test_backup_import_rejects_transaction_with_unknown_tag_id(client: Asy
 
     resp = await client.post("/backup/import", json=payload)
     assert resp.status_code == 400
+
+
+async def test_backup_roundtrip_preserves_transaction_splits(client: AsyncClient, account_id, categories):
+    groceries = categories["Groceries"]["id"]
+    shopping = categories["Shopping"]["id"]
+    created = await client.post(
+        "/transactions",
+        json=_txn(
+            account_id,
+            amount="100.00",
+            category_id=None,
+            splits=[
+                {"category_id": groceries, "amount": "70.00"},
+                {"category_id": shopping, "amount": "30.00", "note": "household chemicals"},
+            ],
+        ),
+    )
+    txn_id = created.json()["id"]
+
+    payload = (await client.get("/backup/export")).json()
+    assert len(payload["transaction_splits"]) == 2
+
+    import_resp = await client.post("/backup/import", json=payload)
+    assert import_resp.status_code == 200, import_resp.text
+
+    refetched = next(t for t in (await client.get("/transactions")).json()["items"] if t["id"] == txn_id)
+    splits_by_note = {s["note"]: s for s in refetched["splits"]}
+    assert splits_by_note["household chemicals"]["category_id"] == shopping
+    assert refetched["category"] is None

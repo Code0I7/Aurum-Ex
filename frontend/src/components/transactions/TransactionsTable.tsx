@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeftRight, CalendarSearch, Pencil, StickyNote, Trash2 } from "lucide-react";
+import { ArrowLeftRight, CalendarSearch, Pencil, SquareDivide, StickyNote, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
@@ -35,8 +35,14 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
         {items.map((tx) => {
           const isTransfer = tx.type === "transfer";
           const isExpense = tx.type === "expense";
-          const Icon = isTransfer ? ArrowLeftRight : getCategoryIcon(tx.category?.icon);
-          const color = isTransfer ? "var(--text-muted)" : tx.category?.color ?? "var(--text-muted)";
+          const isSplit = tx.splits.length > 0;
+          const Icon = isTransfer ? ArrowLeftRight : isSplit ? SquareDivide : getCategoryIcon(tx.category?.icon);
+          const color = isTransfer || isSplit ? "var(--text-muted)" : tx.category?.color ?? "var(--text-muted)";
+          const categoryLabel = isSplit
+            ? tx.splits.map((split) => (split.category ? translateCategoryName(split.category.name) : "?")).join(" + ")
+            : tx.category
+              ? translateCategoryName(tx.category.name)
+              : null;
 
           return (
             <li key={tx.id} className="group flex items-center gap-3 py-3">
@@ -52,7 +58,7 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                 <span className="block truncate text-xs text-text-muted">
                   {formatTransactionDate(tx.date, Boolean(onJumpToMonth))} · {tx.account.name}
                   {isTransfer && tx.transfer_account_id ? ` ${t("transactions.transferSuffix")}` : ""}
-                  {tx.category ? ` · ${translateCategoryName(tx.category.name)}` : ""}
+                  {categoryLabel ? ` · ${categoryLabel}` : ""}
                   {tx.tags.length > 0 ? ` · ${tx.tags.map((tag) => tag.name).join(", ")}` : ""}
                 </span>
               </span>
