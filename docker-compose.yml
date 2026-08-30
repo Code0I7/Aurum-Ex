@@ -23,7 +23,7 @@ services:
       AURUM_POSTGRES_DB: ${AURUM_POSTGRES_DB:-aurum}
       AURUM_POSTGRES_HOST: db
       AURUM_POSTGRES_PORT: 5432
-      AURUM_CORS_ORIGINS: ${AURUM_CORS_ORIGINS:-*}
+      AURUM_CORS_ORIGINS: ${AURUM_CORS_ORIGINS:-}
       AURUM_DEFAULT_CURRENCY: ${AURUM_DEFAULT_CURRENCY:-USD}
       # Free CoinGecko Demo key (coingecko.com/en/api/pricing) — the Crypto
       # tab's price sync 400s with a clear message until this is set.
