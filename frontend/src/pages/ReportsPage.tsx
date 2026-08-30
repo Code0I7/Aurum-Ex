@@ -14,13 +14,13 @@ import { useDeleteTransaction, useTransactions, useTransactionYears } from "@/ho
 import type { TransactionSort } from "@/api/transactions";
 import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
 import { useTranslation } from "@/lib/i18n";
-import { translateCategoryName } from "@/lib/categoryLabels";
+import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
 import type { Transaction } from "@/types";
 
 const PAGE_SIZE = 20;
 
 export function ReportsPage() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const now = new Date();
   const RANGE_OPTIONS: Array<{ value: RangePreset; label: string }> = [
     { value: "all", label: t("reports.rangeAll") },
@@ -61,8 +61,17 @@ export function ReportsPage() {
   });
   const deleteTransaction = useDeleteTransaction();
 
-  const expenseCategories = categories?.filter((category) => category.kind === "expense") ?? [];
-  const incomeCategories = categories?.filter((category) => category.kind === "income") ?? [];
+  // Hierarchical within each group (a subcategory right under its own
+  // parent, indented) — a bare "Sweets" option next to top-level categories
+  // reads as if it were one itself.
+  const expenseCategories = buildHierarchicalCategories(
+    categories?.filter((category) => category.kind === "expense") ?? [],
+    language
+  );
+  const incomeCategories = buildHierarchicalCategories(
+    categories?.filter((category) => category.kind === "income") ?? [],
+    language
+  );
   const totalPages = transactions ? Math.max(1, Math.ceil(transactions.total / PAGE_SIZE)) : 1;
 
   function handleEdit(transaction: Transaction) {
@@ -93,6 +102,7 @@ export function ReportsPage() {
               <optgroup label={t("reports.expenseGroup")}>
                 {expenseCategories.map((category) => (
                   <option key={category.id} value={category.id}>
+                    {category.indented ? `    ↳ ` : ""}
                     {translateCategoryName(category.name)}
                   </option>
                 ))}
@@ -102,6 +112,7 @@ export function ReportsPage() {
               <optgroup label={t("reports.incomeGroup")}>
                 {incomeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
+                    {category.indented ? `    ↳ ` : ""}
                     {translateCategoryName(category.name)}
                   </option>
                 ))}

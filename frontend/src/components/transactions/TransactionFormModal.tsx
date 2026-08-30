@@ -8,9 +8,9 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
-import { translateCategoryName } from "@/lib/categoryLabels";
+import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
 import { formatCurrency } from "@/lib/format";
-import type { Category, Tag, Transaction, TransactionInput, TransactionSplitInput, TransactionType } from "@/types";
+import type { Tag, Transaction, TransactionInput, TransactionSplitInput, TransactionType } from "@/types";
 
 interface TransactionFormModalProps {
   open: boolean;
@@ -114,19 +114,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     setError(null);
   }, [open, transaction, accounts]);
 
+  const kindCategories = (categories ?? []).filter((category) =>
+    form.type === "income" ? category.kind === "income" : category.kind === "expense"
+  );
   // Subcategories are listed right under their parent (not scattered by
-  // sort_order) so the hierarchy set up on the Categories page reads the
-  // same way here.
-  const kindCategories = (categories ?? [])
-    .filter((category) => (form.type === "income" ? category.kind === "income" : category.kind === "expense"))
-    .sort((a, b) => translateCategoryName(a.name).localeCompare(translateCategoryName(b.name), language));
-  const relevantCategories: (Category & { indented?: boolean })[] = [];
-  for (const parent of kindCategories.filter((category) => category.parent_id === null)) {
-    relevantCategories.push(parent);
-    for (const child of kindCategories.filter((category) => category.parent_id === parent.id)) {
-      relevantCategories.push({ ...child, indented: true });
-    }
-  }
+  // name) so the hierarchy set up on the Categories page reads the same way
+  // here.
+  const relevantCategories = buildHierarchicalCategories(kindCategories, language);
 
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
 

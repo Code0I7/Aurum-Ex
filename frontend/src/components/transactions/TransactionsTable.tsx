@@ -4,7 +4,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import { translateCategoryName } from "@/lib/categoryLabels";
+import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
+import { useCategories } from "@/hooks/useCategories";
 import type { Transaction } from "@/types";
 
 interface TransactionsTableProps {
@@ -19,6 +20,7 @@ interface TransactionsTableProps {
 
 export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: TransactionsTableProps) {
   const { t } = useTranslation();
+  const { data: categories } = useCategories();
   const [noteTransaction, setNoteTransaction] = useState<Transaction | null>(null);
 
   if (items.length === 0) {
@@ -41,7 +43,7 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
           const categoryLabel = isSplit
             ? tx.splits.map((split) => (split.category ? translateCategoryName(split.category.name) : "?")).join(" + ")
             : tx.category
-              ? translateCategoryName(tx.category.name)
+              ? categoryPath(tx.category, categories)
               : null;
 
           return (
