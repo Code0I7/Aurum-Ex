@@ -21,6 +21,7 @@ from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.crypto import CryptoHolding
 from app.models.goal import Goal, GoalContribution
 from app.models.recurring import RecurringTransaction
 from app.models.settings import AppSettings
@@ -34,6 +35,7 @@ from app.schemas.backup import (
     BackupPayload,
     BudgetBackup,
     CategoryBackup,
+    CryptoHoldingBackup,
     GoalBackup,
     GoalContributionBackup,
     RecurringTransactionBackup,
@@ -51,6 +53,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     transactions = (await session.execute(select(Transaction).options(selectinload(Transaction.tags)))).scalars().all()
     assets = (await session.execute(select(Asset))).scalars().all()
     valuations = (await session.execute(select(AssetValuation))).scalars().all()
+    crypto_holdings = (await session.execute(select(CryptoHolding))).scalars().all()
     budgets = (await session.execute(select(Budget))).scalars().all()
     goals = (await session.execute(select(Goal))).scalars().all()
     goal_contributions = (await session.execute(select(GoalContribution))).scalars().all()
@@ -72,6 +75,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         ],
         assets=[AssetBackup.model_validate(row) for row in assets],
         asset_valuations=[AssetValuationBackup.model_validate(row) for row in valuations],
+        crypto_holdings=[CryptoHoldingBackup.model_validate(row) for row in crypto_holdings],
         budgets=[BudgetBackup.model_validate(row) for row in budgets],
         goals=[GoalBackup.model_validate(row) for row in goals],
         goal_contributions=[GoalContributionBackup.model_validate(row) for row in goal_contributions],
@@ -106,6 +110,10 @@ def _validate_references(payload: BackupPayload) -> None:
     for v in payload.asset_valuations:
         if v.asset_id not in asset_ids:
             raise HTTPException(400, f"Asset valuation {v.id} references unknown asset_id {v.asset_id}")
+
+    for h in payload.crypto_holdings:
+        if h.asset_id not in asset_ids:
+            raise HTTPException(400, f"Crypto holding {h.asset_id} references unknown asset_id {h.asset_id}")
 
     for b in payload.budgets:
         if b.category_id not in category_ids:
@@ -154,6 +162,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
     try:
         # Children before parents.
         await session.execute(delete(AssetValuation))
+        await session.execute(delete(CryptoHolding))
         await session.execute(delete(Budget))
         await session.execute(delete(GoalContribution))
         await session.execute(delete(Goal))
@@ -192,6 +201,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         session.add_all(transactions_by_id.values())
 
         session.add_all(AssetValuation(**row.model_dump()) for row in payload.asset_valuations)
+        session.add_all(CryptoHolding(**row.model_dump()) for row in payload.crypto_holdings)
         session.add_all(Budget(**row.model_dump()) for row in payload.budgets)
         session.add_all(Goal(**row.model_dump()) for row in payload.goals)
         session.add_all(GoalContribution(**row.model_dump()) for row in payload.goal_contributions)

@@ -2,6 +2,7 @@ from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.crypto import CryptoHolding, CryptoSyncState
 from app.models.goal import Goal, GoalContribution
 from app.models.recurring import RecurringTransaction
 from app.models.settings import AppSettings
@@ -15,6 +16,8 @@ __all__ = [
     "AssetValuation",
     "Budget",
     "Category",
+    "CryptoHolding",
+    "CryptoSyncState",
     "Goal",
     "GoalContribution",
     "RecurringTransaction",

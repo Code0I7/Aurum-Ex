@@ -11,6 +11,7 @@ from app.api.routes import (
     budgets,
     cash_flow,
     categories,
+    crypto,
     dashboard,
     goals,
     insights,
@@ -63,6 +64,7 @@ app.include_router(goals.router, prefix="/api")
 app.include_router(recurring.router, prefix="/api")
 app.include_router(cash_flow.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
+app.include_router(crypto.router, prefix="/api")
 
 
 @app.get("/api/health")

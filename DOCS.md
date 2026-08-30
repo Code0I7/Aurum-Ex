@@ -27,6 +27,7 @@ like Postman/Insomnia.
 - [Budgets](#budgets)
 - [Goals](#goals)
 - [Assets & Net Worth](#assets--net-worth)
+- [Crypto](#crypto)
 - [Dashboard, Cash Flow & Reports](#dashboard-cash-flow--reports)
 - [Insights & Advice](#insights--advice)
 - [Settings](#settings)
@@ -501,6 +502,74 @@ personal vehicle)
   ]
 }
 ```
+
+## Crypto
+
+Live-priced crypto holdings — a coin plus a quantity, kept current against
+[CoinGecko](https://www.coingecko.com/en/api/pricing)'s Demo API. Under the hood each holding **is** an
+Asset (`asset_class=crypto`, see [Assets & Net Worth](#assets--net-worth)) — deleting one is `DELETE
+/assets/{asset_id}`, not a separate endpoint, and it shows up in `/net-worth/summary` like any other
+asset automatically.
+
+Requires `AURUM_COINGECKO_API_KEY` in `.env` (a free Demo key, no card required). Endpoints that need
+CoinGecko return `400` with a message telling you so if it's unset.
+
+Prices are **never** fetched in the background — there's no scheduler in this stack. Two triggers
+only: `POST /crypto/refresh` (a manual "refresh now"), and a lazy check on every `GET
+/crypto/holdings` that only actually calls CoinGecko once 24h have passed since the last successful
+sync. If CoinGecko is unreachable, existing values are left untouched and `error_key` is set instead
+of the whole request failing.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/crypto/holdings` | List holdings with their live value. Also runs the lazy once-a-day auto-refresh. |
+| `POST` | `/crypto/refresh` | Force a price refresh right now, bypassing the 24h window. |
+| `POST` | `/crypto/holdings` | Add a holding — fetches today's price immediately so it isn't `null` until the next sync. |
+| `PATCH` | `/crypto/holdings/{asset_id}` | Change `quantity`. Recomputes value from the last known price — does **not** call CoinGecko. |
+| `GET` | `/crypto/search` | `?q=` — search CoinGecko for a coin to add (name/ticker, returns its `coingecko_id` + logo). |
+
+**Create body:**
+
+```json
+{
+  "coingecko_id": "bitcoin",
+  "symbol": "btc",
+  "name": "Bitcoin",
+  "thumb_url": "https://...",
+  "quantity": "0.05"
+}
+```
+
+`coingecko_id` is CoinGecko's own stable id (not the ticker — tickers collide across unrelated
+coins) — get it from `/crypto/search` rather than guessing. `quantity` supports up to 18 decimal
+places (wei-level token amounts).
+
+**`GET /crypto/holdings` / `POST /crypto/refresh` response:**
+
+```json
+{
+  "synced": true,
+  "last_synced_at": "2026-08-30T12:00:00Z",
+  "error_key": null,
+  "holdings": [
+    {
+      "asset_id": 7,
+      "coingecko_id": "bitcoin",
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "thumb_url": "https://...",
+      "quantity": "0.05",
+      "value": "3000.00",
+      "unit_price": "60000.00",
+      "as_of_date": "2026-08-30"
+    }
+  ]
+}
+```
+
+`value`/`unit_price` are `null` only for a holding whose very first price fetch failed (CoinGecko was
+down right when it was added) — distinct from a real `0`. `error_key` is `"unreachable"` when this
+sync attempt couldn't reach CoinGecko (existing values are kept as-is), or `null` otherwise.
 
 ## Dashboard, Cash Flow & Reports
 

@@ -95,6 +95,19 @@ class AssetValuationBackup(BaseModel):
     as_of_date: date_
 
 
+class CryptoHoldingBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    # asset_id doubles as this row's own primary key (see
+    # models/crypto.py's CryptoHolding) — there's no separate `id`.
+    asset_id: int
+    coingecko_id: str
+    symbol: str
+    name: str
+    thumb_url: str | None
+    quantity: Decimal
+
+
 class BudgetBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -173,6 +186,9 @@ class BackupPayload(BaseModel):
     transactions: list[TransactionBackup]
     assets: list[AssetBackup]
     asset_valuations: list[AssetValuationBackup]
+    # Defaulted so a backup exported before crypto holdings existed still
+    # imports cleanly under the same format version.
+    crypto_holdings: list[CryptoHoldingBackup] = Field(default_factory=list)
     # Defaulted so a backup exported before budgets existed still imports
     # cleanly under the same format version.
     budgets: list[BudgetBackup] = Field(default_factory=list)

@@ -374,6 +374,42 @@ export interface FinancialAlert {
   params: Record<string, number>;
 }
 
+export interface CryptoHolding {
+  asset_id: number;
+  coingecko_id: string;
+  symbol: string;
+  name: string;
+  thumb_url: string | null;
+  quantity: string;
+  // null means "added but never priced yet" (CoinGecko was unreachable at
+  // creation time) — distinct from a real zero value.
+  value: string | null;
+  unit_price: string | null;
+  as_of_date: string | null;
+}
+
+export interface CryptoHoldingInput {
+  coingecko_id: string;
+  symbol: string;
+  name: string;
+  thumb_url?: string | null;
+  quantity: string;
+}
+
+export interface CryptoSyncResult {
+  synced: boolean;
+  last_synced_at: string | null;
+  error_key: "unreachable" | null;
+  holdings: CryptoHolding[];
+}
+
+export interface CryptoSearchResult {
+  coingecko_id: string;
+  symbol: string;
+  name: string;
+  thumb_url: string | null;
+}
+
 export interface AppSettings {
   currency: string;
   negative_cash_flow_threshold_months: number;

@@ -63,6 +63,9 @@ Log income, expenses, and transfers across as many accounts as you want, organiz
 ### 📈 Net Worth Engine
 A live net worth timeline (30 days to all-time) aggregating cash and every manually tracked asset — investments, crypto, real estate, vehicles, precious metals — into one number, with a full breakdown by asset class, by how each asset behaves (income / neutral / drain), and by risk level.
 
+### 🪙 Crypto Tracker
+A dedicated tab for the coins you actually hold — add a token and a quantity, and Aurum keeps its value current against live CoinGecko prices, no separate portfolio tracker needed. Refresh on demand with one button, or let it auto-refresh once a day; either way it plugs straight into the Net Worth engine above as just another tracked asset.
+
 ### 🎯 Budgets, Goals & Recurring Payments
 Set a monthly limit per category and watch progress bars fill up. Track savings goals with a running contribution log. Register recurring bills and post them with one click when they're due — nothing runs automatically in the background.
 

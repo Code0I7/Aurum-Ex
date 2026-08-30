@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # Comma-separated list of origins allowed to call the API (frontend dev server, etc.)
     cors_origins: str = "*"
 
+    # CoinGecko Demo API key (free, no card required — https://www.coingecko.com/en/api/pricing)
+    # for services/crypto_service.py's price lookups. Empty by default; the
+    # Crypto tab's endpoints 400 with a clear message until this is set,
+    # rather than silently hitting CoinGecko's much stingier keyless tier.
+    coingecko_api_key: str = ""
+
     @property
     def database_url(self) -> str:
         return (
