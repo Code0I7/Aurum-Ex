@@ -9,18 +9,54 @@ import { useSyncExternalStore } from "react";
  * this only avoids ever triggering that native prompt, by never letting an
  * unauthenticated request happen without us attaching the header ourselves.
  *
- * Kept in sessionStorage, not localStorage: closing the tab signs the user
- * back out, which matters more for a finance app than staying logged in
- * across days.
+ * Two storage tiers, chosen at login time by the "remember me" checkbox:
+ *  - sessionStorage (default): gone as soon as the tab closes.
+ *  - localStorage, with an explicit expiry stamped into the stored value:
+ *    survives closing the tab/browser, but only for REMEMBER_DAYS — an
+ *    unbounded "stay logged in forever" is too much for a finance app.
+ * The expiry is only checked when this module loads (i.e. on page load/
+ * reload) — a tab left open across the expiry moment without reloading
+ * keeps working until its next reload or a 401 forces a fresh check.
  */
-const STORAGE_KEY = "aurum:basicAuth";
+const SESSION_KEY = "aurum:basicAuth";
+const REMEMBER_KEY = "aurum:basicAuth:remember";
+const REMEMBER_DAYS = 30;
+const REMEMBER_MS = REMEMBER_DAYS * 24 * 60 * 60 * 1000;
 
-function readStored(): string | null {
+interface RememberedEntry {
+  header: string;
+  expiresAt: number; // epoch ms
+}
+
+function readRemembered(): string | null {
   try {
-    return sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RememberedEntry>;
+    if (typeof parsed.header !== "string" || typeof parsed.expiresAt !== "number") {
+      localStorage.removeItem(REMEMBER_KEY);
+      return null;
+    }
+    if (Date.now() >= parsed.expiresAt) {
+      localStorage.removeItem(REMEMBER_KEY);
+      return null;
+    }
+    return parsed.header;
   } catch {
     return null;
   }
+}
+
+function readSession(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function readStored(): string | null {
+  return readRemembered() ?? readSession();
 }
 
 let currentHeader: string | null = readStored();
@@ -49,13 +85,20 @@ export function buildBasicAuthHeader(username: string, password: string): string
   return `Basic ${encodeUtf8Base64(`${username}:${password}`)}`;
 }
 
-export function setCredentials(username: string, password: string): void {
+export function setCredentials(username: string, password: string, remember: boolean): void {
   currentHeader = buildBasicAuthHeader(username, password);
   try {
-    sessionStorage.setItem(STORAGE_KEY, currentHeader);
+    if (remember) {
+      const entry: RememberedEntry = { header: currentHeader, expiresAt: Date.now() + REMEMBER_MS };
+      localStorage.setItem(REMEMBER_KEY, JSON.stringify(entry));
+      sessionStorage.removeItem(SESSION_KEY);
+    } else {
+      sessionStorage.setItem(SESSION_KEY, currentHeader);
+      localStorage.removeItem(REMEMBER_KEY);
+    }
   } catch {
-    // sessionStorage unavailable (private browsing, storage disabled) — the
-    // header still works for the rest of this tab's life via the in-memory
+    // storage unavailable (private browsing, storage disabled) — the header
+    // still works for the rest of this tab's life via the in-memory
     // variable above, it just won't survive a refresh.
   }
   notify();
@@ -68,7 +111,8 @@ export function clearCredentials(): void {
   if (currentHeader === null) return;
   currentHeader = null;
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(REMEMBER_KEY);
   } catch {
     // ignore — nothing to clean up if storage was never usable
   }
