@@ -94,10 +94,24 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
           collapsed ? "w-[72px]" : "w-56"
         )}
       >
-        <div className={cn("flex items-center gap-2 px-4 py-4", collapsed && "justify-center px-0")}>
-          <Logo size={24} />
-          {!collapsed && <span className="text-lg font-semibold tracking-tight text-text-primary">Aurum</span>}
-        </div>
+        {collapsed ? (
+          // Collapsed: the logo doubles as an "expand" button — the sidebar
+          // has no visible label to click in this state, so the icon itself
+          // needs to be the way back to the full menu.
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            title={t("sidebar.expandMenu")}
+            className="flex items-center justify-center gap-2 px-0 py-4 hover:opacity-80"
+          >
+            <Logo size={24} />
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 px-4 py-4">
+            <Logo size={24} />
+            <span className="text-lg font-semibold tracking-tight text-text-primary">Aurum</span>
+          </div>
+        )}
         <NavList collapsed={collapsed} />
         <div className="border-t border-border p-2.5">
           <button
