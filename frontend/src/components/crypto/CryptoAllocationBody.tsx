@@ -93,7 +93,7 @@ export function CryptoAllocationBody({ holdings, isLoading, hidden }: CryptoAllo
   const donutData = slices.map((slice) => ({ ...slice, percent: (slice.amount / total) * 100 }));
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6">
+    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-center sm:gap-8">
       <div className="h-48 w-48 shrink-0 sm:h-56 sm:w-56">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -117,7 +117,10 @@ export function CryptoAllocationBody({ holdings, isLoading, hidden }: CryptoAllo
         </ResponsiveContainer>
       </div>
 
-      <ul className="w-full min-w-0 flex-1 divide-y divide-gridline">
+      {/* Capped width, not flex-1 — otherwise with few/short coin names the
+          row stretches across whatever's left of the card and the percent/
+          amount columns end up stranded far from the coin they describe. */}
+      <ul className="w-full min-w-0 divide-y divide-gridline sm:w-72">
         {donutData.map((slice) => (
           <li key={slice.key} className="flex items-center gap-3 py-2 first:pt-0">
             {slice.thumbUrl ? (
