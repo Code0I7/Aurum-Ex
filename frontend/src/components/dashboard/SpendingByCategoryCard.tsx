@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { SquareDivide } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CategoryBreakdownModal } from "@/components/categories/CategoryBreakdownModal";
@@ -76,7 +76,23 @@ export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
                 const Icon = getCategoryIcon(item.icon);
                 const hasChildren = item.children.length > 0;
                 return (
-                  <li key={item.category_id ?? "other"} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+                  <li key={item.category_id ?? "other"} className="flex items-center gap-2 py-2 first:pt-0 last:pb-0">
+                    {/* Fixed-width slot on every row, populated or not — the
+                        amount column at the row's end must stay flush right
+                        the same way whether or not this row has a
+                        breakdown to open. */}
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                      {hasChildren && (
+                        <button
+                          type="button"
+                          aria-label={t("common.expand")}
+                          onClick={() => setBreakdownItem(item)}
+                          className="rounded-md p-0.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                        >
+                          <SquareDivide size={15} />
+                        </button>
+                      )}
+                    </span>
                     <span
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
                       style={{ backgroundColor: `${item.color}26` }}
@@ -88,21 +104,6 @@ export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
                     </span>
                     <span className="shrink-0 text-sm font-medium tabular-nums text-text-primary">
                       {formatCurrency(item.amount)}
-                    </span>
-                    {/* Fixed-width slot on every row, populated or not — a
-                        chevron shown only on rows with children would shift
-                        their amount left relative to every other row's. */}
-                    <span className="flex h-6 w-5 shrink-0 items-center justify-center">
-                      {hasChildren && (
-                        <button
-                          type="button"
-                          aria-label={t("common.expand")}
-                          onClick={() => setBreakdownItem(item)}
-                          className="rounded-md p-0.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
-                        >
-                          <ChevronRight size={15} />
-                        </button>
-                      )}
                     </span>
                   </li>
                 );

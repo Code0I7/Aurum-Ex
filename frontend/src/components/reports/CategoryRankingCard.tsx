@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { SquareDivide } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CategoryBreakdownModal } from "@/components/categories/CategoryBreakdownModal";
 import { getCategoryIcon } from "@/lib/icons";
@@ -50,6 +50,22 @@ export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSe
                       isSelected ? "bg-surface-2" : ""
                     }`}
                   >
+                    {/* Fixed-width slot on every row, populated or not — the
+                        amount column at the row's end must stay flush right
+                        the same way whether or not this row has a
+                        breakdown to open. */}
+                    <span className="ml-1 flex h-8 w-7 shrink-0 items-center justify-center">
+                      {hasChildren && (
+                        <button
+                          type="button"
+                          aria-label={t("common.expand")}
+                          onClick={() => setBreakdownItem(item)}
+                          className="rounded-md p-1.5 text-text-muted hover:text-text-primary"
+                        >
+                          <SquareDivide size={14} />
+                        </button>
+                      )}
+                    </span>
                     <button
                       type="button"
                       onClick={() => onSelectCategory(item.category_id)}
@@ -80,21 +96,6 @@ export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSe
                         {formatCurrency(item.amount)}
                       </span>
                     </button>
-                    {/* Fixed-width slot on every row, populated or not — a
-                        chevron shown only on rows with children would shift
-                        their amount left relative to every other row's. */}
-                    <span className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center">
-                      {hasChildren && (
-                        <button
-                          type="button"
-                          aria-label={t("common.expand")}
-                          onClick={() => setBreakdownItem(item)}
-                          className="rounded-md p-1.5 text-text-muted hover:text-text-primary"
-                        >
-                          <ChevronRight size={14} />
-                        </button>
-                      )}
-                    </span>
                   </div>
                 </li>
               );
