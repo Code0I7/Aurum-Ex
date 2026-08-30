@@ -3,9 +3,8 @@ import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoAddModal } from "@/components/crypto/CryptoAddModal";
-import { CryptoAllocationCard } from "@/components/crypto/CryptoAllocationCard";
-import { CryptoHistoryChart } from "@/components/crypto/CryptoHistoryChart";
 import { CryptoHoldingsTable } from "@/components/crypto/CryptoHoldingsTable";
+import { CryptoOverviewCard } from "@/components/crypto/CryptoOverviewCard";
 import { CryptoStatsRow } from "@/components/crypto/CryptoStatsRow";
 import { CryptoTransactionHistoryModal } from "@/components/crypto/CryptoTransactionHistoryModal";
 import { CryptoTransactionModal } from "@/components/crypto/CryptoTransactionModal";
@@ -36,6 +35,7 @@ export function CryptoPage() {
   const [historyHolding, setHistoryHolding] = useState<CryptoHolding | null>(null);
 
   const holdings = data?.holdings ?? [];
+  const totalValue = holdings.reduce((sum, holding) => sum + (holding.value !== null ? Number(holding.value) : 0), 0);
 
   function handleDelete(holding: CryptoHolding) {
     if (window.confirm(t("crypto.confirmDelete", { name: holding.name }))) {
@@ -45,18 +45,19 @@ export function CryptoPage() {
 
   return (
     <div className="space-y-5">
-      <CryptoHistoryChart
+      <CryptoOverviewCard
+        totalValue={totalValue}
         history={history}
-        isLoading={isHistoryLoading}
+        isHistoryLoading={isHistoryLoading}
         range={range}
         onRangeChange={setRange}
+        holdings={holdings}
+        isHoldingsLoading={isLoading}
         hidden={hidden}
         onToggleHidden={() => setHidden((prev) => !prev)}
       />
 
       <CryptoStatsRow holdings={holdings} isLoading={isLoading} hidden={hidden} />
-
-      <CryptoAllocationCard holdings={holdings} isLoading={isLoading} hidden={hidden} />
 
       <Card>
         <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
