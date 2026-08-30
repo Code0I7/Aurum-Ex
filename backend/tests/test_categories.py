@@ -1,7 +1,11 @@
 """Category subcategories (parent_id): creation rules and the one-level-deep
-invariant enforced in api/routes/categories.py.
+invariant enforced in api/routes/categories.py. Also default-category
+deletion: a seeded category can be removed once nothing references it, but
+never while it still has transactions.
 """
 from httpx import AsyncClient
+
+from tests.helpers import txn_payload as _txn
 
 
 async def test_create_subcategory_under_top_level_category(client: AsyncClient, categories):
@@ -52,8 +56,9 @@ async def test_a_category_with_subcategories_cannot_itself_become_a_subcategory(
 
 
 async def test_deleting_a_parent_leaves_children_as_top_level(client: AsyncClient, categories):
-    # A default category can't be deleted at all (separate rule) — use a
-    # fresh, non-default parent so this test isolates the parent/child rule.
+    # A default category with transactions can't be deleted (separate rule,
+    # tested below) — use a fresh, non-default parent so this test isolates
+    # the parent/child rule.
     parent = await client.post("/categories", json={"name": "Custom Parent", "kind": "expense", "color": "#e34948"})
     parent_id = parent.json()["id"]
     created = await client.post(
@@ -67,3 +72,65 @@ async def test_deleting_a_parent_leaves_children_as_top_level(client: AsyncClien
     refetched = await client.get("/categories")
     child = next(c for c in refetched.json() if c["id"] == child_id)
     assert child["parent_id"] is None
+
+
+async def test_default_category_with_no_transactions_can_be_deleted(client: AsyncClient, categories):
+    groceries = categories["Groceries"]["id"]
+    assert categories["Groceries"]["is_default"] is True
+
+    resp = await client.delete(f"/categories/{groceries}")
+    assert resp.status_code == 204
+
+    refetched = await client.get("/categories")
+    assert groceries not in [c["id"] for c in refetched.json()]
+
+
+async def test_default_category_with_a_transaction_cannot_be_deleted(client: AsyncClient, account_id, categories):
+    groceries = categories["Groceries"]["id"]
+    await client.post("/transactions", json=_txn(account_id, category_id=groceries))
+
+    resp = await client.delete(f"/categories/{groceries}")
+    assert resp.status_code == 400
+
+    refetched = await client.get("/categories")
+    assert groceries in [c["id"] for c in refetched.json()]
+
+
+async def test_default_category_used_only_by_a_split_line_cannot_be_deleted(client: AsyncClient, account_id, categories):
+    groceries = categories["Groceries"]["id"]
+    sweets = (
+        await client.post(
+            "/categories", json={"name": "Sweets", "kind": "expense", "color": "#7a869a", "parent_id": groceries}
+        )
+    ).json()["id"]
+    await client.post(
+        "/transactions",
+        json=_txn(
+            account_id,
+            amount="100.00",
+            category_id=None,
+            splits=[
+                {"category_id": groceries, "amount": "70.00"},
+                {"category_id": sweets, "amount": "30.00"},
+            ],
+        ),
+    )
+
+    resp = await client.delete(f"/categories/{groceries}")
+    assert resp.status_code == 400
+
+
+async def test_default_category_becomes_deletable_once_its_transaction_is_removed(
+    client: AsyncClient, account_id, categories
+):
+    groceries = categories["Groceries"]["id"]
+    created = await client.post("/transactions", json=_txn(account_id, category_id=groceries))
+    txn_id = created.json()["id"]
+
+    blocked = await client.delete(f"/categories/{groceries}")
+    assert blocked.status_code == 400
+
+    assert (await client.delete(f"/transactions/{txn_id}")).status_code == 204
+
+    resp = await client.delete(f"/categories/{groceries}")
+    assert resp.status_code == 204

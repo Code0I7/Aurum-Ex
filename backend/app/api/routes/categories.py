@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_session
 from app.models.category import Category
 from app.models.enums import CategoryKind
+from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
 
 router = APIRouter(prefix="/categories", tags=["categories"])
@@ -75,6 +76,21 @@ async def delete_category(category_id: int, session: AsyncSession = Depends(get_
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found")
     if category.is_default:
-        raise HTTPException(status_code=400, detail="Default categories cannot be deleted")
+        # A default (seeded) category can be removed once it's unused — but
+        # never while transactions still point at it, or a whole year's
+        # worth of history would silently lose its category (the FK is
+        # ON DELETE SET NULL, so nothing would error, it would just vanish
+        # from every report). A custom category has no such guard: the user
+        # created it and can freely delete it, same as before.
+        has_transaction = (
+            await session.execute(select(Transaction.id).where(Transaction.category_id == category_id).limit(1))
+        ).first()
+        has_split = (
+            await session.execute(select(TransactionSplit.id).where(TransactionSplit.category_id == category_id).limit(1))
+        ).first()
+        if has_transaction is not None or has_split is not None:
+            raise HTTPException(
+                status_code=400, detail="Default categories can only be deleted once they have no transactions"
+            )
     await session.delete(category)
     await session.commit()

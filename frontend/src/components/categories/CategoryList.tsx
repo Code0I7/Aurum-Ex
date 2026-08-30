@@ -49,10 +49,8 @@ function CategoryRow({ category, indented, onEdit, onDelete }: RowProps) {
         <button
           type="button"
           aria-label={t("common.delete")}
-          title={category.is_default ? t("category.defaultCannotDelete") : undefined}
-          disabled={category.is_default}
           onClick={() => onDelete(category)}
-          className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-muted"
+          className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
         >
           <Trash2 size={15} />
         </button>

@@ -38,12 +38,15 @@ export function CategoriesPage() {
     setModalOpen(true);
   }
 
-  function handleDelete(category: Category) {
-    // Default categories are protected server-side too (400) — the list
-    // already disables the delete button for them, this is just a guard.
-    if (category.is_default) return;
-    if (window.confirm(t("category.confirmDelete", { name: category.name }))) {
-      deleteCategory.mutate(category.id);
+  async function handleDelete(category: Category) {
+    if (!window.confirm(t("category.confirmDelete", { name: category.name }))) return;
+    try {
+      await deleteCategory.mutateAsync(category.id);
+    } catch {
+      // The only way a delete 400s is a default category that still has
+      // transactions pointing at it (api/routes/categories.py) — a custom
+      // category has no such guard and always succeeds.
+      window.alert(t("category.defaultDeleteBlocked"));
     }
   }
 
