@@ -22,6 +22,7 @@ reuses the last cached price.
 from datetime import date as date_
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from itertools import groupby
 from typing import Literal, NamedTuple
 
 import httpx
@@ -36,6 +37,8 @@ from app.models.asset import Asset, AssetValuation
 from app.models.crypto import CryptoHolding, CryptoSyncState, CryptoTransaction
 from app.models.enums import AssetClass, CapitalRole, CryptoTransactionType, RiskLevel
 from app.schemas.crypto import (
+    CryptoHistoryPoint,
+    CryptoHistoryResponse,
     CryptoHoldingCreate,
     CryptoHoldingRead,
     CryptoSearchResult,
@@ -50,6 +53,12 @@ COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 # once a day here buys nothing and only spends rate-limit budget for no
 # reason (see module docstring on why there's no background poller at all).
 AUTO_REFRESH_INTERVAL = timedelta(hours=24)
+
+# Deliberately no "24h" option, unlike Net Worth's own RANGE_DAYS — our price
+# history is only ever as dense as our sync cadence (at most a few points a
+# day, see AUTO_REFRESH_INTERVAL above), so a 24h chart would show one or
+# two points, not the smooth intraday line a denser data source could draw.
+CRYPTO_RANGE_DAYS: dict[str, int] = {"7d": 7, "30d": 30, "90d": 90}
 
 _EAGER = (selectinload(CryptoHolding.transactions),)
 
@@ -390,3 +399,63 @@ async def delete_transaction(session: AsyncSession, transaction_id: int) -> None
         await _upsert_valuation(session, asset_id, quantity * holding.last_price, date_.today())
 
     await session.commit()
+
+
+async def get_crypto_history(session: AsyncSession, range_key: str) -> CryptoHistoryResponse:
+    """Total crypto holdings value over time, for the History chart on the
+    Crypto tab. Same "cumulative point events, forward-filled" approach as
+    net_worth_service.py's own asset series — duplicated here rather than
+    imported, so this can't destabilize the already-tested Net Worth engine,
+    and scoped to crypto-class assets only (a deleted holding's
+    AssetValuation rows are gone via cascade, so its history naturally
+    drops out here too, same as it already does for Net Worth)."""
+    today = date_.today()
+
+    crypto_asset_ids = set(
+        (await session.execute(select(Asset.id).where(Asset.asset_class == AssetClass.CRYPTO))).scalars().all()
+    )
+    if not crypto_asset_ids:
+        return CryptoHistoryResponse(range=range_key, current=Decimal("0"), change_amount=Decimal("0"), change_percent=None, series=[])
+
+    valuations = (
+        await session.execute(
+            select(AssetValuation.asset_id, AssetValuation.as_of_date, AssetValuation.value)
+            .where(AssetValuation.asset_id.in_(crypto_asset_ids))
+            .order_by(AssetValuation.as_of_date)
+        )
+    ).all()
+    if not valuations:
+        return CryptoHistoryResponse(range=range_key, current=Decimal("0"), change_amount=Decimal("0"), change_percent=None, series=[])
+
+    current_by_asset: dict[int, Decimal] = {}
+    events: list[tuple[date_, Decimal]] = []
+    for day, group in groupby(valuations, key=lambda row: row[1]):
+        for asset_id, _, value in group:
+            current_by_asset[asset_id] = value
+        events.append((day, sum(current_by_asset.values(), Decimal("0"))))
+
+    start = today - timedelta(days=CRYPTO_RANGE_DAYS[range_key] - 1) if range_key in CRYPTO_RANGE_DAYS else events[0][0]
+
+    points: list[CryptoHistoryPoint] = []
+    idx, n = 0, len(events)
+    running = Decimal("0")
+    day = start
+    while day <= today:
+        while idx < n and events[idx][0] <= day:
+            running = events[idx][1]
+            idx += 1
+        points.append(CryptoHistoryPoint(date=day, value=running))
+        day += timedelta(days=1)
+
+    current = points[-1].value if points else Decimal("0")
+    start_value = points[0].value if points else Decimal("0")
+    change_amount = current - start_value
+    change_percent = float(change_amount / start_value * 100) if start_value else None
+
+    return CryptoHistoryResponse(
+        range=range_key,
+        current=current,
+        change_amount=change_amount,
+        change_percent=change_percent,
+        series=points,
+    )

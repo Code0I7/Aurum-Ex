@@ -3,13 +3,16 @@ import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoAddModal } from "@/components/crypto/CryptoAddModal";
+import { CryptoAllocationCard } from "@/components/crypto/CryptoAllocationCard";
+import { CryptoHistoryChart } from "@/components/crypto/CryptoHistoryChart";
 import { CryptoHoldingsTable } from "@/components/crypto/CryptoHoldingsTable";
+import { CryptoStatsRow } from "@/components/crypto/CryptoStatsRow";
 import { CryptoTransactionHistoryModal } from "@/components/crypto/CryptoTransactionHistoryModal";
 import { CryptoTransactionModal } from "@/components/crypto/CryptoTransactionModal";
-import { useCryptoHoldings, useDeleteCryptoHolding, useRefreshCryptoPrices } from "@/hooks/useCrypto";
-import { formatCurrency, getIntlLocale } from "@/lib/format";
+import { useCryptoHistory, useCryptoHoldings, useDeleteCryptoHolding, useRefreshCryptoPrices } from "@/hooks/useCrypto";
+import { getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding } from "@/types";
+import type { CryptoHolding, CryptoRange } from "@/types";
 
 function formatSyncedAt(iso: string): string {
   return new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -17,7 +20,9 @@ function formatSyncedAt(iso: string): string {
 
 export function CryptoPage() {
   const { t } = useTranslation();
+  const [range, setRange] = useState<CryptoRange>("30d");
   const { data, isLoading } = useCryptoHoldings();
+  const { data: history, isLoading: isHistoryLoading } = useCryptoHistory(range);
   const refresh = useRefreshCryptoPrices();
   const deleteHolding = useDeleteCryptoHolding();
 
@@ -26,7 +31,6 @@ export function CryptoPage() {
   const [historyHolding, setHistoryHolding] = useState<CryptoHolding | null>(null);
 
   const holdings = data?.holdings ?? [];
-  const totalValue = holdings.reduce((sum, holding) => sum + (holding.value !== null ? Number(holding.value) : 0), 0);
 
   function handleDelete(holding: CryptoHolding) {
     if (window.confirm(t("crypto.confirmDelete", { name: holding.name }))) {
@@ -36,9 +40,22 @@ export function CryptoPage() {
 
   return (
     <div className="space-y-5">
+      <CryptoHistoryChart history={history} isLoading={isHistoryLoading} range={range} onRangeChange={setRange} />
+
+      <CryptoStatsRow holdings={holdings} isLoading={isLoading} />
+
+      <CryptoAllocationCard holdings={holdings} isLoading={isLoading} />
+
       <Card>
         <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-          <CardTitle>{t("nav.crypto")}</CardTitle>
+          <div>
+            <CardTitle>{t("crypto.holdingsTitle")}</CardTitle>
+            <p className="mt-0.5 text-xs text-text-muted">
+              {data?.last_synced_at
+                ? t("crypto.lastSynced", { time: formatSyncedAt(data.last_synced_at) })
+                : t("crypto.neverSynced")}
+            </p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
               <RefreshCw size={16} className={refresh.isPending ? "animate-spin" : undefined} />
@@ -55,20 +72,7 @@ export function CryptoPage() {
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
             <>
-              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-text-muted">{t("crypto.totalValueLabel")}</p>
-                  <p className="text-2xl font-semibold tabular-nums text-text-primary">{formatCurrency(totalValue)}</p>
-                </div>
-                <p className="text-xs text-text-muted">
-                  {data?.last_synced_at
-                    ? t("crypto.lastSynced", { time: formatSyncedAt(data.last_synced_at) })
-                    : t("crypto.neverSynced")}
-                </p>
-              </div>
-
               {data?.error_key && <p className="mb-3 text-sm text-danger">{t(`crypto.syncError.${data.error_key}`)}</p>}
-
               <CryptoHoldingsTable
                 items={holdings}
                 onTrade={setTradingHolding}

@@ -4,17 +4,19 @@ import {
   createCryptoHolding,
   deleteCryptoHolding,
   deleteCryptoTransaction,
+  fetchCryptoHistory,
   fetchCryptoHoldings,
   fetchCryptoTransactions,
   refreshCryptoPrices,
 } from "@/api/crypto";
-import type { CryptoHoldingCreateInput, CryptoTransactionInput } from "@/types";
+import type { CryptoHoldingCreateInput, CryptoRange, CryptoTransactionInput } from "@/types";
 
 function useInvalidateCrypto() {
   const queryClient = useQueryClient();
   return () => {
     queryClient.invalidateQueries({ queryKey: ["crypto-holdings"] });
     queryClient.invalidateQueries({ queryKey: ["crypto-transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["crypto-history"] });
     // A crypto holding is a normal Asset under the hood — Net Worth's own
     // numbers change the moment one is added/traded/repriced/removed.
     queryClient.invalidateQueries({ queryKey: ["net-worth-summary"] });
@@ -23,6 +25,10 @@ function useInvalidateCrypto() {
 
 export function useCryptoHoldings() {
   return useQuery({ queryKey: ["crypto-holdings"], queryFn: fetchCryptoHoldings });
+}
+
+export function useCryptoHistory(range: CryptoRange) {
+  return useQuery({ queryKey: ["crypto-history", range], queryFn: () => fetchCryptoHistory(range) });
 }
 
 export function useCryptoTransactions(assetId: number | null) {

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.schemas.crypto import (
+    CryptoHistoryResponse,
     CryptoHoldingCreate,
     CryptoHoldingRead,
     CryptoSearchResult,
@@ -11,9 +12,11 @@ from app.schemas.crypto import (
     CryptoTransactionRead,
 )
 from app.services.crypto_service import (
+    CRYPTO_RANGE_DAYS,
     add_transaction,
     create_holding,
     delete_transaction,
+    get_crypto_history,
     list_transactions,
     refresh_prices,
     search_coins,
@@ -68,3 +71,15 @@ async def delete_transaction_route(transaction_id: int, session: AsyncSession = 
 @router.get("/search", response_model=list[CryptoSearchResult])
 async def search_coins_route(q: str = Query(min_length=1, max_length=100)) -> list[CryptoSearchResult]:
     return await search_coins(q)
+
+
+_HISTORY_RANGES = sorted(set(CRYPTO_RANGE_DAYS) | {"all"})
+_HISTORY_RANGE_PATTERN = f"^({'|'.join(_HISTORY_RANGES)})$"
+
+
+@router.get("/history", response_model=CryptoHistoryResponse)
+async def read_crypto_history(
+    range: str = Query(default="30d", pattern=_HISTORY_RANGE_PATTERN),
+    session: AsyncSession = Depends(get_session),
+) -> CryptoHistoryResponse:
+    return await get_crypto_history(session, range)

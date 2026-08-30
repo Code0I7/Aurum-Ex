@@ -271,3 +271,32 @@ async def test_backup_roundtrip_preserves_holding_and_transaction_log(client: As
     assert money(restored["quantity"]) == money("2")
     assert money(restored["avg_buy_price"]) == money("50000")
     assert money(restored["value"]) == money("100000")  # last_price survived too (2 * 50000)
+
+
+async def test_history_reflects_current_total_crypto_value(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    await _add_bitcoin(client, "1", "40000")
+
+    resp = await client.get("/crypto/history?range=30d")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert money(body["current"]) == money("50000")
+    assert len(body["series"]) == 30
+    assert money(body["series"][-1]["value"]) == money("50000")
+    assert money(body["series"][0]["value"]) == money("0")  # nothing existed 30 days ago
+
+
+async def test_history_is_empty_series_with_no_holdings(client: AsyncClient):
+    resp = await client.get("/crypto/history?range=7d")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["series"] == []
+    assert money(body["current"]) == money("0")
+
+
+async def test_history_rejects_unknown_range(client: AsyncClient):
+    resp = await client.get("/crypto/history?range=24h")
+
+    assert resp.status_code == 422

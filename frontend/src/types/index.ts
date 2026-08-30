@@ -443,6 +443,24 @@ export interface CryptoSearchResult {
   thumb_url: string | null;
 }
 
+// No "24h" — the price history is only as dense as the sync cadence (see
+// services/crypto_service.py's AUTO_REFRESH_INTERVAL), so a 24h chart would
+// be one or two points, not a smooth intraday line.
+export type CryptoRange = "7d" | "30d" | "90d" | "all";
+
+export interface CryptoHistoryPoint {
+  date: string;
+  value: string;
+}
+
+export interface CryptoHistoryResponse {
+  range: CryptoRange;
+  current: string;
+  change_amount: string;
+  change_percent: number | null;
+  series: CryptoHistoryPoint[];
+}
+
 export interface AppSettings {
   currency: string;
   negative_cash_flow_threshold_months: number;

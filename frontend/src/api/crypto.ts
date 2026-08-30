@@ -1,7 +1,9 @@
 import { api } from "@/api/client";
 import type {
+  CryptoHistoryResponse,
   CryptoHolding,
   CryptoHoldingCreateInput,
+  CryptoRange,
   CryptoSearchResult,
   CryptoSyncResult,
   CryptoTransaction,
@@ -44,4 +46,8 @@ export function deleteCryptoHolding(assetId: number) {
 
 export function searchCryptoCoins(query: string) {
   return api.get<CryptoSearchResult[]>(`/crypto/search?q=${encodeURIComponent(query)}`);
+}
+
+export function fetchCryptoHistory(range: CryptoRange) {
+  return api.get<CryptoHistoryResponse>(`/crypto/history?range=${range}`);
 }

@@ -536,6 +536,7 @@ of the whole request failing.
 | `GET` | `/crypto/holdings/{asset_id}/transactions` | Full buy/sell history for one holding, newest first. |
 | `DELETE` | `/crypto/transactions/{transaction_id}` | Remove one transaction; quantity/avg buy price/value are recomputed from what's left. |
 | `GET` | `/crypto/search` | `?q=` — search CoinGecko for a coin to add (name/ticker, returns its `coingecko_id` + logo). |
+| `GET` | `/crypto/history` | `?range=7d\|30d\|90d\|all` (default `30d`) — total crypto holdings value over time, for the portfolio chart. No `24h` — resolution is only as dense as the sync cadence above. |
 
 **Create body** (`POST /crypto/holdings`):
 
@@ -599,6 +600,28 @@ was down right when it was added) — distinct from a real `0`. `avg_buy_price`/
 `profit_loss`/`profit_loss_percent` are `null` once a holding's quantity has been fully sold down to
 zero (nothing left to have a cost basis). `error_key` is `"unreachable"` when a sync attempt couldn't
 reach CoinGecko (existing values are kept as-is), or `null` otherwise.
+
+**`GET /crypto/history` response:**
+
+```json
+{
+  "range": "30d",
+  "current": "9727.68",
+  "change_amount": "1240.16",
+  "change_percent": 14.6,
+  "series": [
+    { "date": "2026-08-01", "value": "8487.52" },
+    { "date": "2026-08-02", "value": "8487.52" }
+  ]
+}
+```
+
+One point per calendar day, forward-filled from whatever `AssetValuation` snapshots actually exist
+(same technique as `/net-worth/summary`'s own `series`, just scoped to crypto-class assets) — a day
+with no sync simply repeats the last known total rather than leaving a gap. Total invested (cost
+basis), all-time profit/loss, and best/worst performer aren't separate endpoints — they're trivial to
+derive client-side by summing/comparing the `value`/`cost_basis`/`profit_loss_percent` fields already
+in every `GET /crypto/holdings` response.
 
 ## Dashboard, Cash Flow & Reports
 

@@ -93,3 +93,21 @@ class CryptoSearchResult(BaseModel):
     symbol: str
     name: str
     thumb_url: str | None
+
+
+class CryptoHistoryPoint(BaseModel):
+    date: date_
+    value: Decimal
+
+
+class CryptoHistoryResponse(BaseModel):
+    """Total crypto holdings value over time — same "cumulative point
+    events, forward-filled" shape as NetWorthSummary's own series, but
+    scoped to crypto-class assets only (see services/crypto_service.py's
+    get_crypto_history). Powers the History chart on the Crypto tab."""
+
+    range: str
+    current: Decimal
+    change_amount: Decimal
+    change_percent: float | None
+    series: list[CryptoHistoryPoint]
