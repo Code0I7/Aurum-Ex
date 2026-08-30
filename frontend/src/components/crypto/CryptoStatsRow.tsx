@@ -28,9 +28,15 @@ function computeTotals(holdings: CryptoHolding[]): Totals {
   for (const holding of holdings) {
     if (holding.value !== null) totalValue += Number(holding.value);
     if (holding.cost_basis !== null) totalCostBasis += Number(holding.cost_basis);
-    if (holding.profit_loss_percent === null) continue;
-    if (best === null || holding.profit_loss_percent > best.profit_loss_percent!) best = holding;
-    if (worst === null || holding.profit_loss_percent < worst.profit_loss_percent!) worst = holding;
+    // Best/Worst Performer compare coins against *each other* by market
+    // price move (24h % change), not against what the user personally paid
+    // — a coin someone bought yesterday at the top can still be "best
+    // performer" here if it's simply up the most of anything they hold
+    // today, independent of their own entry price/timing.
+    if (holding.price_change_24h === null) continue;
+    const change = Number(holding.price_change_24h);
+    if (best === null || change > Number(best.price_change_24h)) best = holding;
+    if (worst === null || change < Number(worst.price_change_24h)) worst = holding;
   }
 
   const totalProfitLoss = totalValue - totalCostBasis;
@@ -52,14 +58,14 @@ function StatTile({ label, children }: { label: string; children: ReactNode }) {
 
 function PerformerTile({ label, holding }: { label: string; holding: CryptoHolding | null }) {
   const { t } = useTranslation();
-  if (holding === null || holding.profit_loss_percent === null) {
+  if (holding === null || holding.price_change_24h === null) {
     return (
       <StatTile label={label}>
         <p className="text-lg font-semibold text-text-muted">—</p>
       </StatTile>
     );
   }
-  const percent = holding.profit_loss_percent;
+  const percent = Number(holding.price_change_24h);
   const color = percent >= 0 ? "var(--success)" : "var(--danger)";
   return (
     <StatTile label={label}>
@@ -75,7 +81,7 @@ function PerformerTile({ label, holding }: { label: string; holding: CryptoHoldi
         {percent >= 0 ? "+" : ""}
         {percent.toFixed(2)}%
       </p>
-      <p className="mt-0.5 text-xs text-text-muted">{t("crypto.stats.since", { name: holding.name })}</p>
+      <p className="mt-0.5 text-xs text-text-muted">{t("crypto.stats.change24h")}</p>
     </StatTile>
   );
 }

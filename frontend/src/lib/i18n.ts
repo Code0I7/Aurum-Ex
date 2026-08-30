@@ -158,7 +158,7 @@ const ru = {
   "crypto.stats.costBasisHint": "сумма покупок по факту",
   "crypto.stats.bestPerformer": "Лучший рост",
   "crypto.stats.worstPerformer": "Худшее падение",
-  "crypto.stats.since": "с момента покупки {{name}}",
+  "crypto.stats.change24h": "изменение цены за 24ч",
 
   "roi.calculator.title": "Калькулятор ROI",
   "roi.calculator.investmentLabel": "Сумма инвестиции",
@@ -619,7 +619,7 @@ const en: Record<keyof typeof ru, string> = {
   "crypto.stats.costBasisHint": "actual amount spent buying",
   "crypto.stats.bestPerformer": "Best Performer",
   "crypto.stats.worstPerformer": "Worst Performer",
-  "crypto.stats.since": "since buying {{name}}",
+  "crypto.stats.change24h": "24h price change",
 
   "roi.calculator.title": "ROI Calculator",
   "roi.calculator.investmentLabel": "Investment amount",
