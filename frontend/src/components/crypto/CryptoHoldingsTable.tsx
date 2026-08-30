@@ -1,10 +1,11 @@
 import { Bitcoin, History, Plus, Trash2 } from "lucide-react";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
 
 interface CryptoHoldingsTableProps {
   items: CryptoHolding[];
+  hidden: boolean;
   onTrade: (holding: CryptoHolding) => void;
   onViewHistory: (holding: CryptoHolding) => void;
   onDelete: (holding: CryptoHolding) => void;
@@ -22,7 +23,7 @@ function PercentCell({ value }: { value: string | null }) {
   );
 }
 
-export function CryptoHoldingsTable({ items, onTrade, onViewHistory, onDelete }: CryptoHoldingsTableProps) {
+export function CryptoHoldingsTable({ items, hidden, onTrade, onViewHistory, onDelete }: CryptoHoldingsTableProps) {
   const { t } = useTranslation();
 
   if (items.length === 0) {
@@ -75,7 +76,9 @@ export function CryptoHoldingsTable({ items, onTrade, onViewHistory, onDelete }:
                   </div>
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums text-text-primary">
-                  {holding.current_price !== null ? formatCurrency(holding.current_price) : t("crypto.pendingPrice")}
+                  {holding.current_price !== null
+                    ? maskAmount(formatCurrency(holding.current_price), hidden)
+                    : t("crypto.pendingPrice")}
                 </td>
                 <td className="py-3 pr-3 text-right">
                   <PercentCell value={holding.price_change_1h} />
@@ -88,21 +91,20 @@ export function CryptoHoldingsTable({ items, onTrade, onViewHistory, onDelete }:
                 </td>
                 <td className="py-3 pr-3 text-right">
                   <span className="block tabular-nums text-text-primary">
-                    {holding.value !== null ? formatCurrency(holding.value) : t("crypto.pendingPrice")}
+                    {holding.value !== null ? maskAmount(formatCurrency(holding.value), hidden) : t("crypto.pendingPrice")}
                   </span>
                   <span className="block text-xs tabular-nums text-text-muted">
-                    {Number(holding.quantity)} {holding.symbol}
+                    {maskAmount(`${Number(holding.quantity)} ${holding.symbol}`, hidden)}
                   </span>
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums text-text-primary">
-                  {holding.avg_buy_price !== null ? formatCurrency(holding.avg_buy_price) : "—"}
+                  {holding.avg_buy_price !== null ? maskAmount(formatCurrency(holding.avg_buy_price), hidden) : "—"}
                 </td>
                 <td className="py-3 pr-3 text-right">
                   {holding.profit_loss !== null && holding.profit_loss_percent !== null ? (
                     <>
                       <span className="block tabular-nums" style={{ color: profitColor }}>
-                        {sign}
-                        {formatCurrency(holding.profit_loss)}
+                        {maskAmount(`${sign}${formatCurrency(holding.profit_loss)}`, hidden)}
                       </span>
                       <span className="block text-xs tabular-nums" style={{ color: profitColor }}>
                         {sign}

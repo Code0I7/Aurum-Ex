@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
 
 interface CryptoStatsRowProps {
   holdings: CryptoHolding[];
   isLoading: boolean;
+  hidden: boolean;
 }
 
 interface Totals {
@@ -79,7 +80,7 @@ function PerformerTile({ label, holding }: { label: string; holding: CryptoHoldi
   );
 }
 
-export function CryptoStatsRow({ holdings, isLoading }: CryptoStatsRowProps) {
+export function CryptoStatsRow({ holdings, isLoading, hidden }: CryptoStatsRowProps) {
   const { t } = useTranslation();
 
   if (isLoading) {
@@ -94,8 +95,7 @@ export function CryptoStatsRow({ holdings, isLoading }: CryptoStatsRowProps) {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <StatTile label={t("crypto.stats.allTimeProfit")}>
         <p className="text-lg font-semibold tabular-nums" style={{ color: profitColor }}>
-          {totals.totalProfitLoss >= 0 ? "+" : ""}
-          {formatCurrency(totals.totalProfitLoss)}
+          {maskAmount(`${totals.totalProfitLoss >= 0 ? "+" : ""}${formatCurrency(totals.totalProfitLoss)}`, hidden)}
         </p>
         {totals.totalProfitLossPercent !== null && (
           <p className="mt-0.5 text-sm font-medium tabular-nums" style={{ color: profitColor }}>
@@ -106,7 +106,9 @@ export function CryptoStatsRow({ holdings, isLoading }: CryptoStatsRowProps) {
       </StatTile>
 
       <StatTile label={t("crypto.stats.costBasis")}>
-        <p className="text-lg font-semibold tabular-nums text-text-primary">{formatCurrency(totals.totalCostBasis)}</p>
+        <p className="text-lg font-semibold tabular-nums text-text-primary">
+          {maskAmount(formatCurrency(totals.totalCostBasis), hidden)}
+        </p>
         <p className="mt-0.5 text-xs text-text-muted">{t("crypto.stats.costBasisHint")}</p>
       </StatTile>
 

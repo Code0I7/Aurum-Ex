@@ -1,7 +1,7 @@
 import { Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { useCryptoTransactions, useDeleteCryptoTransaction } from "@/hooks/useCrypto";
-import { formatCurrency, formatTransactionDate } from "@/lib/format";
+import { formatCurrency, formatTransactionDate, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
 
@@ -9,9 +9,10 @@ interface CryptoTransactionHistoryModalProps {
   open: boolean;
   onClose: () => void;
   holding: CryptoHolding | null;
+  hidden: boolean;
 }
 
-export function CryptoTransactionHistoryModal({ open, onClose, holding }: CryptoTransactionHistoryModalProps) {
+export function CryptoTransactionHistoryModal({ open, onClose, holding, hidden }: CryptoTransactionHistoryModalProps) {
   const { t } = useTranslation();
   const { data: transactions, isLoading } = useCryptoTransactions(holding ? holding.asset_id : null);
   const deleteTransaction = useDeleteCryptoTransaction();
@@ -45,7 +46,7 @@ export function CryptoTransactionHistoryModal({ open, onClose, holding }: Crypto
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm text-text-primary">
-                  {Number(tx.quantity)} {holding.symbol} · {formatCurrency(tx.price_per_unit)}
+                  {maskAmount(`${Number(tx.quantity)} ${holding.symbol} · ${formatCurrency(tx.price_per_unit)}`, hidden)}
                 </span>
                 <span className="block text-xs text-text-muted">
                   {formatTransactionDate(tx.date, true)}

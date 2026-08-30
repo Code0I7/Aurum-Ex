@@ -21,6 +21,11 @@ function formatSyncedAt(iso: string): string {
 export function CryptoPage() {
   const { t } = useTranslation();
   const [range, setRange] = useState<CryptoRange>("30d");
+  // Single "hide balance" switch for the whole tab — owned here so every
+  // money-displaying section (chart, stats, allocation, table, trade
+  // history) masks together instead of the toggle only affecting whichever
+  // component happened to own it.
+  const [hidden, setHidden] = useState(false);
   const { data, isLoading } = useCryptoHoldings();
   const { data: history, isLoading: isHistoryLoading } = useCryptoHistory(range);
   const refresh = useRefreshCryptoPrices();
@@ -40,11 +45,18 @@ export function CryptoPage() {
 
   return (
     <div className="space-y-5">
-      <CryptoHistoryChart history={history} isLoading={isHistoryLoading} range={range} onRangeChange={setRange} />
+      <CryptoHistoryChart
+        history={history}
+        isLoading={isHistoryLoading}
+        range={range}
+        onRangeChange={setRange}
+        hidden={hidden}
+        onToggleHidden={() => setHidden((prev) => !prev)}
+      />
 
-      <CryptoStatsRow holdings={holdings} isLoading={isLoading} />
+      <CryptoStatsRow holdings={holdings} isLoading={isLoading} hidden={hidden} />
 
-      <CryptoAllocationCard holdings={holdings} isLoading={isLoading} />
+      <CryptoAllocationCard holdings={holdings} isLoading={isLoading} hidden={hidden} />
 
       <Card>
         <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
@@ -75,6 +87,7 @@ export function CryptoPage() {
               {data?.error_key && <p className="mb-3 text-sm text-danger">{t(`crypto.syncError.${data.error_key}`)}</p>}
               <CryptoHoldingsTable
                 items={holdings}
+                hidden={hidden}
                 onTrade={setTradingHolding}
                 onViewHistory={setHistoryHolding}
                 onDelete={handleDelete}
@@ -90,6 +103,7 @@ export function CryptoPage() {
         open={historyHolding !== null}
         onClose={() => setHistoryHolding(null)}
         holding={historyHolding}
+        hidden={hidden}
       />
     </div>
   );

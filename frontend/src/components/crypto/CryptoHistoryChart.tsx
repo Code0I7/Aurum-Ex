@@ -1,9 +1,8 @@
-import { useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { ArrowDown, ArrowUp, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoRangeSelector } from "@/components/crypto/CryptoRangeSelector";
-import { formatCurrency, formatSignedCurrency, getIntlLocale } from "@/lib/format";
+import { formatCurrency, formatSignedCurrency, getIntlLocale, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHistoryResponse, CryptoRange } from "@/types";
 
@@ -12,29 +11,46 @@ interface CryptoHistoryChartProps {
   isLoading: boolean;
   range: CryptoRange;
   onRangeChange: (range: CryptoRange) => void;
+  hidden: boolean;
+  onToggleHidden: () => void;
 }
 
 function formatAxisDate(iso: string): string {
   return new Intl.DateTimeFormat(getIntlLocale(), { month: "short", day: "numeric" }).format(new Date(`${iso}T00:00:00`));
 }
 
-function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { date: string; value: number } }> }) {
+function ChartTooltip({
+  active,
+  payload,
+  hidden,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { date: string; value: number } }>;
+  hidden: boolean;
+}) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
     <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
       <p className="text-text-muted">{formatAxisDate(point.date)}</p>
-      <p className="font-medium text-text-primary">{formatCurrency(point.value)}</p>
+      <p className="font-medium text-text-primary">{maskAmount(formatCurrency(point.value), hidden)}</p>
     </div>
   );
 }
 
 /** The Crypto tab's headline chart — same recipe as NetWorthChart, plus an
- * eye toggle to mask the big number (screen-over-someone's-shoulder
- * privacy, doesn't hide anything else on the page). */
-export function CryptoHistoryChart({ history, isLoading, range, onRangeChange }: CryptoHistoryChartProps) {
+ * eye toggle. `hidden` is owned by CryptoPage and passed to every other
+ * money-displaying section of the tab too — this is just where the toggle
+ * button itself lives. */
+export function CryptoHistoryChart({
+  history,
+  isLoading,
+  range,
+  onRangeChange,
+  hidden,
+  onToggleHidden,
+}: CryptoHistoryChartProps) {
   const { t } = useTranslation();
-  const [hidden, setHidden] = useState(false);
   const isPositive = history ? Number(history.change_amount) >= 0 : true;
   const trendColor = isPositive ? "var(--success)" : "var(--danger)";
   const chartData = history?.series.map((point) => ({ date: point.date, value: Number(point.value) })) ?? [];
@@ -45,20 +61,20 @@ export function CryptoHistoryChart({ history, isLoading, range, onRangeChange }:
         <div>
           <CardTitle>{t("nav.crypto")}</CardTitle>
           <p className="mt-1.5 flex items-center gap-2 text-2xl font-semibold tabular-nums text-text-primary sm:text-[28px]">
-            {isLoading ? "…" : hidden ? "••••••" : formatCurrency(history?.current ?? 0)}
+            {isLoading ? "…" : maskAmount(formatCurrency(history?.current ?? 0), hidden)}
             <button
               type="button"
               aria-label={hidden ? t("crypto.chart.show") : t("crypto.chart.hide")}
-              onClick={() => setHidden((prev) => !prev)}
+              onClick={onToggleHidden}
               className="text-text-muted hover:text-text-primary"
             >
               {hidden ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </p>
-          {history && !hidden && (
+          {history && (
             <p className="mt-1 flex items-center gap-1 text-sm font-medium" style={{ color: trendColor }}>
               {isPositive ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-              {formatSignedCurrency(history.change_amount)}
+              {maskAmount(formatSignedCurrency(history.change_amount), hidden)}
               {history.change_percent !== null && ` (${isPositive ? "+" : ""}${history.change_percent.toFixed(1)}%)`}
               <span className="font-normal text-text-muted">{t("netWorth.periodSuffix")}</span>
             </p>
@@ -82,7 +98,7 @@ export function CryptoHistoryChart({ history, isLoading, range, onRangeChange }:
                   </linearGradient>
                 </defs>
                 <YAxis hide domain={["auto", "auto"]} />
-                <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--gridline)", strokeWidth: 1 }} />
+                <Tooltip content={<ChartTooltip hidden={hidden} />} cursor={{ stroke: "var(--gridline)", strokeWidth: 1 }} />
                 <Area
                   type="monotone"
                   dataKey="value"

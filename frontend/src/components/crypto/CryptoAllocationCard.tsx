@@ -1,12 +1,13 @@
 import { Bitcoin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
 
 interface CryptoAllocationCardProps {
   holdings: CryptoHolding[];
   isLoading: boolean;
+  hidden: boolean;
 }
 
 // Fixed categorical order, same 8-slot ramp the rest of the app already
@@ -49,7 +50,7 @@ function buildSlices(holdings: CryptoHolding[]): Slice[] {
   return [...top, { key: "other", name: "Other", symbol: null, thumbUrl: null, amount: otherTotal, color: OTHER_COLOR }];
 }
 
-export function CryptoAllocationCard({ holdings, isLoading }: CryptoAllocationCardProps) {
+export function CryptoAllocationCard({ holdings, isLoading, hidden }: CryptoAllocationCardProps) {
   const { t } = useTranslation();
   const slices = buildSlices(holdings);
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
@@ -105,7 +106,7 @@ export function CryptoAllocationCard({ holdings, isLoading }: CryptoAllocationCa
                       {percent.toFixed(0)}%
                     </span>
                     <span className="shrink-0 text-sm font-medium tabular-nums text-text-primary">
-                      {formatCurrency(slice.amount)}
+                      {maskAmount(formatCurrency(slice.amount), hidden)}
                     </span>
                   </li>
                 );

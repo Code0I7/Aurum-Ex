@@ -23,6 +23,15 @@ export function formatSignedCurrency(amount: number | string, currency: string =
   return `${sign}${formatCurrency(value, currency)}`;
 }
 
+/** "Hide balance" masking — wraps an already-formatted amount (currency,
+ * quantity, whatever reveals a dollar figure) rather than reformatting it,
+ * so call sites don't need a separate hidden-vs-shown branch for every
+ * number. Percentages are deliberately never masked by callers — a % move
+ * doesn't reveal how much money is actually involved. */
+export function maskAmount(formatted: string, hidden: boolean): string {
+  return hidden ? "••••" : formatted;
+}
+
 const MONTH_LABELS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const MONTH_LABELS_RU = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"] as const;
 
