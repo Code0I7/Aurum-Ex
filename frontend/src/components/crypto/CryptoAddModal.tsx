@@ -26,6 +26,8 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<CryptoSearchResult | null>(null);
   const [quantity, setQuantity] = useState("");
+  const [pricePerUnit, setPricePerUnit] = useState("");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,6 +36,8 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
     setResults([]);
     setSelected(null);
     setQuantity("");
+    setPricePerUnit("");
+    setDate(new Date().toISOString().slice(0, 10));
     setSearchError(null);
     setSaveError(null);
   }, [open]);
@@ -74,6 +78,8 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
         name: selected.name,
         thumb_url: selected.thumb_url,
         quantity,
+        price_per_unit: pricePerUnit,
+        date,
       });
       onClose();
     } catch {
@@ -139,17 +145,42 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
             </span>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="crypto-quantity">{t("crypto.form.quantityLabel")}</Label>
+              <Input
+                id="crypto-quantity"
+                type="number"
+                step="any"
+                min="0"
+                required
+                autoFocus
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="crypto-price">{t("crypto.form.pricePerUnitLabel")}</Label>
+              <Input
+                id="crypto-price"
+                type="number"
+                step="any"
+                min="0"
+                required
+                value={pricePerUnit}
+                onChange={(event) => setPricePerUnit(event.target.value)}
+              />
+            </div>
+          </div>
+
           <div>
-            <Label htmlFor="crypto-quantity">{t("crypto.form.quantityLabel")}</Label>
+            <Label htmlFor="crypto-date">{t("crypto.form.dateLabel")}</Label>
             <Input
-              id="crypto-quantity"
-              type="number"
-              step="any"
-              min="0"
+              id="crypto-date"
+              type="date"
               required
-              autoFocus
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
             />
           </div>
 

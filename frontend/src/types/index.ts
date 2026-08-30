@@ -374,26 +374,59 @@ export interface FinancialAlert {
   params: Record<string, number>;
 }
 
+export type CryptoTransactionType = "buy" | "sell";
+
 export interface CryptoHolding {
   asset_id: number;
   coingecko_id: string;
   symbol: string;
   name: string;
   thumb_url: string | null;
+  // Both derived from the buy/sell log (see CryptoTransaction) — never
+  // edited directly.
   quantity: string;
-  // null means "added but never priced yet" (CoinGecko was unreachable at
-  // creation time) — distinct from a real zero value.
+  avg_buy_price: string | null;
+  // Cached from the last successful CoinGecko sync — null means "added but
+  // never priced yet" (CoinGecko was unreachable right at creation),
+  // distinct from a real zero.
+  current_price: string | null;
+  price_change_1h: string | null;
+  price_change_24h: string | null;
+  price_change_7d: string | null;
   value: string | null;
-  unit_price: string | null;
-  as_of_date: string | null;
+  cost_basis: string | null;
+  profit_loss: string | null;
+  profit_loss_percent: number | null;
 }
 
-export interface CryptoHoldingInput {
+export interface CryptoHoldingCreateInput {
   coingecko_id: string;
   symbol: string;
   name: string;
   thumb_url?: string | null;
+  // A holding always starts with its first buy.
   quantity: string;
+  price_per_unit: string;
+  date: string;
+  note?: string | null;
+}
+
+export interface CryptoTransaction {
+  id: number;
+  asset_id: number;
+  type: CryptoTransactionType;
+  quantity: string;
+  price_per_unit: string;
+  date: string;
+  note: string | null;
+}
+
+export interface CryptoTransactionInput {
+  type: CryptoTransactionType;
+  quantity: string;
+  price_per_unit: string;
+  date: string;
+  note?: string | null;
 }
 
 export interface CryptoSyncResult {

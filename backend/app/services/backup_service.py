@@ -21,7 +21,7 @@ from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
 from app.models.budget import Budget
 from app.models.category import Category
-from app.models.crypto import CryptoHolding
+from app.models.crypto import CryptoHolding, CryptoTransaction
 from app.models.goal import Goal, GoalContribution
 from app.models.recurring import RecurringTransaction
 from app.models.settings import AppSettings
@@ -36,6 +36,7 @@ from app.schemas.backup import (
     BudgetBackup,
     CategoryBackup,
     CryptoHoldingBackup,
+    CryptoTransactionBackup,
     GoalBackup,
     GoalContributionBackup,
     RecurringTransactionBackup,
@@ -54,6 +55,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     assets = (await session.execute(select(Asset))).scalars().all()
     valuations = (await session.execute(select(AssetValuation))).scalars().all()
     crypto_holdings = (await session.execute(select(CryptoHolding))).scalars().all()
+    crypto_transactions = (await session.execute(select(CryptoTransaction))).scalars().all()
     budgets = (await session.execute(select(Budget))).scalars().all()
     goals = (await session.execute(select(Goal))).scalars().all()
     goal_contributions = (await session.execute(select(GoalContribution))).scalars().all()
@@ -76,6 +78,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         assets=[AssetBackup.model_validate(row) for row in assets],
         asset_valuations=[AssetValuationBackup.model_validate(row) for row in valuations],
         crypto_holdings=[CryptoHoldingBackup.model_validate(row) for row in crypto_holdings],
+        crypto_transactions=[CryptoTransactionBackup.model_validate(row) for row in crypto_transactions],
         budgets=[BudgetBackup.model_validate(row) for row in budgets],
         goals=[GoalBackup.model_validate(row) for row in goals],
         goal_contributions=[GoalContributionBackup.model_validate(row) for row in goal_contributions],
@@ -111,9 +114,14 @@ def _validate_references(payload: BackupPayload) -> None:
         if v.asset_id not in asset_ids:
             raise HTTPException(400, f"Asset valuation {v.id} references unknown asset_id {v.asset_id}")
 
+    crypto_holding_asset_ids = {h.asset_id for h in payload.crypto_holdings}
     for h in payload.crypto_holdings:
         if h.asset_id not in asset_ids:
             raise HTTPException(400, f"Crypto holding {h.asset_id} references unknown asset_id {h.asset_id}")
+
+    for tx in payload.crypto_transactions:
+        if tx.asset_id not in crypto_holding_asset_ids:
+            raise HTTPException(400, f"Crypto transaction {tx.id} references unknown asset_id {tx.asset_id}")
 
     for b in payload.budgets:
         if b.category_id not in category_ids:
@@ -162,6 +170,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
     try:
         # Children before parents.
         await session.execute(delete(AssetValuation))
+        await session.execute(delete(CryptoTransaction))
         await session.execute(delete(CryptoHolding))
         await session.execute(delete(Budget))
         await session.execute(delete(GoalContribution))
@@ -202,6 +211,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
 
         session.add_all(AssetValuation(**row.model_dump()) for row in payload.asset_valuations)
         session.add_all(CryptoHolding(**row.model_dump()) for row in payload.crypto_holdings)
+        session.add_all(CryptoTransaction(**row.model_dump()) for row in payload.crypto_transactions)
         session.add_all(Budget(**row.model_dump()) for row in payload.budgets)
         session.add_all(Goal(**row.model_dump()) for row in payload.goals)
         session.add_all(GoalContribution(**row.model_dump()) for row in payload.goal_contributions)
@@ -220,6 +230,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await _reset_sequence(session, "assets", payload.assets)
         await _reset_sequence(session, "transactions", payload.transactions)
         await _reset_sequence(session, "asset_valuations", payload.asset_valuations)
+        await _reset_sequence(session, "crypto_transactions", payload.crypto_transactions)
         await _reset_sequence(session, "budgets", payload.budgets)
         await _reset_sequence(session, "goals", payload.goals)
         await _reset_sequence(session, "goal_contributions", payload.goal_contributions)

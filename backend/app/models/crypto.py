@@ -1,17 +1,24 @@
 """Crypto holdings: a thin layer on top of the existing Asset/AssetValuation
-engine (see models/asset.py) rather than a parallel system. A CryptoHolding
-only records identity (which coin) and quantity (how much) — the actual
-value lives as ordinary AssetValuation rows, kept current by
-services/crypto_service.py, so Net Worth requires zero changes to treat a
-crypto holding like any other manually tracked asset.
+engine (see models/asset.py) rather than a parallel system. Net worth's
+number for a holding still lives as ordinary AssetValuation rows, kept
+current by services/crypto_service.py — Net Worth requires zero changes to
+treat a crypto holding like any other manually tracked asset.
+
+Quantity and average buy price are NOT stored — they're computed from the
+CryptoTransaction log (same "you record it, we derive it" shape as
+Goal/GoalContribution), because a sell doesn't just subtract quantity, it
+also has to leave the average cost basis of what's still held unchanged
+(see services/crypto_service.py's _compute_position).
 """
+from datetime import date as date_
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.asset import Asset
+from app.models.enums import CryptoTransactionType
 from app.models.mixins import TimestampMixin
 
 
@@ -20,7 +27,8 @@ class CryptoHolding(Base, TimestampMixin):
     this table's own primary key rather than a separate id+unique
     constraint, so the relationship can never drift into a 1:many by
     accident. Deleting the Asset (the existing DELETE /assets/{id}) cascades
-    here too — there's no separate delete endpoint for a holding."""
+    here too, and cascades again to every CryptoTransaction — there's no
+    separate "delete the whole holding" endpoint."""
 
     __tablename__ = "crypto_holdings"
 
@@ -36,12 +44,43 @@ class CryptoHolding(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     thumb_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # Bitcoin has 8 decimal places; several tokens go to 18 (wei-level
-    # amounts). Deliberately NOT Numeric(14, 2) like every money field in
-    # this app — this is a coin count, not a currency amount.
-    quantity: Mapped[Numeric] = mapped_column(Numeric(38, 18), nullable=False)
+    # Cached from the last successful sync (services/crypto_service.py) —
+    # in the app's display currency (see AppSettings.currency). Null until
+    # the first sync completes.
+    last_price: Mapped[Numeric | None] = mapped_column(Numeric(38, 18), nullable=True)
+    price_change_1h: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
+    price_change_24h: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
+    price_change_7d: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
 
     asset: Mapped["Asset"] = relationship()
+    transactions: Mapped[list["CryptoTransaction"]] = relationship(
+        back_populates="holding", cascade="all, delete-orphan", order_by="CryptoTransaction.date"
+    )
+
+
+class CryptoTransaction(Base, TimestampMixin):
+    """One buy or sell against a holding. Quantity held and average buy
+    price are both derived by replaying this log in date order — see
+    services/crypto_service.py's _compute_position for why a sell can't
+    just be "negative quantity" the way it can for a Goal contribution: it
+    must leave the remaining coins' average cost basis alone."""
+
+    __tablename__ = "crypto_transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("crypto_holdings.asset_id", ondelete="CASCADE"), nullable=False)
+    type: Mapped[CryptoTransactionType] = mapped_column(
+        Enum(CryptoTransactionType, name="crypto_transaction_type", native_enum=False, length=10), nullable=False
+    )
+    quantity: Mapped[Numeric] = mapped_column(Numeric(38, 18), nullable=False)
+    # Price paid (buy) or received (sell) per unit, in the app's display
+    # currency at the time of the transaction — not re-derived later, since
+    # what you actually paid doesn't change with today's market price.
+    price_per_unit: Mapped[Numeric] = mapped_column(Numeric(38, 18), nullable=False)
+    date: Mapped[date_] = mapped_column(Date, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    holding: Mapped["CryptoHolding"] = relationship(back_populates="transactions")
 
 
 class CryptoSyncState(Base):

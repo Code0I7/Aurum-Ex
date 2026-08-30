@@ -1,26 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addCryptoTransaction,
   createCryptoHolding,
   deleteCryptoHolding,
+  deleteCryptoTransaction,
   fetchCryptoHoldings,
+  fetchCryptoTransactions,
   refreshCryptoPrices,
-  searchCryptoCoins,
-  updateCryptoHoldingQuantity,
 } from "@/api/crypto";
-import type { CryptoHoldingInput } from "@/types";
+import type { CryptoHoldingCreateInput, CryptoTransactionInput } from "@/types";
 
 function useInvalidateCrypto() {
   const queryClient = useQueryClient();
   return () => {
     queryClient.invalidateQueries({ queryKey: ["crypto-holdings"] });
+    queryClient.invalidateQueries({ queryKey: ["crypto-transactions"] });
     // A crypto holding is a normal Asset under the hood — Net Worth's own
-    // numbers change the moment one is added/edited/repriced/removed.
+    // numbers change the moment one is added/traded/repriced/removed.
     queryClient.invalidateQueries({ queryKey: ["net-worth-summary"] });
   };
 }
 
 export function useCryptoHoldings() {
   return useQuery({ queryKey: ["crypto-holdings"], queryFn: fetchCryptoHoldings });
+}
+
+export function useCryptoTransactions(assetId: number | null) {
+  return useQuery({
+    queryKey: ["crypto-transactions", assetId],
+    queryFn: () => fetchCryptoTransactions(assetId!),
+    enabled: assetId !== null,
+  });
 }
 
 export function useRefreshCryptoPrices() {
@@ -31,16 +41,24 @@ export function useRefreshCryptoPrices() {
 export function useCreateCryptoHolding() {
   const invalidate = useInvalidateCrypto();
   return useMutation({
-    mutationFn: (input: CryptoHoldingInput) => createCryptoHolding(input),
+    mutationFn: (input: CryptoHoldingCreateInput) => createCryptoHolding(input),
     onSuccess: invalidate,
   });
 }
 
-export function useUpdateCryptoHoldingQuantity() {
+export function useAddCryptoTransaction() {
   const invalidate = useInvalidateCrypto();
   return useMutation({
-    mutationFn: ({ assetId, quantity }: { assetId: number; quantity: string }) =>
-      updateCryptoHoldingQuantity(assetId, quantity),
+    mutationFn: ({ assetId, input }: { assetId: number; input: CryptoTransactionInput }) =>
+      addCryptoTransaction(assetId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteCryptoTransaction() {
+  const invalidate = useInvalidateCrypto();
+  return useMutation({
+    mutationFn: (transactionId: number) => deleteCryptoTransaction(transactionId),
     onSuccess: invalidate,
   });
 }
@@ -52,8 +70,3 @@ export function useDeleteCryptoHolding() {
     onSuccess: invalidate,
   });
 }
-
-// Not a useQuery — this drives a search-as-you-type picker inside the "add
-// holding" modal, called imperatively (debounced) rather than kept in sync
-// with a query key.
-export { searchCryptoCoins };

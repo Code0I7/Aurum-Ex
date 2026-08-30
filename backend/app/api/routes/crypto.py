@@ -2,8 +2,22 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
-from app.schemas.crypto import CryptoHoldingCreate, CryptoHoldingRead, CryptoHoldingUpdate, CryptoSearchResult, CryptoSyncResult
-from app.services.crypto_service import create_holding, refresh_prices, search_coins, update_holding_quantity
+from app.schemas.crypto import (
+    CryptoHoldingCreate,
+    CryptoHoldingRead,
+    CryptoSearchResult,
+    CryptoSyncResult,
+    CryptoTransactionCreate,
+    CryptoTransactionRead,
+)
+from app.services.crypto_service import (
+    add_transaction,
+    create_holding,
+    delete_transaction,
+    list_transactions,
+    refresh_prices,
+    search_coins,
+)
 
 router = APIRouter(prefix="/crypto", tags=["crypto"])
 
@@ -31,11 +45,24 @@ async def create_holding_route(
     return await create_holding(session, payload)
 
 
-@router.patch("/holdings/{asset_id}", response_model=CryptoHoldingRead)
-async def update_holding_route(
-    asset_id: int, payload: CryptoHoldingUpdate, session: AsyncSession = Depends(get_session)
+@router.post("/holdings/{asset_id}/transactions", response_model=CryptoHoldingRead, status_code=201)
+async def add_transaction_route(
+    asset_id: int, payload: CryptoTransactionCreate, session: AsyncSession = Depends(get_session)
 ) -> CryptoHoldingRead:
-    return await update_holding_quantity(session, asset_id, payload.quantity)
+    """Buy more of, or sell some of, a coin already being tracked."""
+    return await add_transaction(session, asset_id, payload)
+
+
+@router.get("/holdings/{asset_id}/transactions", response_model=list[CryptoTransactionRead])
+async def list_transactions_route(
+    asset_id: int, session: AsyncSession = Depends(get_session)
+) -> list[CryptoTransactionRead]:
+    return await list_transactions(session, asset_id)
+
+
+@router.delete("/transactions/{transaction_id}", status_code=204)
+async def delete_transaction_route(transaction_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    await delete_transaction(session, transaction_id)
 
 
 @router.get("/search", response_model=list[CryptoSearchResult])

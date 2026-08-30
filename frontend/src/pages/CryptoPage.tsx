@@ -3,8 +3,9 @@ import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoAddModal } from "@/components/crypto/CryptoAddModal";
-import { CryptoEditModal } from "@/components/crypto/CryptoEditModal";
-import { CryptoHoldingsList } from "@/components/crypto/CryptoHoldingsList";
+import { CryptoHoldingsTable } from "@/components/crypto/CryptoHoldingsTable";
+import { CryptoTransactionHistoryModal } from "@/components/crypto/CryptoTransactionHistoryModal";
+import { CryptoTransactionModal } from "@/components/crypto/CryptoTransactionModal";
 import { useCryptoHoldings, useDeleteCryptoHolding, useRefreshCryptoPrices } from "@/hooks/useCrypto";
 import { formatCurrency, getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
@@ -21,7 +22,8 @@ export function CryptoPage() {
   const deleteHolding = useDeleteCryptoHolding();
 
   const [addOpen, setAddOpen] = useState(false);
-  const [editingHolding, setEditingHolding] = useState<CryptoHolding | null>(null);
+  const [tradingHolding, setTradingHolding] = useState<CryptoHolding | null>(null);
+  const [historyHolding, setHistoryHolding] = useState<CryptoHolding | null>(null);
 
   const holdings = data?.holdings ?? [];
   const totalValue = holdings.reduce((sum, holding) => sum + (holding.value !== null ? Number(holding.value) : 0), 0);
@@ -59,20 +61,32 @@ export function CryptoPage() {
                   <p className="text-2xl font-semibold tabular-nums text-text-primary">{formatCurrency(totalValue)}</p>
                 </div>
                 <p className="text-xs text-text-muted">
-                  {data?.last_synced_at ? t("crypto.lastSynced", { time: formatSyncedAt(data.last_synced_at) }) : t("crypto.neverSynced")}
+                  {data?.last_synced_at
+                    ? t("crypto.lastSynced", { time: formatSyncedAt(data.last_synced_at) })
+                    : t("crypto.neverSynced")}
                 </p>
               </div>
 
               {data?.error_key && <p className="mb-3 text-sm text-danger">{t(`crypto.syncError.${data.error_key}`)}</p>}
 
-              <CryptoHoldingsList items={holdings} onEdit={setEditingHolding} onDelete={handleDelete} />
+              <CryptoHoldingsTable
+                items={holdings}
+                onTrade={setTradingHolding}
+                onViewHistory={setHistoryHolding}
+                onDelete={handleDelete}
+              />
             </>
           )}
         </CardContent>
       </Card>
 
       <CryptoAddModal open={addOpen} onClose={() => setAddOpen(false)} />
-      <CryptoEditModal open={editingHolding !== null} onClose={() => setEditingHolding(null)} holding={editingHolding} />
+      <CryptoTransactionModal open={tradingHolding !== null} onClose={() => setTradingHolding(null)} holding={tradingHolding} />
+      <CryptoTransactionHistoryModal
+        open={historyHolding !== null}
+        onClose={() => setHistoryHolding(null)}
+        holding={historyHolding}
+      />
     </div>
   );
 }

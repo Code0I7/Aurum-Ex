@@ -10,6 +10,7 @@ from app.models.enums import (
     AssetClass,
     CapitalRole,
     CategoryKind,
+    CryptoTransactionType,
     RecurringFrequency,
     RiskLevel,
     TransactionType,
@@ -99,13 +100,30 @@ class CryptoHoldingBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     # asset_id doubles as this row's own primary key (see
-    # models/crypto.py's CryptoHolding) — there's no separate `id`.
+    # models/crypto.py's CryptoHolding) — there's no separate `id`. No
+    # quantity here — it's derived from crypto_transactions below, not
+    # stored.
     asset_id: int
     coingecko_id: str
     symbol: str
     name: str
     thumb_url: str | None
+    last_price: Decimal | None = None
+    price_change_1h: Decimal | None = None
+    price_change_24h: Decimal | None = None
+    price_change_7d: Decimal | None = None
+
+
+class CryptoTransactionBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    asset_id: int
+    type: CryptoTransactionType
     quantity: Decimal
+    price_per_unit: Decimal
+    date: date_
+    note: str | None
 
 
 class BudgetBackup(BaseModel):
@@ -189,6 +207,7 @@ class BackupPayload(BaseModel):
     # Defaulted so a backup exported before crypto holdings existed still
     # imports cleanly under the same format version.
     crypto_holdings: list[CryptoHoldingBackup] = Field(default_factory=list)
+    crypto_transactions: list[CryptoTransactionBackup] = Field(default_factory=list)
     # Defaulted so a backup exported before budgets existed still imports
     # cleanly under the same format version.
     budgets: list[BudgetBackup] = Field(default_factory=list)

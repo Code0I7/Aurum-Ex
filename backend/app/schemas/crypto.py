@@ -1,8 +1,34 @@
+from datetime import date as date_
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.enums import CryptoTransactionType
+
+
+class CryptoTransactionCreate(BaseModel):
+    type: CryptoTransactionType
+    quantity: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
+    # Price paid (buy) / received (sell) per unit, in the app's display
+    # currency — not fetched from CoinGecko, this is what the user actually
+    # paid, which the market price today has nothing to do with.
+    price_per_unit: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
+    date: date_
+    note: str | None = Field(default=None, max_length=500)
+
+
+class CryptoTransactionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    asset_id: int
+    type: CryptoTransactionType
+    quantity: Decimal
+    price_per_unit: Decimal
+    date: date_
+    note: str | None
 
 
 class CryptoHoldingCreate(BaseModel):
@@ -10,30 +36,39 @@ class CryptoHoldingCreate(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=150)
     thumb_url: str | None = Field(default=None, max_length=500)
-    # 18 decimal places covers wei-level token amounts; still gt=0 since a
-    # zero/negative holding isn't a holding.
+    # A holding always starts with a buy — there's nothing to "start
+    # tracking" with a sell.
     quantity: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
-
-
-class CryptoHoldingUpdate(BaseModel):
-    quantity: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
+    price_per_unit: Decimal = Field(gt=0, max_digits=38, decimal_places=18)
+    date: date_ = Field(default_factory=date_.today)
+    note: str | None = Field(default=None, max_length=500)
 
 
 class CryptoHoldingRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     asset_id: int
     coingecko_id: str
     symbol: str
     name: str
     thumb_url: str | None
+
+    # Quantity and avg_buy_price are derived from the transaction log (see
+    # services/crypto_service.py's _compute_position) — never stored.
     quantity: Decimal
-    # Both derived from the linked Asset's latest AssetValuation — null
-    # value/unit_price means "added but never priced yet" (CoinGecko was
-    # unreachable at creation time), not zero.
+    avg_buy_price: Decimal | None
+
+    # Cached from the last successful CoinGecko sync — null until the
+    # first one completes.
+    current_price: Decimal | None
+    price_change_1h: Decimal | None
+    price_change_24h: Decimal | None
+    price_change_7d: Decimal | None
+
+    # All derived from the above: value = current_price * quantity,
+    # cost_basis = avg_buy_price * quantity, profit_loss = value - cost_basis.
     value: Decimal | None
-    unit_price: Decimal | None
-    as_of_date: str | None
+    cost_basis: Decimal | None
+    profit_loss: Decimal | None
+    profit_loss_percent: float | None
 
 
 class CryptoSyncResult(BaseModel):

@@ -1,5 +1,12 @@
 import { api } from "@/api/client";
-import type { CryptoHolding, CryptoHoldingInput, CryptoSearchResult, CryptoSyncResult } from "@/types";
+import type {
+  CryptoHolding,
+  CryptoHoldingCreateInput,
+  CryptoSearchResult,
+  CryptoSyncResult,
+  CryptoTransaction,
+  CryptoTransactionInput,
+} from "@/types";
 
 // Also triggers the lazy once-a-day auto-refresh server-side — see
 // services/crypto_service.py.
@@ -11,16 +18,26 @@ export function refreshCryptoPrices() {
   return api.post<CryptoSyncResult>("/crypto/refresh", {});
 }
 
-export function createCryptoHolding(input: CryptoHoldingInput) {
+export function createCryptoHolding(input: CryptoHoldingCreateInput) {
   return api.post<CryptoHolding>("/crypto/holdings", input);
 }
 
-export function updateCryptoHoldingQuantity(assetId: number, quantity: string) {
-  return api.patch<CryptoHolding>(`/crypto/holdings/${assetId}`, { quantity });
+// Buy more of, or sell some of, a coin already being tracked.
+export function addCryptoTransaction(assetId: number, input: CryptoTransactionInput) {
+  return api.post<CryptoHolding>(`/crypto/holdings/${assetId}/transactions`, input);
+}
+
+export function fetchCryptoTransactions(assetId: number) {
+  return api.get<CryptoTransaction[]>(`/crypto/holdings/${assetId}/transactions`);
+}
+
+export function deleteCryptoTransaction(transactionId: number) {
+  return api.delete<void>(`/crypto/transactions/${transactionId}`);
 }
 
 // Reuses the existing asset-delete endpoint — deleting the Asset cascades
-// to the linked crypto_holdings row server-side, no dedicated endpoint.
+// to the linked crypto_holdings row (and its whole transaction log)
+// server-side, no dedicated endpoint.
 export function deleteCryptoHolding(assetId: number) {
   return api.delete<void>(`/assets/${assetId}`);
 }

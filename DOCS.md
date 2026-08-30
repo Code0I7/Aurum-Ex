@@ -505,14 +505,21 @@ personal vehicle)
 
 ## Crypto
 
-Live-priced crypto holdings — a coin plus a quantity, kept current against
-[CoinGecko](https://www.coingecko.com/en/api/pricing)'s Demo API. Under the hood each holding **is** an
-Asset (`asset_class=crypto`, see [Assets & Net Worth](#assets--net-worth)) — deleting one is `DELETE
-/assets/{asset_id}`, not a separate endpoint, and it shows up in `/net-worth/summary` like any other
-asset automatically.
+Live-priced crypto holdings with a full buy/sell history — a CoinMarketCap-style portfolio view, kept
+current against [CoinGecko](https://www.coingecko.com/en/api/pricing)'s Demo API. Under the hood each
+holding **is** an Asset (`asset_class=crypto`, see [Assets & Net Worth](#assets--net-worth)) — deleting
+one is `DELETE /assets/{asset_id}`, not a separate endpoint, and it shows up in `/net-worth/summary`
+like any other asset automatically.
+
+**Quantity and average buy price are never sent directly — they're derived** from a log of buy/sell
+transactions, using the weighted-average-cost method: a buy blends into the running average cost; a
+sell reduces quantity but leaves the average cost of what's still held unchanged. This is the same
+"record events, derive the total" shape as [Goals](#goals)' contribution log.
 
 Requires `AURUM_COINGECKO_API_KEY` in `.env` (a free Demo key, no card required). Endpoints that need
-CoinGecko return `400` with a message telling you so if it's unset.
+CoinGecko (`/crypto/holdings` on creation, `/crypto/refresh`, `/crypto/search`) return `400` with a
+message telling you so if it's unset — adding a transaction to an existing holding never needs it at
+all (see below).
 
 Prices are **never** fetched in the background — there's no scheduler in this stack. Two triggers
 only: `POST /crypto/refresh` (a manual "refresh now"), and a lazy check on every `GET
@@ -522,13 +529,15 @@ of the whole request failing.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/crypto/holdings` | List holdings with their live value. Also runs the lazy once-a-day auto-refresh. |
+| `GET` | `/crypto/holdings` | List holdings with live price, 1h/24h/7d % change, computed quantity/avg buy price/P&L. Also runs the lazy once-a-day auto-refresh. |
 | `POST` | `/crypto/refresh` | Force a price refresh right now, bypassing the 24h window. |
-| `POST` | `/crypto/holdings` | Add a holding — fetches today's price immediately so it isn't `null` until the next sync. |
-| `PATCH` | `/crypto/holdings/{asset_id}` | Change `quantity`. Recomputes value from the last known price — does **not** call CoinGecko. |
+| `POST` | `/crypto/holdings` | Add a new holding — its first buy transaction, inline. Fetches today's price immediately so it isn't `null` until the next sync. |
+| `POST` | `/crypto/holdings/{asset_id}/transactions` | Buy more of, or sell some of, a coin already tracked. Never calls CoinGecko — value is recomputed from the last cached price. `400` if a sell would exceed what's currently held. |
+| `GET` | `/crypto/holdings/{asset_id}/transactions` | Full buy/sell history for one holding, newest first. |
+| `DELETE` | `/crypto/transactions/{transaction_id}` | Remove one transaction; quantity/avg buy price/value are recomputed from what's left. |
 | `GET` | `/crypto/search` | `?q=` — search CoinGecko for a coin to add (name/ticker, returns its `coingecko_id` + logo). |
 
-**Create body:**
+**Create body** (`POST /crypto/holdings`):
 
 ```json
 {
@@ -536,13 +545,25 @@ of the whole request failing.
   "symbol": "btc",
   "name": "Bitcoin",
   "thumb_url": "https://...",
-  "quantity": "0.05"
+  "quantity": "0.05",
+  "price_per_unit": "55000",
+  "date": "2026-08-01",
+  "note": null
 }
 ```
 
 `coingecko_id` is CoinGecko's own stable id (not the ticker — tickers collide across unrelated
-coins) — get it from `/crypto/search` rather than guessing. `quantity` supports up to 18 decimal
-places (wei-level token amounts).
+coins) — get it from `/crypto/search` rather than guessing. `quantity`/`price_per_unit` support up to
+18 decimal places (wei-level token amounts). `price_per_unit` is what you actually paid, in the app's
+display currency — it's stored as-is, never re-derived from market data later.
+
+**Add a transaction** (`POST /crypto/holdings/{asset_id}/transactions`):
+
+```json
+{ "type": "sell", "quantity": "0.02", "price_per_unit": "61000", "date": "2026-08-30", "note": null }
+```
+
+`type` is `"buy"` or `"sell"`.
 
 **`GET /crypto/holdings` / `POST /crypto/refresh` response:**
 
@@ -559,17 +580,25 @@ places (wei-level token amounts).
       "name": "Bitcoin",
       "thumb_url": "https://...",
       "quantity": "0.05",
-      "value": "3000.00",
-      "unit_price": "60000.00",
-      "as_of_date": "2026-08-30"
+      "avg_buy_price": "55000.00",
+      "current_price": "61000.00",
+      "price_change_1h": "0.12",
+      "price_change_24h": "2.30",
+      "price_change_7d": "-1.80",
+      "value": "3050.00",
+      "cost_basis": "2750.00",
+      "profit_loss": "300.00",
+      "profit_loss_percent": 10.91
     }
   ]
 }
 ```
 
-`value`/`unit_price` are `null` only for a holding whose very first price fetch failed (CoinGecko was
-down right when it was added) — distinct from a real `0`. `error_key` is `"unreachable"` when this
-sync attempt couldn't reach CoinGecko (existing values are kept as-is), or `null` otherwise.
+`current_price`/`value` are `null` only for a holding whose very first price fetch failed (CoinGecko
+was down right when it was added) — distinct from a real `0`. `avg_buy_price`/`cost_basis`/
+`profit_loss`/`profit_loss_percent` are `null` once a holding's quantity has been fully sold down to
+zero (nothing left to have a cost basis). `error_key` is `"unreachable"` when a sync attempt couldn't
+reach CoinGecko (existing values are kept as-is), or `null` otherwise.
 
 ## Dashboard, Cash Flow & Reports
 
