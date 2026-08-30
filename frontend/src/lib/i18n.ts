@@ -43,6 +43,14 @@ const ru = {
   "common.perMonth": "/мес",
   "common.allShort": "Всё",
 
+  "auth.subtitle": "Личные финансы",
+  "auth.usernameLabel": "Логин",
+  "auth.passwordLabel": "Пароль",
+  "auth.submitButton": "Войти",
+  "auth.submitting": "Вход…",
+  "auth.errorInvalidCredentials": "Неверный логин или пароль",
+  "auth.errorUnreachable": "Не удалось подключиться к серверу. Проверьте соединение и попробуйте снова.",
+
   "dashboard.errorLoading": "Не удалось загрузить данные дашборда. Проверьте, что backend запущен.",
   "dashboard.statRealIncomeLabel": "Реальный доход",
   "dashboard.statRealIncomeCaption": "зарплаты, возвраты",
@@ -441,6 +449,14 @@ const en: Record<keyof typeof ru, string> = {
   "common.totalCount": "{{count}} total",
   "common.perMonth": "/mo",
   "common.allShort": "All",
+
+  "auth.subtitle": "Personal finance",
+  "auth.usernameLabel": "Username",
+  "auth.passwordLabel": "Password",
+  "auth.submitButton": "Sign in",
+  "auth.submitting": "Signing in…",
+  "auth.errorInvalidCredentials": "Incorrect username or password",
+  "auth.errorUnreachable": "Couldn't reach the server. Check your connection and try again.",
 
   "dashboard.errorLoading": "Failed to load dashboard data. Check that the backend is running.",
   "dashboard.statRealIncomeLabel": "Real income",
