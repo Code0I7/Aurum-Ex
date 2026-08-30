@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label } from "@/components/ui/Input";
 import { useAddCryptoTransaction, useUpdateCryptoTransaction } from "@/hooks/useCrypto";
+import { trimTrailingZeros } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { CryptoHolding, CryptoTransaction, CryptoTransactionType } from "@/types";
@@ -39,8 +40,11 @@ export function CryptoTransactionModal({ open, onClose, holding, transaction = n
     if (!open) return;
     if (transaction) {
       setType(transaction.type);
-      setQuantity(transaction.quantity);
-      setPricePerUnit(transaction.price_per_unit);
+      // The API returns these at full Numeric(38,18) scale (e.g.
+      // "3.000000000000000000") — trimmed here so the field shows what was
+      // actually entered, not a wall of padding zeros.
+      setQuantity(trimTrailingZeros(transaction.quantity));
+      setPricePerUnit(trimTrailingZeros(transaction.price_per_unit));
       setDate(transaction.date);
       setNote(transaction.note ?? "");
     } else {

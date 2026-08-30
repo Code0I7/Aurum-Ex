@@ -32,6 +32,20 @@ export function maskAmount(formatted: string, hidden: boolean): string {
   return hidden ? "••••" : formatted;
 }
 
+/** Strips trailing zeros from a decimal string for pre-filling an editable
+ * number input — the backend stores crypto quantity/price as Numeric(38,18)
+ * and returns it at full scale (e.g. "3.000000000000000000"), which is
+ * correct for computation but not something anyone wants to see or edit
+ * around in a form field. Works on the string directly rather than via
+ * Number(), which would round a genuine 18-decimal-place amount (a
+ * wei-level token quantity) through floating point instead of just
+ * trimming the padding. */
+export function trimTrailingZeros(value: string): string {
+  if (!value.includes(".")) return value;
+  const trimmed = value.replace(/0+$/, "").replace(/\.$/, "");
+  return trimmed === "" || trimmed === "-" ? "0" : trimmed;
+}
+
 const MONTH_LABELS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const MONTH_LABELS_RU = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"] as const;
 
