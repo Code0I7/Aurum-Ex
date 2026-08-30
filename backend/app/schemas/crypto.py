@@ -19,6 +19,14 @@ class CryptoTransactionCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class CryptoTransactionUpdate(BaseModel):
+    type: CryptoTransactionType | None = None
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=38, decimal_places=18)
+    price_per_unit: Decimal | None = Field(default=None, gt=0, max_digits=38, decimal_places=18)
+    date: date_ | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
 class CryptoTransactionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

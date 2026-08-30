@@ -11,7 +11,7 @@ import { CryptoTransactionModal } from "@/components/crypto/CryptoTransactionMod
 import { useCryptoHistory, useCryptoHoldings, useDeleteCryptoHolding, useRefreshCryptoPrices } from "@/hooks/useCrypto";
 import { getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding, CryptoRange } from "@/types";
+import type { CryptoHolding, CryptoRange, CryptoTransaction } from "@/types";
 
 function formatSyncedAt(iso: string): string {
   return new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -33,6 +33,11 @@ export function CryptoPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [tradingHolding, setTradingHolding] = useState<CryptoHolding | null>(null);
   const [historyHolding, setHistoryHolding] = useState<CryptoHolding | null>(null);
+  // Set together with tradingHolding when editing an entry from the history
+  // list — CryptoTransactionModal is the same dialog for both "+" (new
+  // trade, transaction stays null) and this (pre-filled, PATCHes instead of
+  // POSTing). Cleared whenever that dialog closes, same as tradingHolding.
+  const [editingTransaction, setEditingTransaction] = useState<CryptoTransaction | null>(null);
 
   const holdings = data?.holdings ?? [];
   const totalValue = holdings.reduce((sum, holding) => sum + (holding.value !== null ? Number(holding.value) : 0), 0);
@@ -41,6 +46,22 @@ export function CryptoPage() {
     if (window.confirm(t("crypto.confirmDelete", { name: holding.name }))) {
       deleteHolding.mutate(holding.asset_id);
     }
+  }
+
+  function handleEditTransaction(transaction: CryptoTransaction) {
+    setEditingTransaction(transaction);
+    setTradingHolding(historyHolding);
+    setHistoryHolding(null);
+  }
+
+  function closeTradeModal() {
+    setTradingHolding(null);
+    setEditingTransaction(null);
+  }
+
+  function openTradeModal(holding: CryptoHolding) {
+    setEditingTransaction(null);
+    setTradingHolding(holding);
   }
 
   return (
@@ -89,7 +110,7 @@ export function CryptoPage() {
               <CryptoHoldingsTable
                 items={holdings}
                 hidden={hidden}
-                onTrade={setTradingHolding}
+                onTrade={openTradeModal}
                 onViewHistory={setHistoryHolding}
                 onDelete={handleDelete}
               />
@@ -99,12 +120,18 @@ export function CryptoPage() {
       </Card>
 
       <CryptoAddModal open={addOpen} onClose={() => setAddOpen(false)} />
-      <CryptoTransactionModal open={tradingHolding !== null} onClose={() => setTradingHolding(null)} holding={tradingHolding} />
+      <CryptoTransactionModal
+        open={tradingHolding !== null}
+        onClose={closeTradeModal}
+        holding={tradingHolding}
+        transaction={editingTransaction}
+      />
       <CryptoTransactionHistoryModal
         open={historyHolding !== null}
         onClose={() => setHistoryHolding(null)}
         holding={historyHolding}
         hidden={hidden}
+        onEdit={handleEditTransaction}
       />
     </div>
   );

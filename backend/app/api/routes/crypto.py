@@ -10,6 +10,7 @@ from app.schemas.crypto import (
     CryptoSyncResult,
     CryptoTransactionCreate,
     CryptoTransactionRead,
+    CryptoTransactionUpdate,
 )
 from app.services.crypto_service import (
     CRYPTO_RANGE_DAYS,
@@ -20,6 +21,7 @@ from app.services.crypto_service import (
     list_transactions,
     refresh_prices,
     search_coins,
+    update_transaction,
 )
 
 router = APIRouter(prefix="/crypto", tags=["crypto"])
@@ -61,6 +63,13 @@ async def list_transactions_route(
     asset_id: int, session: AsyncSession = Depends(get_session)
 ) -> list[CryptoTransactionRead]:
     return await list_transactions(session, asset_id)
+
+
+@router.patch("/transactions/{transaction_id}", response_model=CryptoHoldingRead)
+async def update_transaction_route(
+    transaction_id: int, payload: CryptoTransactionUpdate, session: AsyncSession = Depends(get_session)
+) -> CryptoHoldingRead:
+    return await update_transaction(session, transaction_id, payload)
 
 
 @router.delete("/transactions/{transaction_id}", status_code=204)

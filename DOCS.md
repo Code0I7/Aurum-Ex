@@ -534,6 +534,7 @@ of the whole request failing.
 | `POST` | `/crypto/holdings` | Add a new holding — its first buy transaction, inline. Fetches today's price immediately so it isn't `null` until the next sync. |
 | `POST` | `/crypto/holdings/{asset_id}/transactions` | Buy more of, or sell some of, a coin already tracked. Never calls CoinGecko — value is recomputed from the last cached price. `400` if a sell would exceed what's currently held. |
 | `GET` | `/crypto/holdings/{asset_id}/transactions` | Full buy/sell history for one holding, newest first. |
+| `PATCH` | `/crypto/transactions/{transaction_id}` | Edit an existing transaction (partial — send only the fields you're changing). Never calls CoinGecko. `400` if changing a sell's quantity would exceed what the rest of the log leaves held. |
 | `DELETE` | `/crypto/transactions/{transaction_id}` | Remove one transaction; quantity/avg buy price/value are recomputed from what's left. |
 | `GET` | `/crypto/search` | `?q=` — search CoinGecko for a coin to add (name/ticker, returns its `coingecko_id` + logo). |
 | `GET` | `/crypto/history` | `?range=7d\|30d\|90d\|all` (default `30d`) — total crypto holdings value over time, for the portfolio chart. No `24h` — resolution is only as dense as the sync cadence above. |

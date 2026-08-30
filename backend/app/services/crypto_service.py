@@ -44,6 +44,7 @@ from app.schemas.crypto import (
     CryptoSearchResult,
     CryptoSyncResult,
     CryptoTransactionCreate,
+    CryptoTransactionUpdate,
 )
 from app.services.settings_service import get_or_create_app_settings
 
@@ -365,6 +366,44 @@ async def add_transaction(session: AsyncSession, asset_id: int, payload: CryptoT
             note=payload.note,
         )
     )
+    await session.flush()
+
+    quantity, _ = _compute_position(holding.transactions)
+    if holding.last_price is not None:
+        await _upsert_valuation(session, asset_id, quantity * holding.last_price, date_.today())
+
+    await session.commit()
+    return _to_read(holding)
+
+
+async def update_transaction(
+    session: AsyncSession, transaction_id: int, payload: CryptoTransactionUpdate
+) -> CryptoHoldingRead:
+    """Edit an existing buy/sell entry — the "view/edit a transaction" flow
+    a plain delete-and-recreate can't offer (you'd lose the original id and
+    any history a future feature might key off it). Never calls CoinGecko,
+    same as add_transaction: value is recomputed from the last cached price."""
+    transaction = await session.get(CryptoTransaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Crypto transaction not found")
+    asset_id = transaction.asset_id
+    holding = await _get_holding_or_404(session, asset_id)
+
+    updates = payload.model_dump(exclude_unset=True)
+    effective_type = updates.get("type", transaction.type)
+    effective_quantity = updates.get("quantity", transaction.quantity)
+
+    if effective_type == CryptoTransactionType.SELL:
+        # Same guard as add_transaction, checked against every *other*
+        # transaction on this holding — editing this one in place must not
+        # let it sell more than what the rest of the log would leave held.
+        others = [t for t in holding.transactions if t.id != transaction_id]
+        quantity_without_this, _ = _compute_position(others)
+        if effective_quantity > quantity_without_this:
+            raise HTTPException(status_code=400, detail="Cannot sell more than you currently hold")
+
+    for field, value in updates.items():
+        setattr(transaction, field, value)
     await session.flush()
 
     quantity, _ = _compute_position(holding.transactions)

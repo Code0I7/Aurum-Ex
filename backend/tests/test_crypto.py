@@ -300,3 +300,61 @@ async def test_history_rejects_unknown_range(client: AsyncClient):
     resp = await client.get("/crypto/history?range=24h")
 
     assert resp.status_code == 422
+
+
+async def test_update_transaction_recomputes_position_without_calling_coingecko(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, "1", "40000")
+    tx_id = (await client.get(f"/crypto/holdings/{holding['asset_id']}/transactions")).json()[0]["id"]
+
+    async def fail_if_called(coingecko_ids, vs_currency):
+        raise AssertionError("editing a transaction must not call CoinGecko")
+
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", fail_if_called)
+
+    resp = await client.patch(f"/crypto/transactions/{tx_id}", json={"quantity": "2"})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert money(body["quantity"]) == money("2")
+    assert money(body["value"]) == money("100000")  # 2 * 50000 (last known price)
+
+
+async def test_update_transaction_edits_are_reflected_in_history(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, "1", "40000")
+    tx_id = (await client.get(f"/crypto/holdings/{holding['asset_id']}/transactions")).json()[0]["id"]
+
+    resp = await client.patch(
+        f"/crypto/transactions/{tx_id}", json={"price_per_unit": "45000", "note": "typo fix"}
+    )
+    assert resp.status_code == 200, resp.text
+
+    transactions = (await client.get(f"/crypto/holdings/{holding['asset_id']}/transactions")).json()
+    assert len(transactions) == 1
+    assert money(transactions[0]["price_per_unit"]) == money("45000")
+    assert transactions[0]["note"] == "typo fix"
+
+
+async def test_update_transaction_rejects_editing_a_sell_to_exceed_holdings(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, "2", "40000")
+    await client.post(
+        f"/crypto/holdings/{holding['asset_id']}/transactions",
+        json={"type": "sell", "quantity": "1", "price_per_unit": "45000", "date": "2026-02-01"},
+    )
+    sell_tx_id = next(
+        t["id"]
+        for t in (await client.get(f"/crypto/holdings/{holding['asset_id']}/transactions")).json()
+        if t["type"] == "sell"
+    )
+
+    resp = await client.patch(f"/crypto/transactions/{sell_tx_id}", json={"quantity": "3"})
+
+    assert resp.status_code == 400
+
+
+async def test_update_transaction_404_for_unknown_id(client: AsyncClient):
+    resp = await client.patch("/crypto/transactions/999999", json={"quantity": "1"})
+
+    assert resp.status_code == 404

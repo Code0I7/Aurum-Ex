@@ -33,6 +33,10 @@ export function fetchCryptoTransactions(assetId: number) {
   return api.get<CryptoTransaction[]>(`/crypto/holdings/${assetId}/transactions`);
 }
 
+export function updateCryptoTransaction(transactionId: number, input: CryptoTransactionInput) {
+  return api.patch<CryptoHolding>(`/crypto/transactions/${transactionId}`, input);
+}
+
 export function deleteCryptoTransaction(transactionId: number) {
   return api.delete<void>(`/crypto/transactions/${transactionId}`);
 }

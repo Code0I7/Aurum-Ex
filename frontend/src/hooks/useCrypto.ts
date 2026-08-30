@@ -8,6 +8,7 @@ import {
   fetchCryptoHoldings,
   fetchCryptoTransactions,
   refreshCryptoPrices,
+  updateCryptoTransaction,
 } from "@/api/crypto";
 import type { CryptoHoldingCreateInput, CryptoRange, CryptoTransactionInput } from "@/types";
 
@@ -57,6 +58,15 @@ export function useAddCryptoTransaction() {
   return useMutation({
     mutationFn: ({ assetId, input }: { assetId: number; input: CryptoTransactionInput }) =>
       addCryptoTransaction(assetId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateCryptoTransaction() {
+  const invalidate = useInvalidateCrypto();
+  return useMutation({
+    mutationFn: ({ transactionId, input }: { transactionId: number; input: CryptoTransactionInput }) =>
+      updateCryptoTransaction(transactionId, input),
     onSuccess: invalidate,
   });
 }

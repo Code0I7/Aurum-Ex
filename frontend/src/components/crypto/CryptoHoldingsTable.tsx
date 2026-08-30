@@ -1,4 +1,4 @@
-import { Bitcoin, History, Plus, Trash2 } from "lucide-react";
+import { Bitcoin, Plus, Trash2 } from "lucide-react";
 import { formatCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
@@ -59,7 +59,11 @@ export function CryptoHoldingsTable({ items, hidden, onTrade, onViewHistory, onD
             const sign = holding.profit_loss !== null && Number(holding.profit_loss) > 0 ? "+" : "";
 
             return (
-              <tr key={holding.asset_id}>
+              <tr
+                key={holding.asset_id}
+                onClick={() => onViewHistory(holding)}
+                className="cursor-pointer hover:bg-surface-2"
+              >
                 <td className="py-3 pr-3">
                   <div className="flex items-center gap-2.5">
                     {holding.thumb_url ? (
@@ -120,23 +124,21 @@ export function CryptoHoldingsTable({ items, hidden, onTrade, onViewHistory, onD
                     <button
                       type="button"
                       aria-label={t("crypto.form.tradeButton")}
-                      onClick={() => onTrade(holding)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onTrade(holding);
+                      }}
                       className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
                     >
                       <Plus size={15} />
                     </button>
                     <button
                       type="button"
-                      aria-label={t("crypto.history.viewButton")}
-                      onClick={() => onViewHistory(holding)}
-                      className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
-                    >
-                      <History size={15} />
-                    </button>
-                    <button
-                      type="button"
                       aria-label={t("common.delete")}
-                      onClick={() => onDelete(holding)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(holding);
+                      }}
                       className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
                     >
                       <Trash2 size={15} />

@@ -1,18 +1,19 @@
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { useCryptoTransactions, useDeleteCryptoTransaction } from "@/hooks/useCrypto";
 import { formatCurrency, formatTransactionDate, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding } from "@/types";
+import type { CryptoHolding, CryptoTransaction } from "@/types";
 
 interface CryptoTransactionHistoryModalProps {
   open: boolean;
   onClose: () => void;
   holding: CryptoHolding | null;
   hidden: boolean;
+  onEdit: (transaction: CryptoTransaction) => void;
 }
 
-export function CryptoTransactionHistoryModal({ open, onClose, holding, hidden }: CryptoTransactionHistoryModalProps) {
+export function CryptoTransactionHistoryModal({ open, onClose, holding, hidden, onEdit }: CryptoTransactionHistoryModalProps) {
   const { t } = useTranslation();
   const { data: transactions, isLoading } = useCryptoTransactions(holding ? holding.asset_id : null);
   const deleteTransaction = useDeleteCryptoTransaction();
@@ -53,14 +54,24 @@ export function CryptoTransactionHistoryModal({ open, onClose, holding, hidden }
                   {tx.note && ` · ${tx.note}`}
                 </span>
               </span>
-              <button
-                type="button"
-                aria-label={t("common.delete")}
-                onClick={() => handleDelete(tx.id)}
-                className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
-              >
-                <Trash2 size={15} />
-              </button>
+              <span className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  aria-label={t("common.edit")}
+                  onClick={() => onEdit(tx)}
+                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={t("common.delete")}
+                  onClick={() => handleDelete(tx.id)}
+                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </span>
             </li>
           ))}
         </ul>

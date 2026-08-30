@@ -3,24 +3,30 @@ import { ApiError } from "@/api/client";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label } from "@/components/ui/Input";
-import { useAddCryptoTransaction } from "@/hooks/useCrypto";
+import { useAddCryptoTransaction, useUpdateCryptoTransaction } from "@/hooks/useCrypto";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import type { CryptoHolding, CryptoTransactionType } from "@/types";
+import type { CryptoHolding, CryptoTransaction, CryptoTransactionType } from "@/types";
 
 interface CryptoTransactionModalProps {
   open: boolean;
   onClose: () => void;
   holding: CryptoHolding | null;
+  // Present -> editing that transaction (pre-filled, PATCHes it). Absent ->
+  // recording a new buy/sell against `holding` (the "+" action).
+  transaction?: CryptoTransaction | null;
 }
 
 /** Buy more of, or sell some of, a coin already being tracked — the "+"
- * action on the holdings table. Never calls CoinGecko (see
- * services/crypto_service.py's add_transaction): value is recomputed from
- * the last cached price. */
-export function CryptoTransactionModal({ open, onClose, holding }: CryptoTransactionModalProps) {
+ * action on the holdings table — or edit/view an existing entry from its
+ * trade history. Never calls CoinGecko either way (see
+ * services/crypto_service.py's add_transaction/update_transaction): value
+ * is recomputed from the last cached price. */
+export function CryptoTransactionModal({ open, onClose, holding, transaction = null }: CryptoTransactionModalProps) {
   const { t } = useTranslation();
   const addTransaction = useAddCryptoTransaction();
+  const updateTransaction = useUpdateCryptoTransaction();
+  const isEditing = transaction !== null;
 
   const [type, setType] = useState<CryptoTransactionType>("buy");
   const [quantity, setQuantity] = useState("");
@@ -31,23 +37,33 @@ export function CryptoTransactionModal({ open, onClose, holding }: CryptoTransac
 
   useEffect(() => {
     if (!open) return;
-    setType("buy");
-    setQuantity("");
-    setPricePerUnit("");
-    setDate(new Date().toISOString().slice(0, 10));
-    setNote("");
+    if (transaction) {
+      setType(transaction.type);
+      setQuantity(transaction.quantity);
+      setPricePerUnit(transaction.price_per_unit);
+      setDate(transaction.date);
+      setNote(transaction.note ?? "");
+    } else {
+      setType("buy");
+      setQuantity("");
+      setPricePerUnit("");
+      setDate(new Date().toISOString().slice(0, 10));
+      setNote("");
+    }
     setError(null);
-  }, [open, holding]);
+  }, [open, holding, transaction]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!holding) return;
     setError(null);
+    const input = { type, quantity, price_per_unit: pricePerUnit, date, note: note || null };
     try {
-      await addTransaction.mutateAsync({
-        assetId: holding.asset_id,
-        input: { type, quantity, price_per_unit: pricePerUnit, date, note: note || null },
-      });
+      if (transaction) {
+        await updateTransaction.mutateAsync({ transactionId: transaction.id, input });
+      } else {
+        await addTransaction.mutateAsync({ assetId: holding.asset_id, input });
+      }
       onClose();
     } catch (err) {
       setError(
@@ -58,8 +74,14 @@ export function CryptoTransactionModal({ open, onClose, holding }: CryptoTransac
 
   if (!holding) return null;
 
+  const isPending = addTransaction.isPending || updateTransaction.isPending;
+
   return (
-    <Dialog open={open} onClose={onClose} title={t("crypto.form.tradeTitle", { name: holding.name })}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={isEditing ? t("crypto.form.editTradeTitle", { name: holding.name }) : t("crypto.form.tradeTitle", { name: holding.name })}
+    >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -128,8 +150,8 @@ export function CryptoTransactionModal({ open, onClose, holding }: CryptoTransac
           <Button type="button" variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
-          <Button type="submit" disabled={addTransaction.isPending}>
-            {addTransaction.isPending ? t("common.saving") : t("common.save")}
+          <Button type="submit" disabled={isPending}>
+            {isPending ? t("common.saving") : t("common.save")}
           </Button>
         </div>
       </form>
