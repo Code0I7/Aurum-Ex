@@ -69,10 +69,23 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   useEffect(() => {
     if (!open) return;
     if (transaction) {
+      const hasSplits = transaction.splits.length > 0;
+      // A split's categories always share one parent (see
+      // routes/transactions.py's _build_splits) — derive that shared base
+      // from whichever split's category is still live. If every split's
+      // category was since deleted, there's nothing to derive from; the
+      // base field is left blank and the user has to pick one again.
+      const baseCategory = hasSplits ? transaction.splits.find((split) => split.category)?.category : null;
       setForm({
         type: transaction.type,
         account_id: String(transaction.account_id),
-        category_id: transaction.category_id ? String(transaction.category_id) : "",
+        category_id: hasSplits
+          ? baseCategory
+            ? String(baseCategory.parent_id ?? baseCategory.id)
+            : ""
+          : transaction.category_id
+            ? String(transaction.category_id)
+            : "",
         transfer_account_id: transaction.transfer_account_id ? String(transaction.transfer_account_id) : "",
         amount: transaction.amount,
         description: transaction.description,
@@ -81,7 +94,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         date: transaction.date,
       });
       setTags(transaction.tags);
-      const hasSplits = transaction.splits.length > 0;
       setSplitMode(hasSplits);
       setSplitRows(
         hasSplits
@@ -134,6 +146,34 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const splitAllocatedCents = splitRows.reduce((sum, row) => sum + toCents(row.amount), 0);
   const splitRemainingCents = toCents(form.amount) - splitAllocatedCents;
 
+  // The category select becomes the split's "base" category while
+  // splitting — restricted to top-level categories — and each split row can
+  // only pick that base itself or one of its direct children (see
+  // routes/transactions.py's _build_splits: a split's categories always
+  // share one parent).
+  const topLevelCategories = relevantCategories.filter((category) => !category.indented);
+  const baseChildCategories = kindCategories.filter((category) => category.parent_id === Number(form.category_id));
+  const categorySelectOptions = splitMode ? topLevelCategories : relevantCategories;
+
+  function toggleSplitMode() {
+    setSplitMode((prev) => {
+      const next = !prev;
+      if (next) {
+        const current = relevantCategories.find((category) => String(category.id) === form.category_id);
+        if (current?.parent_id) {
+          setForm((f) => ({ ...f, category_id: String(current.parent_id) }));
+        }
+        setSplitRows([emptySplitRow(), emptySplitRow()]);
+      }
+      return next;
+    });
+  }
+
+  function handleBaseCategoryChange(value: string) {
+    setForm((prev) => ({ ...prev, category_id: value }));
+    if (splitMode) setSplitRows([emptySplitRow(), emptySplitRow()]);
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -157,6 +197,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     // switched the transaction to a transfer, which can't carry splits).
     let splits: TransactionSplitInput[] | undefined;
     if (isSplitEditingNow) {
+      if (!form.category_id) {
+        setError(t("transactions.form.errorSplitNoBaseCategory"));
+        return;
+      }
       const filledRows = splitRows.filter((row) => row.category_id || row.amount);
       if (filledRows.length < 2) {
         setError(t("transactions.form.errorSplitMinRows"));
@@ -318,29 +362,35 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               <button
                 type="button"
                 className="mb-1 text-xs text-series-1 hover:underline"
-                onClick={() => setSplitMode((prev) => !prev)}
+                onClick={toggleSplitMode}
               >
                 {splitMode ? t("transactions.form.splitToggleOff") : t("transactions.form.splitToggle")}
               </button>
             </div>
 
-            {!splitMode ? (
-              <Select
-                id="category"
-                value={form.category_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
-              >
-                <option value="">{t("transactions.form.noCategory")}</option>
-                {relevantCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.indented ? `    ↳ ` : ""}
-                    {translateCategoryName(category.name)}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-text-muted">{t("transactions.form.splitHint")}</p>
+            <Select
+              id="category"
+              value={form.category_id}
+              onChange={(event) => handleBaseCategoryChange(event.target.value)}
+            >
+              <option value="">{t("transactions.form.noCategory")}</option>
+              {categorySelectOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.indented ? `    ↳ ` : ""}
+                  {translateCategoryName(category.name)}
+                </option>
+              ))}
+            </Select>
+
+            {splitMode && (
+              <div className="mt-2 space-y-2">
+                {!form.category_id ? (
+                  <p className="text-xs text-text-muted">{t("transactions.form.splitHint")}</p>
+                ) : baseChildCategories.length === 0 ? (
+                  <p className="text-xs text-text-muted">{t("transactions.form.splitNoChildren")}</p>
+                ) : (
+                  <p className="text-xs text-text-muted">{t("transactions.form.splitHint")}</p>
+                )}
                 {splitRows.map((row) => (
                   <div key={row.key} className="space-y-1.5 rounded-lg border border-border bg-surface-1 p-2">
                     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
@@ -348,14 +398,17 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                         aria-label={t("transactions.form.splitCategoryPlaceholder")}
                         className="sm:flex-1"
                         value={row.category_id}
+                        disabled={!form.category_id}
                         onChange={(event) => updateSplitRow(row.key, { category_id: event.target.value })}
                       >
                         <option value="" disabled>
                           {t("transactions.form.splitCategoryPlaceholder")}
                         </option>
-                        {relevantCategories.map((category) => (
+                        {form.category_id && (
+                          <option value={form.category_id}>{t("transactions.form.splitDirectOption")}</option>
+                        )}
+                        {baseChildCategories.map((category) => (
                           <option key={category.id} value={category.id}>
-                            {category.indented ? `    ↳ ` : ""}
                             {translateCategoryName(category.name)}
                           </option>
                         ))}

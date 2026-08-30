@@ -13,7 +13,7 @@ funded partly by plain transactions and partly by split lines still shows
 one correct total.
 """
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date as date_
 from decimal import Decimal
 
@@ -23,6 +23,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+
+
+@dataclass
+class CategoryRollupChildItem:
+    """One leaf category's share of its parent's total — a real
+    subcategory, or the parent category itself when some of the spend was
+    filed directly under it with no more specific subcategory (category_id
+    equals the enclosing CategoryRollupItem.category_id in that case)."""
+
+    category_id: int
+    name: str
+    color: str
+    icon: str | None
+    amount: Decimal
 
 
 @dataclass
@@ -37,6 +51,13 @@ class CategoryRollupItem:
     # transaction counts once per top-level category it touches, same as a
     # plain one counts once for its own category.
     transaction_count: int
+    # Populated only when more than one distinct category actually fed this
+    # total (a subcategory, or a direct-to-parent line, or several of
+    # either) — e.g. a receipt split between "Sweets" and "Alcohol" under
+    # "Groceries". A single-source category (the common case, no splitting
+    # or subcategories involved) leaves this empty rather than showing a
+    # redundant one-item breakdown of itself.
+    children: list[CategoryRollupChildItem] = field(default_factory=list)
 
 
 async def _raw_category_contributions(
@@ -92,15 +113,34 @@ async def rollup_spending_by_top_level_category(
 
     amount_by_effective: dict[int, Decimal] = defaultdict(Decimal)
     txn_ids_by_effective: dict[int, set[int]] = defaultdict(set)
+    # effective (top-level) category id -> {actual leaf category_id: amount}
+    # — the leaf is the same as the effective id when a contribution was
+    # filed directly on the parent, and a genuine child id otherwise.
+    amount_by_leaf: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
     for transaction_id, category_id, amount in contributions:
         category = categories_by_id.get(category_id)
         effective_id = category.parent_id if category and category.parent_id is not None else category_id
         amount_by_effective[effective_id] += amount
+        amount_by_leaf[effective_id][category_id] += amount
         txn_ids_by_effective[effective_id].add(transaction_id)
 
     items: list[CategoryRollupItem] = []
     for effective_id, amount in amount_by_effective.items():
         category = categories_by_id.get(effective_id)
+        leaf_amounts = amount_by_leaf[effective_id]
+        children: list[CategoryRollupChildItem] = []
+        if len(leaf_amounts) > 1:
+            for leaf_id, leaf_amount in sorted(leaf_amounts.items(), key=lambda pair: -pair[1]):
+                leaf_category = categories_by_id.get(leaf_id)
+                children.append(
+                    CategoryRollupChildItem(
+                        category_id=leaf_id,
+                        name=leaf_category.name if leaf_category else "?",
+                        color=leaf_category.color if leaf_category else "#898781",
+                        icon=leaf_category.icon if leaf_category else None,
+                        amount=leaf_amount,
+                    )
+                )
         items.append(
             CategoryRollupItem(
                 category_id=effective_id,
@@ -110,6 +150,7 @@ async def rollup_spending_by_top_level_category(
                 sort_order=category.sort_order if category else 0,
                 amount=amount,
                 transaction_count=len(txn_ids_by_effective[effective_id]),
+                children=children,
             )
         )
     items.sort(key=lambda item: (-item.amount, item.sort_order))

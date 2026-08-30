@@ -127,14 +127,20 @@ async def test_more_than_eight_expense_categories_roll_up_into_other(client: Asy
     assert money(other[0]["amount"]) == Decimal("10.00")
 
 
-async def test_split_transaction_counts_each_split_toward_its_own_category(
+async def test_split_transaction_rolls_up_into_one_slice_with_a_children_breakdown(
     client: AsyncClient, account_id, categories
 ):
-    """A hypermarket receipt split between Groceries and Shopping must show
-    up as two separate slices on the donut, not one lump under whichever
-    category happened to be picked."""
+    """A hypermarket receipt split between Groceries and one of its own
+    subcategories (Sweets) must show up as a single Groceries slice on the
+    donut with the full 100.00 total — a split's categories always share one
+    parent (see routes/transactions.py's _build_splits), so it never
+    fragments into separate top-level slices — but the slice must expose a
+    children breakdown so the Groceries/Sweets split is still visible."""
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets_resp = await client.post(
+        "/categories", json={"name": "Sweets", "kind": "expense", "color": "#7a869a", "parent_id": groceries}
+    )
+    sweets = sweets_resp.json()["id"]
     await client.post(
         "/transactions",
         json=_txn(
@@ -144,7 +150,7 @@ async def test_split_transaction_counts_each_split_toward_its_own_category(
             date="2026-08-01",
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
@@ -154,5 +160,25 @@ async def test_split_transaction_counts_each_split_toward_its_own_category(
     breakdown = {row["name"]: row for row in body["spending_by_category"]}
 
     assert money(body["spent"]) == Decimal("100.00")
-    assert money(breakdown["Groceries"]["amount"]) == Decimal("70.00")
-    assert money(breakdown["Shopping"]["amount"]) == Decimal("30.00")
+    assert "Sweets" not in breakdown
+    assert money(breakdown["Groceries"]["amount"]) == Decimal("100.00")
+
+    children = {child["name"]: child for child in breakdown["Groceries"]["children"]}
+    # The 70.00 line was filed directly on Groceries itself (no
+    # subcategory), so it shows up as a child entry with Groceries' own id
+    # and name too — same as any genuine subcategory would.
+    assert money(children["Groceries"]["amount"]) == Decimal("70.00")
+    assert money(children["Sweets"]["amount"]) == Decimal("30.00")
+
+
+async def test_a_single_category_slice_has_no_children_breakdown(client: AsyncClient, account_id, categories):
+    """A category funded by exactly one source (the common case — no
+    splitting, no subcategories involved) shouldn't show a redundant
+    one-item breakdown of itself."""
+    groceries = categories["Groceries"]["id"]
+    await client.post("/transactions", json=_txn(account_id, amount="50.00", category_id=groceries, date="2026-08-01"))
+
+    resp = await client.get("/dashboard/summary", params={"year": 2026, "month": 8})
+    breakdown = {row["name"]: row for row in resp.json()["spending_by_category"]}
+
+    assert breakdown["Groceries"]["children"] == []

@@ -403,10 +403,47 @@ async def test_a_transfer_whose_destination_account_was_deleted_can_still_be_lis
     assert (await client.delete(f"/transactions/{txn_id}")).status_code == 204
 
 
+async def _subcategory(client: AsyncClient, parent_id: int, name: str) -> int:
+    resp = await client.post(
+        "/categories", json={"name": name, "kind": "expense", "color": "#7a869a", "parent_id": parent_id}
+    )
+    return resp.json()["id"]
+
+
 async def test_create_split_transaction_across_categories(client: AsyncClient, account_id, categories):
-    """The hypermarket-receipt case: one purchase, part groceries, part
-    shopping — category_id stays empty on the row itself, and its splits
-    carry the categorization instead."""
+    """The hypermarket-receipt case: one purchase, part everyday groceries,
+    part sweets — a split's categories must share one parent (see
+    _build_splits), so both lines here are Groceries itself and one of its
+    own subcategories. category_id stays empty on the row itself, and its
+    splits carry the categorization instead."""
+    groceries = categories["Groceries"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
+    resp = await client.post(
+        "/transactions",
+        json=_txn(
+            account_id,
+            amount="100.00",
+            category_id=None,
+            splits=[
+                {"category_id": groceries, "amount": "70.00"},
+                {"category_id": sweets, "amount": "30.00", "note": "candy and snacks"},
+            ],
+        ),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["category"] is None
+    splits = {s["category"]["name"]: s for s in body["splits"]}
+    assert money(splits["Groceries"]["amount"]) == Decimal("70.00")
+    assert money(splits["Sweets"]["amount"]) == Decimal("30.00")
+    assert splits["Sweets"]["note"] == "candy and snacks"
+
+
+async def test_create_split_rejects_categories_from_different_parents(client: AsyncClient, account_id, categories):
+    """The whole point of a split is dividing one purchase across the
+    subcategories of ONE parent — Groceries and Shopping are two unrelated
+    top-level categories, so mixing them must be rejected even though both
+    are individually valid expense categories."""
     groceries = categories["Groceries"]["id"]
     shopping = categories["Shopping"]["id"]
     resp = await client.post(
@@ -417,22 +454,36 @@ async def test_create_split_transaction_across_categories(client: AsyncClient, a
             category_id=None,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00", "note": "household chemicals"},
+                {"category_id": shopping, "amount": "30.00"},
             ],
         ),
     )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["category"] is None
-    splits = {s["category"]["name"]: s for s in body["splits"]}
-    assert money(splits["Groceries"]["amount"]) == Decimal("70.00")
-    assert money(splits["Shopping"]["amount"]) == Decimal("30.00")
-    assert splits["Shopping"]["note"] == "household chemicals"
+    assert resp.status_code == 400
+
+
+async def test_create_split_rejects_two_different_parents_subcategories(client: AsyncClient, account_id, categories):
+    groceries = categories["Groceries"]["id"]
+    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
+    electronics = await _subcategory(client, shopping, "Electronics")
+    resp = await client.post(
+        "/transactions",
+        json=_txn(
+            account_id,
+            amount="100.00",
+            category_id=None,
+            splits=[
+                {"category_id": sweets, "amount": "70.00"},
+                {"category_id": electronics, "amount": "30.00"},
+            ],
+        ),
+    )
+    assert resp.status_code == 400
 
 
 async def test_create_split_rejects_category_id_alongside_splits(client: AsyncClient, account_id, categories):
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     resp = await client.post(
         "/transactions",
         json=_txn(
@@ -441,7 +492,7 @@ async def test_create_split_rejects_category_id_alongside_splits(client: AsyncCl
             category_id=groceries,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
@@ -460,7 +511,7 @@ async def test_create_split_rejects_a_single_split(client: AsyncClient, account_
 
 async def test_create_split_rejects_amounts_not_summing_to_total(client: AsyncClient, account_id, categories):
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     resp = await client.post(
         "/transactions",
         json=_txn(
@@ -469,7 +520,7 @@ async def test_create_split_rejects_amounts_not_summing_to_total(client: AsyncCl
             category_id=None,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "20.00"},
+                {"category_id": sweets, "amount": "20.00"},
             ],
         ),
     )
@@ -479,7 +530,7 @@ async def test_create_split_rejects_amounts_not_summing_to_total(client: AsyncCl
 async def test_create_split_rejects_on_transfer(client: AsyncClient, account_id, categories):
     other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     resp = await client.post(
         "/transactions",
         json=_txn(
@@ -490,7 +541,7 @@ async def test_create_split_rejects_on_transfer(client: AsyncClient, account_id,
             transfer_account_id=other["id"],
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
@@ -499,7 +550,7 @@ async def test_create_split_rejects_on_transfer(client: AsyncClient, account_id,
 
 async def test_update_can_convert_a_transaction_into_a_split_and_back(client: AsyncClient, account_id, categories):
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     created = await client.post("/transactions", json=_txn(account_id, amount="100.00", category_id=groceries))
     txn_id = created.json()["id"]
 
@@ -509,7 +560,7 @@ async def test_update_can_convert_a_transaction_into_a_split_and_back(client: As
             "category_id": None,
             "splits": [
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         },
     )
@@ -525,7 +576,7 @@ async def test_update_can_convert_a_transaction_into_a_split_and_back(client: As
 
 async def test_update_rejects_splits_not_summing_to_the_new_amount(client: AsyncClient, account_id, categories):
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     created = await client.post(
         "/transactions",
         json=_txn(
@@ -534,7 +585,7 @@ async def test_update_rejects_splits_not_summing_to_the_new_amount(client: Async
             category_id=None,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
@@ -555,10 +606,7 @@ async def test_update_of_unrelated_field_tolerates_a_split_whose_category_was_de
     state — the split's own category was never re-submitted, so nothing here
     needs it to still exist."""
     groceries = categories["Groceries"]["id"]
-    extra = await client.post(
-        "/categories", json={"name": "Deletable", "kind": "expense", "color": "#123456", "sort_order": 99}
-    )
-    extra_id = extra.json()["id"]
+    deletable = await _subcategory(client, groceries, "Deletable")
     created = await client.post(
         "/transactions",
         json=_txn(
@@ -567,12 +615,12 @@ async def test_update_of_unrelated_field_tolerates_a_split_whose_category_was_de
             category_id=None,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": extra_id, "amount": "30.00"},
+                {"category_id": deletable, "amount": "30.00"},
             ],
         ),
     )
     txn_id = created.json()["id"]
-    assert (await client.delete(f"/categories/{extra_id}")).status_code == 204
+    assert (await client.delete(f"/categories/{deletable}")).status_code == 204
 
     resp = await client.patch(f"/transactions/{txn_id}", json={"description": "renamed"})
     assert resp.status_code == 200
@@ -584,7 +632,7 @@ async def test_category_filter_matches_transactions_split_into_that_category(
     client: AsyncClient, account_id, categories
 ):
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     await client.post(
         "/transactions",
         json=_txn(
@@ -593,18 +641,18 @@ async def test_category_filter_matches_transactions_split_into_that_category(
             category_id=None,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
 
-    resp = await client.get("/transactions", params={"category_id": shopping})
+    resp = await client.get("/transactions", params={"category_id": sweets})
     assert resp.json()["total"] == 1
 
 
 async def test_delete_transaction_cascades_its_splits(client: AsyncClient, account_id, categories):
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets = await _subcategory(client, groceries, "Sweets")
     created = await client.post(
         "/transactions",
         json=_txn(
@@ -613,7 +661,7 @@ async def test_delete_transaction_cascades_its_splits(client: AsyncClient, accou
             category_id=None,
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
@@ -623,5 +671,5 @@ async def test_delete_transaction_cascades_its_splits(client: AsyncClient, accou
 
     # If the split rows outlived their parent, this budget/dashboard-style
     # category filter would still find a (now-orphaned) match.
-    resp = await client.get("/transactions", params={"category_id": groceries})
+    resp = await client.get("/transactions", params={"category_id": sweets})
     assert resp.json()["total"] == 0

@@ -1,7 +1,19 @@
 from datetime import date as date_
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class CategoryRankingChildItem(BaseModel):
+    """One subcategory's (or the parent's own direct, un-subcategorized)
+    share of a CategoryRankingItem's total — see
+    services/category_rollup.py's CategoryRollupChildItem."""
+
+    category_id: int
+    name: str
+    color: str
+    icon: str | None
+    amount: Decimal
 
 
 class CategorySpendingPoint(BaseModel):
@@ -31,6 +43,10 @@ class CategoryRankingItem(BaseModel):
     amount: Decimal
     percent: float
     transaction_count: int
+    # Populated only when this category's spend came from more than one
+    # distinct category (subcategories, or a mix of itself and its
+    # children) — e.g. a receipt split across "Groceries" subcategories.
+    children: list[CategoryRankingChildItem] = Field(default_factory=list)
 
 
 class CategoryRankingReport(BaseModel):

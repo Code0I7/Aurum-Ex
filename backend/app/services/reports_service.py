@@ -16,6 +16,7 @@ from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.reports import (
+    CategoryRankingChildItem,
     CategoryRankingItem,
     CategoryRankingReport,
     CategorySpendingPoint,
@@ -155,6 +156,13 @@ async def get_category_ranking_report(
             amount=row.amount,
             percent=_percent(row.amount),
             transaction_count=row.transaction_count,
+            children=[
+                CategoryRankingChildItem(
+                    category_id=child.category_id, name=child.name, color=child.color, icon=child.icon,
+                    amount=child.amount,
+                )
+                for child in row.children
+            ],
         )
         for row in rows
     ]

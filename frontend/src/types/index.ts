@@ -161,6 +161,18 @@ export interface RecurringTransactionInput {
   anchor_date: string;
 }
 
+// One subcategory's (or the parent's own direct, un-subcategorized) share
+// of a CategoryBreakdownItem's total. Populated only when more than one
+// distinct category fed the slice — a single-source category (the common
+// case) leaves this off the parent item entirely.
+export interface CategoryBreakdownChildItem {
+  category_id: number;
+  name: string;
+  color: string;
+  icon: string | null;
+  amount: string;
+}
+
 export interface CategoryBreakdownItem {
   category_id: number | null;
   name: string;
@@ -168,6 +180,7 @@ export interface CategoryBreakdownItem {
   icon: string | null;
   amount: string;
   percent: number;
+  children: CategoryBreakdownChildItem[];
 }
 
 export interface DashboardSummary {
@@ -310,6 +323,14 @@ export interface CashFlowResponse {
   total_net: string;
 }
 
+export interface CategoryRankingChildItem {
+  category_id: number;
+  name: string;
+  color: string;
+  icon: string | null;
+  amount: string;
+}
+
 export interface CategoryRankingItem {
   category_id: number;
   name: string;
@@ -318,6 +339,7 @@ export interface CategoryRankingItem {
   amount: string;
   percent: number;
   transaction_count: number;
+  children: CategoryRankingChildItem[];
 }
 
 export interface CategoryRankingReport {

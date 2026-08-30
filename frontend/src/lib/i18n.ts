@@ -29,6 +29,8 @@ const ru = {
   "topbar.openMenu": "Открыть меню",
 
   "common.loading": "Загрузка…",
+  "common.expand": "Развернуть",
+  "common.collapse": "Свернуть",
   "common.back": "Назад",
   "common.next": "Далее",
   "common.clear": "Очистить",
@@ -285,6 +287,10 @@ const ru = {
   "transactions.form.errorSplitMinRows": "Нужно как минимум 2 категории для разбивки",
   "transactions.form.errorSplitIncomplete": "Выберите категорию и сумму для каждой строки разбивки",
   "transactions.form.errorSplitMismatch": "Сумма по категориям должна совпадать с суммой транзакции",
+  "transactions.form.errorSplitNoBaseCategory": "Сначала выберите базовую категорию",
+  "transactions.form.splitDirectOption": "— без конкретной подкатегории —",
+  "transactions.form.splitNoChildren": "У этой категории пока нет подкатегорий — добавьте их на странице «Категории», чтобы разбивать покупки по ним.",
+  "reports.directSpendLabel": "Без подкатегории",
 
   "reports.categoryLabel": "Категория",
   "reports.expenseGroup": "Расходы",
@@ -504,6 +510,8 @@ const en: Record<keyof typeof ru, string> = {
   "topbar.openMenu": "Open menu",
 
   "common.loading": "Loading…",
+  "common.expand": "Expand",
+  "common.collapse": "Collapse",
   "common.back": "Back",
   "common.next": "Next",
   "common.clear": "Clear",
@@ -760,6 +768,10 @@ const en: Record<keyof typeof ru, string> = {
   "transactions.form.errorSplitMinRows": "Splitting needs at least 2 categories",
   "transactions.form.errorSplitIncomplete": "Pick a category and an amount for every split row",
   "transactions.form.errorSplitMismatch": "Split amounts must add up to the transaction amount",
+  "transactions.form.errorSplitNoBaseCategory": "Pick a base category first",
+  "transactions.form.splitDirectOption": "— no specific subcategory —",
+  "transactions.form.splitNoChildren": "This category has no subcategories yet — add some on the Categories page to split purchases across them.",
+  "reports.directSpendLabel": "No subcategory",
 
   "reports.categoryLabel": "Category",
   "reports.expenseGroup": "Expenses",

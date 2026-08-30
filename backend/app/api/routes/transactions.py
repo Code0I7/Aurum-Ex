@@ -52,13 +52,15 @@ _TYPE_TO_CATEGORY_KIND = {
 
 async def _ensure_category_matches_type(
     session: AsyncSession, category_id: int | None, transaction_type: TransactionType
-) -> None:
+) -> Category | None:
     """A category picked for an income transaction must itself be an income
     category (and likewise for expense) — otherwise the dashboard's spending
     breakdown, which only joins EXPENSE-typed rows, would silently misclassify
-    the entry."""
+    the entry. Returns the fetched category (or None for category_id=None) so
+    callers that also need the row itself — _build_splits, below — don't have
+    to fetch it a second time."""
     if category_id is None:
-        return
+        return None
     expected_kind = _TYPE_TO_CATEGORY_KIND.get(transaction_type)
     category = await session.get(Category, category_id)
     if category is None:
@@ -68,13 +70,32 @@ async def _ensure_category_matches_type(
             status_code=400,
             detail=f"Category '{category.name}' is a {category.kind.value} category and cannot be used for a {transaction_type.value} transaction",
         )
+    return category
 
 
 async def _build_splits(
     session: AsyncSession, splits: list[TransactionSplitInput], transaction_type: TransactionType
 ) -> list[TransactionSplit]:
+    """A split's whole point is dividing one purchase's total across the
+    *subcategories of one parent* (a hypermarket receipt: part groceries ->
+    Sweets, part -> Alcohol) — not across unrelated top-level categories, or
+    the numbers would roll up into two different parents and the "spent X on
+    Groceries, split between Sweets/Alcohol" picture the feature exists for
+    falls apart. Each split may point at that parent category itself (an
+    unspecified-subcategory line) or at any one of its direct children —
+    enforced by requiring every split's own top-level ancestor
+    (parent_id, or its own id if it has none) to agree.
+    """
+    top_level_ids: set[int] = set()
     for split in splits:
-        await _ensure_category_matches_type(session, split.category_id, transaction_type)
+        category = await _ensure_category_matches_type(session, split.category_id, transaction_type)
+        assert category is not None  # split.category_id is required (not Optional) on the schema
+        top_level_ids.add(category.parent_id if category.parent_id is not None else category.id)
+    if len(top_level_ids) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="All split categories must be the same parent category or its direct subcategories",
+        )
     return [TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in splits]
 
 
@@ -196,17 +217,13 @@ async def bulk_create_transactions(
     instead of leaving a half-imported statement behind."""
     for item in payload.items:
         await _ensure_category_matches_type(session, item.category_id, item.type)
-        for split in item.splits or []:
-            await _ensure_category_matches_type(session, split.category_id, item.type)
 
     transactions = []
     for item in payload.items:
         transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits"}))
         transaction.tags = await _resolve_tags(session, item.tag_ids)
         if item.splits:
-            transaction.splits = [
-                TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in item.splits
-            ]
+            transaction.splits = await _build_splits(session, item.splits, item.type)
         transactions.append(transaction)
 
     session.add_all(transactions)

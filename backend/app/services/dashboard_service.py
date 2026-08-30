@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
-from app.schemas.dashboard import CategoryBreakdownItem, DashboardSummary
+from app.schemas.dashboard import CategoryBreakdownChildItem, CategoryBreakdownItem, DashboardSummary
 from app.services.category_rollup import rollup_spending_by_top_level_category
 
 # Categorical slots are capped at 8 (dataviz skill: a 9th series folds into "Other",
@@ -54,6 +54,13 @@ async def get_dashboard_summary(session: AsyncSession, year: int, month: int) ->
         CategoryBreakdownItem(
             category_id=row.category_id, name=row.name, color=row.color, icon=row.icon,
             amount=row.amount, percent=_percent(row.amount),
+            children=[
+                CategoryBreakdownChildItem(
+                    category_id=child.category_id, name=child.name, color=child.color, icon=child.icon,
+                    amount=child.amount,
+                )
+                for child in row.children
+            ],
         )
         for row in top_rows
     ]

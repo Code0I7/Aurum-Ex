@@ -135,11 +135,17 @@ async def test_a_subcategory_keeps_its_own_budget_separate(client: AsyncClient, 
 
 
 async def test_budget_status_counts_a_split_transactions_share(client: AsyncClient, account_id, categories):
-    """A receipt split between Groceries and Shopping must count its 70.00
-    slice toward the Groceries budget, not the full 100.00 or nothing."""
+    """A receipt split between Groceries and one of its own subcategories
+    (Sweets) must count each line toward the right budget: the full 100.00
+    rolls up into the Groceries budget, but only the 30.00 Sweets line
+    counts toward a budget set on Sweets itself."""
     groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
+    sweets_resp = await client.post(
+        "/categories", json={"name": "Sweets", "kind": "expense", "color": "#7a869a", "parent_id": groceries}
+    )
+    sweets = sweets_resp.json()["id"]
     await client.post("/budgets", json={"category_id": groceries, "monthly_limit": "100.00"})
+    await client.post("/budgets", json={"category_id": sweets, "monthly_limit": "50.00"})
     await client.post(
         "/transactions",
         json=txn_payload(
@@ -149,11 +155,12 @@ async def test_budget_status_counts_a_split_transactions_share(client: AsyncClie
             date="2026-08-10",
             splits=[
                 {"category_id": groceries, "amount": "70.00"},
-                {"category_id": shopping, "amount": "30.00"},
+                {"category_id": sweets, "amount": "30.00"},
             ],
         ),
     )
 
     resp = await client.get("/budgets/status", params={"year": 2026, "month": 8})
-    item = resp.json()["items"][0]
-    assert money(item["spent"]) == Decimal("70.00")
+    items = {item["category_id"]: item for item in resp.json()["items"]}
+    assert money(items[groceries]["spent"]) == Decimal("100.00")
+    assert money(items[sweets]["spent"]) == Decimal("30.00")
