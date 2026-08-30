@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { CategoryBreakdownModal } from "@/components/categories/CategoryBreakdownModal";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency } from "@/lib/format";
-import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
-import type { CategoryRankingChildItem, CategoryRankingItem } from "@/types";
+import type { CategoryRankingItem } from "@/types";
 
 interface CategoryRankingCardProps {
   items: CategoryRankingItem[];
@@ -19,26 +20,12 @@ interface CategoryRankingCardProps {
  * detail chart below (locked to one category), this is "which category
  * costs the most" across the whole range at once. Clicking a row drills
  * into that category in the detail chart/transaction list below. */
-// A child's category_id equals its parent's own — the enclosing
-// CategoryRankingItem's — when that slice of spend was filed directly on
-// the parent with no more specific subcategory chosen (see
-// services/category_rollup.py's CategoryRollupChildItem).
-function childLabel(child: CategoryRankingChildItem, parentId: number, t: (key: TranslationKey) => string) {
-  return child.category_id === parentId ? t("reports.directSpendLabel") : translateCategoryName(child.name);
-}
-
 export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSelectCategory }: CategoryRankingCardProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-
-  function toggle(categoryId: number) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(categoryId)) next.delete(categoryId);
-      else next.add(categoryId);
-      return next;
-    });
-  }
+  // The subcategory breakdown lives in a modal, not expanded inline — a
+  // category with many subcategories would otherwise push the whole ranking
+  // list taller and shift every row below it.
+  const [breakdownItem, setBreakdownItem] = useState<CategoryRankingItem | null>(null);
 
   return (
     <Card>
@@ -56,7 +43,6 @@ export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSe
               const Icon = getCategoryIcon(item.icon);
               const isSelected = item.category_id === selectedCategoryId;
               const hasChildren = item.children.length > 0;
-              const isExpanded = expanded.has(item.category_id);
               return (
                 <li key={item.category_id}>
                   <div
@@ -97,36 +83,31 @@ export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSe
                     {hasChildren && (
                       <button
                         type="button"
-                        aria-label={isExpanded ? t("common.collapse") : t("common.expand")}
-                        onClick={() => toggle(item.category_id)}
+                        aria-label={t("common.expand")}
+                        onClick={() => setBreakdownItem(item)}
                         className="mr-1 shrink-0 rounded-md p-1.5 text-text-muted hover:text-text-primary"
                       >
-                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        <ChevronRight size={14} />
                       </button>
                     )}
                   </div>
-
-                  {hasChildren && isExpanded && (
-                    <ul className="ml-11 mb-2 mt-1 space-y-1 border-l border-gridline pl-3">
-                      {item.children.map((child) => (
-                        <li key={child.category_id} className="flex items-center gap-2 text-xs">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: child.color }} />
-                          <span className="min-w-0 flex-1 truncate text-text-secondary">
-                            {childLabel(child, item.category_id, t)}
-                          </span>
-                          <span className="shrink-0 tabular-nums text-text-secondary">
-                            {formatCurrency(child.amount)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </li>
               );
             })}
           </ul>
         )}
       </CardContent>
+
+      {breakdownItem && (
+        <CategoryBreakdownModal
+          open
+          onClose={() => setBreakdownItem(null)}
+          categoryId={breakdownItem.category_id}
+          categoryName={breakdownItem.name}
+          totalAmount={breakdownItem.amount}
+          children={breakdownItem.children}
+        />
+      )}
     </Card>
   );
 }

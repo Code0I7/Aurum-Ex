@@ -291,6 +291,7 @@ const ru = {
   "transactions.form.splitDirectOption": "— без конкретной подкатегории —",
   "transactions.form.splitNoChildren": "У этой категории пока нет подкатегорий — добавьте их на странице «Категории», чтобы разбивать покупки по ним.",
   "reports.directSpendLabel": "Без подкатегории",
+  "reports.categoryBreakdownTotalLabel": "Итого",
 
   "reports.categoryLabel": "Категория",
   "reports.expenseGroup": "Расходы",
@@ -772,6 +773,7 @@ const en: Record<keyof typeof ru, string> = {
   "transactions.form.splitDirectOption": "— no specific subcategory —",
   "transactions.form.splitNoChildren": "This category has no subcategories yet — add some on the Categories page to split purchases across them.",
   "reports.directSpendLabel": "No subcategory",
+  "reports.categoryBreakdownTotalLabel": "Total",
 
   "reports.categoryLabel": "Category",
   "reports.expenseGroup": "Expenses",
