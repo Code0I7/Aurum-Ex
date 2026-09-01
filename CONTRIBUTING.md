@@ -45,7 +45,7 @@ Open an [Issue](../../issues) with steps to reproduce. For security issues, plea
 
 ## Proposing features
 
-Open a [Discussion](../../discussions) first for anything that changes the data model or adds a new area of the app — it's a lot easier to align on the shape of a feature before code exists than to rework a finished PR.
+Open an [Issue](../../issues) first for anything that changes the data model or adds a new area of the app — it's a lot easier to align on the shape of a feature before code exists than to rework a finished PR.
 
 ## License
 
