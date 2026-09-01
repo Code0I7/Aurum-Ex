@@ -1,0 +1,66 @@
+name: CI
+
+# Runs on every pull request and on pushes to main, so a broken PR shows a
+# red check before it's mergeable (enable "Require status checks to pass"
+# in branch protection for main to actually block the merge button on it).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      # A real Postgres, not sqlite — tests/conftest.py creates/migrates/
+      # drops a dedicated aurum_test database against it, same as the local
+      # `docker compose exec backend pytest` workflow in tests/README.md.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aurum
+          POSTGRES_PASSWORD: aurum
+          POSTGRES_DB: aurum
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aurum"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AURUM_POSTGRES_USER: aurum
+      AURUM_POSTGRES_PASSWORD: aurum
+      AURUM_POSTGRES_DB: aurum
+      AURUM_POSTGRES_HOST: localhost
+      AURUM_POSTGRES_PORT: 5432
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -v
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # tsc -b (type-check) then vite build — catches both a broken build
+      # and a type error a PR might introduce, same as `npm run build`
+      # locally before shipping a change.
+      - run: npm run build
