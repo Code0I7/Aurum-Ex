@@ -38,7 +38,18 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Aurum API", version=APP_VERSION, lifespan=lifespan)
+app = FastAPI(
+    title="Aurum API",
+    version=APP_VERSION,
+    lifespan=lifespan,
+    # Docs live under /api/* because nginx only proxies that prefix to the
+    # backend (see frontend/nginx.conf) — everything else falls through to
+    # the SPA's index.html, which is why the defaults (/docs, /openapi.json)
+    # would silently 404 through the reverse proxy.
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 # CORS stays off unless someone deliberately opens it, and credentials are
 # only granted to a pinned list. Starlette answers a credentialed "*" by
