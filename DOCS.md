@@ -116,8 +116,9 @@ string.
 
 ### `GET /api/health`
 
-No auth required. Returns `{"status": "ok"}`. Use this to check the backend is up before hitting
-anything else.
+No auth required. Returns `{"status": "ok", "version": "1.1.0"}` — `version` is the running app's
+version, the same value shown in the UI under Settings. Use this to check the backend is up before
+hitting anything else.
 
 ## Accounts
 
@@ -181,7 +182,7 @@ though they can be renamed, recolored, and reordered.
 | `GET` | `/categories` | List categories, sorted by `sort_order`. `?kind=income` or `?kind=expense` to filter. |
 | `POST` | `/categories` | Create a category (or subcategory, via `parent_id`). |
 | `PATCH` | `/categories/{id}` | Update a category (partial). |
-| `DELETE` | `/categories/{id}` | Delete a category. Fails with `400` if it's a default category. |
+| `DELETE` | `/categories/{id}` | Delete a category. For a default (`is_default: true`) category, fails with `400` if any transaction or transaction split still points at it — a custom category has no such guard and can always be deleted. |
 
 **Create body:**
 
@@ -293,7 +294,7 @@ Field rules, enforced server-side:
     `kind` if given (an `income` transaction can't use an `expense` category). `transfer_account_id`
     must be omitted.
   - `transfer`: `transfer_account_id` is **required** and must differ from `account_id`.
-    `category_id` must be omitted — transfers aren't categorized.
+    `category_id` must be omitted — transfers aren't categorized. `splits` aren't valid either.
 - `amount`: required, `> 0` (transfers/expenses aren't signed negative — direction comes from
   `type`), up to 14 digits, 2 decimal places.
 - `description`: required, 1–255 chars. Auto-capitalized server-side (first letter uppercased).
@@ -301,13 +302,61 @@ Field rules, enforced server-side:
 - `notes`: optional, free text.
 - `date`: required.
 - `tag_ids`: optional list of existing tag IDs. Unknown IDs return `400`.
+- `splits`: optional list of `{"category_id": ..., "amount": ..., "note": ...}` — divides the
+  transaction across 2+ categories instead of one. See **Splitting a transaction** below.
 
 **Update** (`TransactionUpdate`) accepts the same fields, all optional, plus the same
-type/category/transfer consistency rules applied to the *effective* (merged) values. `tag_ids`: omit
-to leave tags untouched; send (even `[]`) to replace the full tag set.
+type/category/transfer/split consistency rules applied to the *effective* (merged) values. `tag_ids`:
+omit to leave tags untouched; send (even `[]`) to replace the full tag set. `splits`: omit to leave
+splits untouched; send (even `[]`) to replace the full split set — send `[]` together with a
+`category_id` to turn a split transaction back into a normal single-category one.
 
 **Response** (`TransactionRead`): the input fields plus `id`, and the nested `account`
-(`AccountRead`), `category` (`CategoryRead` or `null`), `tags` (`TagRead[]`).
+(`AccountRead`), `category` (`CategoryRead` or `null`), `tags` (`TagRead[]`), `splits`
+(`TransactionSplitRead[]`, empty for a normal non-split transaction).
+
+### Splitting a transaction across categories
+
+A single purchase that covers more than one subcategory of the same parent (a supermarket receipt
+that's part "Sweets", part "Alcohol", both under "Groceries") can be recorded as one transaction
+divided across those categories instead of several separate transactions:
+
+```json
+{
+  "account_id": 1,
+  "type": "expense",
+  "amount": 84.20,
+  "description": "Grocery run",
+  "date": "2026-08-29",
+  "splits": [
+    { "category_id": 12, "amount": 60.00, "note": "Sweets" },
+    { "category_id": 13, "amount": 24.20, "note": "Alcohol" }
+  ]
+}
+```
+
+Rules, enforced on both create and update (against the row as it would look *after* the change):
+
+- `category_id` on the transaction itself **must be omitted** when `splits` is given — the split
+  entries carry the categories instead.
+- Not valid on a `transfer` transaction.
+- At least 2 entries — a single split is just `category_id` with extra steps and is rejected.
+- Each split's `category_id` is required and must be a category of the transaction's own kind
+  (`income`/`expense`, same check a plain `category_id` gets); `amount` is required (`> 0`, up to 14
+  digits/2 decimals); `note` is optional, up to 200 chars.
+- **All splits must share the same top-level category** — either the parent itself (an
+  unspecified-subcategory line) or one of its direct subcategories. Splitting across two unrelated
+  top-level categories (e.g. part "Groceries", part "Transport") is rejected with `400`, since the
+  feature exists to divide one purchase's total *within* one category tree, not to record what's
+  really two separate transactions as one.
+- The split amounts **must sum exactly** to the transaction's own `amount`, or the request is
+  rejected with `400`.
+
+Aggregation endpoints are split-aware: `/dashboard/summary`'s `spending_by_category` and
+`/reports/category-ranking` count a split transaction's amount under every category it actually
+touches (rolled up to the shared parent), not just once under a single category — a receipt split
+$60/$24.20 between Sweets and Alcohol above contributes exactly those amounts to each subcategory's
+total under Groceries.
 
 ### Bulk create (`POST /transactions/bulk`)
 

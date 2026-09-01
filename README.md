@@ -58,7 +58,7 @@ Aurum treats your financial life as a **system**, not a spreadsheet.
 ## 🧩 Core Features
 
 ### 💰 Cash Flow & Transactions
-Log income, expenses, and transfers across as many accounts as you want, organized into categories (with one level of subcategories) plus free-form tags, and searchable. Already have history elsewhere? Import a bank's CSV export in a guided 3-step wizard instead of typing every line by hand. A dedicated Cash Flow view charts income vs. expense month by month.
+Log income, expenses, and transfers across as many accounts as you want, organized into categories (with one level of subcategories) plus free-form tags, and searchable. One purchase spanning multiple subcategories of the same parent (a grocery receipt part "Sweets", part "Alcohol") can be recorded as a single split transaction instead of several — every report and chart still counts each share under its own category. Already have history elsewhere? Import a bank's CSV export in a guided 3-step wizard instead of typing every line by hand. A dedicated Cash Flow view charts income vs. expense month by month.
 
 ### 📈 Net Worth Engine
 A live net worth timeline (30 days to all-time) aggregating cash and every manually tracked asset — investments, crypto, real estate, vehicles, precious metals — into one number, with a full breakdown by asset class, by how each asset behaves (income / neutral / drain), and by risk level.
@@ -157,7 +157,7 @@ docker compose logs web
 docker compose down          # stop everything, keep your data
 docker compose up -d         # start it again later
 docker compose down -v       # stop AND permanently delete your data — be sure
-docker compose pull && docker compose up -d --build   # update to newer code
+git pull && docker compose up -d --build   # update to newer code
 ```
 
 Your data lives in a Docker named volume (`aurum_pgdata`), not in the repo folder — it survives `docker compose down`, image rebuilds, and `git pull`. It's only gone if you explicitly run `docker compose down -v` or delete the volume yourself. For anything short of that, use the in-app **Settings → Backup & Restore** to export a JSON snapshot of everything before making risky changes.
