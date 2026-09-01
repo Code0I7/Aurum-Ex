@@ -341,6 +341,7 @@ const ru = {
     "Восстановить данные из «{{filename}}»?\n\nЭто ПОЛНОСТЬЮ заменит все текущие счета, категории, транзакции и активы данными из файла. Отменить это действие нельзя — если хотите сохранить текущие данные, сначала сделайте экспорт.",
   "backup.footerWarning":
     "Восстановление полностью заменяет текущие данные содержимым файла — это нельзя отменить.",
+  "settings.version": "Aurum v{{version}}",
 
   "insights.negativeCashFlow": "Расходы превышают доходы {{months}} мес. подряд (по последним завершённым месяцам)",
   "insights.netWorthDecline": "Капитал снижается {{months}} мес. подряд",
@@ -823,6 +824,7 @@ const en: Record<keyof typeof ru, string> = {
     "Restore data from “{{filename}}”?\n\nThis will COMPLETELY replace all current accounts, categories, transactions, and assets with the data from the file. This action cannot be undone — if you want to keep your current data, export it first.",
   "backup.footerWarning":
     "Restoring completely replaces your current data with the file's contents — this cannot be undone.",
+  "settings.version": "Aurum v{{version}}",
 
   "insights.negativeCashFlow": "Expenses have exceeded income for {{months}} months in a row (based on the last completed months)",
   "insights.netWorthDecline": "Net worth has been declining for {{months}} months in a row",

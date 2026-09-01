@@ -517,3 +517,8 @@ export interface AppSettings {
   idle_cash_threshold_days: number;
 }
 
+export interface HealthStatus {
+  status: string;
+  version: string;
+}
+

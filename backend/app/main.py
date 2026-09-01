@@ -88,4 +88,7 @@ app.include_router(crypto.router, prefix="/api")
 
 @app.get("/api/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    # version rides along so the frontend's Settings page can show which
+    # release is actually running without a separate authenticated endpoint —
+    # this route is already auth_basic-exempt for Docker's HEALTHCHECK.
+    return {"status": "ok", "version": APP_VERSION}

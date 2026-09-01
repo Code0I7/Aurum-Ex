@@ -4,9 +4,10 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Single source of truth for the running app's version — surfaced in the API
-# title and embedded in exported backups so an old file can be told apart
-# from a current one.
-APP_VERSION = "0.20.0"
+# title, /api/health (which the frontend reads to show it in Settings), and
+# embedded in exported backups so an old file can be told apart from a
+# current one.
+APP_VERSION = "1.1.0"
 
 
 class Settings(BaseSettings):
