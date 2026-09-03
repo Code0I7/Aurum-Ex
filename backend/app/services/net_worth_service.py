@@ -2,11 +2,15 @@
 asset class.
 
 Design note: "Cash" is not stored anywhere — it's derived live from
-Account/Transaction data (checking/savings/cash accounts only) so the
+Account/Transaction data (checking/savings/cash/investment accounts) so the
 Transactions feature stays the single source of truth for liquid money.
-Every other class (investments, crypto, real estate, vehicles, precious
-metals, other) is tracked manually via Asset/AssetValuation rows. Both are
-collapsed into one
+Investment accounts count here too: their balance is uninvested/unallocated
+money sitting on the account, not the market value of what's actually
+invested — that value is still tracked manually via Asset/AssetValuation,
+same as every other class (investments, crypto, real estate, vehicles,
+precious metals, other). Without this, money deposited into an investment
+account but not yet turned into a valued Asset silently disappeared from
+net worth. Both halves are collapsed into one
 daily, forward-filled series so the chart reads as one continuous line even
 though the two halves are updated at very different cadences.
 """
@@ -32,7 +36,7 @@ from app.schemas.net_worth import (
     RiskLevelSummary,
 )
 
-CASH_ACCOUNT_TYPES = {AccountType.CHECKING, AccountType.SAVINGS, AccountType.CASH}
+CASH_ACCOUNT_TYPES = {AccountType.CHECKING, AccountType.SAVINGS, AccountType.CASH, AccountType.INVESTMENT}
 
 RANGE_DAYS = {"30d": 30, "90d": 90, "1y": 365, "5y": 365 * 5}
 
