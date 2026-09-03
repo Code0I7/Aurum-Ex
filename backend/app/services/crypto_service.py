@@ -231,6 +231,15 @@ def _to_read(holding: CryptoHolding) -> CryptoHoldingRead:
     )
 
 
+def _sort_by_invested(reads: list[CryptoHoldingRead]) -> list[CryptoHoldingRead]:
+    """Biggest cost basis (money actually put in, not current market value)
+    first, so the Holdings table reads as "what am I most committed to"
+    rather than an arbitrary/alphabetical order. A fully-exited position
+    (cost_basis None — everything's been sold) sorts last, not first: -1 can
+    never collide with a real cost basis, which is never negative."""
+    return sorted(reads, key=lambda r: r.cost_basis if r.cost_basis is not None else Decimal("-1"), reverse=True)
+
+
 def _portfolio_to_read(portfolio: CryptoPortfolio) -> CryptoPortfolioRead:
     return CryptoPortfolioRead.model_validate(portfolio)
 
@@ -351,7 +360,9 @@ async def refresh_prices(session: AsyncSession, *, force: bool, portfolio_id: in
 
     if not force and state.last_synced_at is not None and now - state.last_synced_at < AUTO_REFRESH_INTERVAL:
         holdings = await list_holdings(session, portfolio_id)
-        return CryptoSyncResult(synced=False, last_synced_at=state.last_synced_at, holdings=[_to_read(h) for h in holdings])
+        return CryptoSyncResult(
+            synced=False, last_synced_at=state.last_synced_at, holdings=_sort_by_invested([_to_read(h) for h in holdings])
+        )
 
     holdings = await list_holdings(session)
     error_key: Literal["unreachable"] | None = None
@@ -393,7 +404,7 @@ async def refresh_prices(session: AsyncSession, *, force: bool, portfolio_id: in
         synced=error_key is None,
         last_synced_at=state.last_synced_at,
         error_key=error_key,
-        holdings=[_to_read(h) for h in visible],
+        holdings=_sort_by_invested([_to_read(h) for h in visible]),
     )
 
 

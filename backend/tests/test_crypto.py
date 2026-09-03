@@ -509,6 +509,60 @@ async def test_90d_performance_filters_by_portfolio(client: AsyncClient, monkeyp
     assert [item["asset_id"] for item in items] == [holding_b["asset_id"]]
 
 
+async def test_holdings_are_sorted_by_invested_amount_descending(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(
+        crypto_service,
+        "_fetch_market_data",
+        _fake_fetch({"bitcoin": _point("50000"), "ethereum": _point("2000"), "litecoin": _point("60")}),
+    )
+
+    async def add(coingecko_id, symbol, quantity, price_per_unit):
+        resp = await client.post(
+            "/crypto/holdings",
+            json={
+                "coingecko_id": coingecko_id,
+                "symbol": symbol,
+                "name": symbol,
+                "quantity": quantity,
+                "price_per_unit": price_per_unit,
+                "date": "2026-01-01",
+            },
+        )
+        assert resp.status_code == 201, resp.text
+
+    # Cost basis: LTC 100, BTC 5000, ETH 1000 — expect BTC, ETH, LTC.
+    await add("litecoin", "ltc", "2", "50")
+    await add("bitcoin", "btc", "0.1", "50000")
+    await add("ethereum", "eth", "1", "1000")
+
+    resp = await client.get("/crypto/holdings")
+
+    symbols = [h["symbol"] for h in resp.json()["holdings"]]
+    assert symbols == ["BTC", "ETH", "LTC"]
+
+
+async def test_fully_sold_holding_sorts_last(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(
+        crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000"), "litecoin": _point("60")})
+    )
+    sold = await _add_bitcoin(client, "1", "40000")
+    resp = await client.post(
+        f"/crypto/holdings/{sold['asset_id']}/transactions",
+        json={"type": "sell", "quantity": "1", "price_per_unit": "45000", "date": "2026-02-01"},
+    )
+    assert resp.status_code == 201, resp.text
+    resp = await client.post(
+        "/crypto/holdings",
+        json={"coingecko_id": "litecoin", "symbol": "ltc", "name": "Litecoin", "quantity": "1", "price_per_unit": "50", "date": "2026-01-01"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.get("/crypto/holdings")
+
+    symbols = [h["symbol"] for h in resp.json()["holdings"]]
+    assert symbols == ["LTC", "BTC"]  # BTC has no cost basis left (fully sold)
+
+
 async def test_update_transaction_404_for_unknown_id(client: AsyncClient):
     resp = await client.patch("/crypto/transactions/999999", json={"quantity": "1"})
 
