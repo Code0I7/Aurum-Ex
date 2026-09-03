@@ -2,15 +2,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addCryptoTransaction,
   createCryptoHolding,
+  createCryptoPortfolio,
   deleteCryptoHolding,
+  deleteCryptoPortfolio,
   deleteCryptoTransaction,
   fetchCryptoHistory,
   fetchCryptoHoldings,
+  fetchCryptoPortfolios,
   fetchCryptoTransactions,
   refreshCryptoPrices,
+  updateCryptoPortfolio,
   updateCryptoTransaction,
 } from "@/api/crypto";
-import type { CryptoHoldingCreateInput, CryptoRange, CryptoTransactionInput } from "@/types";
+import type { CryptoHoldingCreateInput, CryptoPortfolioInput, CryptoRange, CryptoTransactionInput } from "@/types";
 
 function useInvalidateCrypto() {
   const queryClient = useQueryClient();
@@ -24,12 +28,50 @@ function useInvalidateCrypto() {
   };
 }
 
-export function useCryptoHoldings() {
-  return useQuery({ queryKey: ["crypto-holdings"], queryFn: fetchCryptoHoldings });
+export function useCryptoPortfolios(includeArchived = false) {
+  return useQuery({
+    queryKey: ["crypto-portfolios", includeArchived],
+    queryFn: () => fetchCryptoPortfolios(includeArchived),
+  });
 }
 
-export function useCryptoHistory(range: CryptoRange) {
-  return useQuery({ queryKey: ["crypto-history", range], queryFn: () => fetchCryptoHistory(range) });
+export function useCreateCryptoPortfolio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CryptoPortfolioInput) => createCryptoPortfolio(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["crypto-portfolios"] }),
+  });
+}
+
+export function useUpdateCryptoPortfolio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: Partial<CryptoPortfolioInput> }) =>
+      updateCryptoPortfolio(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["crypto-portfolios"] }),
+  });
+}
+
+export function useDeleteCryptoPortfolio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deleteCryptoPortfolio(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["crypto-portfolios"] }),
+  });
+}
+
+export function useCryptoHoldings(portfolioId?: number | null) {
+  return useQuery({
+    queryKey: ["crypto-holdings", portfolioId ?? null],
+    queryFn: () => fetchCryptoHoldings(portfolioId),
+  });
+}
+
+export function useCryptoHistory(range: CryptoRange, portfolioId?: number | null) {
+  return useQuery({
+    queryKey: ["crypto-history", range, portfolioId ?? null],
+    queryFn: () => fetchCryptoHistory(range, portfolioId),
+  });
 }
 
 export function useCryptoTransactions(assetId: number | null) {
@@ -42,7 +84,10 @@ export function useCryptoTransactions(assetId: number | null) {
 
 export function useRefreshCryptoPrices() {
   const invalidate = useInvalidateCrypto();
-  return useMutation({ mutationFn: refreshCryptoPrices, onSuccess: invalidate });
+  // Always a bare call — sync covers every portfolio regardless of which
+  // tab is active (see refresh_prices' own docstring), so there's no
+  // portfolio_id variable for callers to pass here.
+  return useMutation({ mutationFn: () => refreshCryptoPrices(), onSuccess: invalidate });
 }
 
 export function useCreateCryptoHolding() {

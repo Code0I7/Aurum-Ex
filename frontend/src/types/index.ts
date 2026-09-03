@@ -423,8 +423,21 @@ export interface FinancialAlert {
 
 export type CryptoTransactionType = "buy" | "sell";
 
+export interface CryptoPortfolio {
+  id: number;
+  name: string;
+  color: string | null;
+  is_archived: boolean;
+}
+
+export interface CryptoPortfolioInput {
+  name: string;
+  is_archived?: boolean;
+}
+
 export interface CryptoHolding {
   asset_id: number;
+  portfolio_id: number;
   coingecko_id: string;
   symbol: string;
   name: string;
@@ -447,6 +460,10 @@ export interface CryptoHolding {
 }
 
 export interface CryptoHoldingCreateInput {
+  // Omit to file the coin under the default portfolio (auto-created if
+  // none exists yet — see services/crypto_service.py's
+  // get_or_create_default_portfolio).
+  portfolio_id?: number | null;
   coingecko_id: string;
   symbol: string;
   name: string;

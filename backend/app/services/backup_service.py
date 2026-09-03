@@ -21,7 +21,7 @@ from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
 from app.models.budget import Budget
 from app.models.category import Category
-from app.models.crypto import CryptoHolding, CryptoTransaction
+from app.models.crypto import CryptoHolding, CryptoPortfolio, CryptoTransaction
 from app.models.goal import Goal, GoalContribution
 from app.models.recurring import RecurringTransaction
 from app.models.settings import AppSettings
@@ -36,6 +36,7 @@ from app.schemas.backup import (
     BudgetBackup,
     CategoryBackup,
     CryptoHoldingBackup,
+    CryptoPortfolioBackup,
     CryptoTransactionBackup,
     GoalBackup,
     GoalContributionBackup,
@@ -56,6 +57,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     transaction_splits = (await session.execute(select(TransactionSplit))).scalars().all()
     assets = (await session.execute(select(Asset))).scalars().all()
     valuations = (await session.execute(select(AssetValuation))).scalars().all()
+    crypto_portfolios = (await session.execute(select(CryptoPortfolio))).scalars().all()
     crypto_holdings = (await session.execute(select(CryptoHolding))).scalars().all()
     crypto_transactions = (await session.execute(select(CryptoTransaction))).scalars().all()
     budgets = (await session.execute(select(Budget))).scalars().all()
@@ -80,6 +82,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         transaction_splits=[TransactionSplitBackup.model_validate(row) for row in transaction_splits],
         assets=[AssetBackup.model_validate(row) for row in assets],
         asset_valuations=[AssetValuationBackup.model_validate(row) for row in valuations],
+        crypto_portfolios=[CryptoPortfolioBackup.model_validate(row) for row in crypto_portfolios],
         crypto_holdings=[CryptoHoldingBackup.model_validate(row) for row in crypto_holdings],
         crypto_transactions=[CryptoTransactionBackup.model_validate(row) for row in crypto_transactions],
         budgets=[BudgetBackup.model_validate(row) for row in budgets],
@@ -124,10 +127,18 @@ def _validate_references(payload: BackupPayload) -> None:
         if v.asset_id not in asset_ids:
             raise HTTPException(400, f"Asset valuation {v.id} references unknown asset_id {v.asset_id}")
 
+    crypto_portfolio_ids = {p.id for p in payload.crypto_portfolios}
     crypto_holding_asset_ids = {h.asset_id for h in payload.crypto_holdings}
     for h in payload.crypto_holdings:
         if h.asset_id not in asset_ids:
             raise HTTPException(400, f"Crypto holding {h.asset_id} references unknown asset_id {h.asset_id}")
+        # portfolio_id is allowed to be None (a pre-portfolios backup) — that
+        # case is resolved to an auto-created fallback portfolio at restore
+        # time, not validated here.
+        if h.portfolio_id is not None and h.portfolio_id not in crypto_portfolio_ids:
+            raise HTTPException(
+                400, f"Crypto holding {h.asset_id} references unknown portfolio_id {h.portfolio_id}"
+            )
 
     for tx in payload.crypto_transactions:
         if tx.asset_id not in crypto_holding_asset_ids:
@@ -182,6 +193,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await session.execute(delete(AssetValuation))
         await session.execute(delete(CryptoTransaction))
         await session.execute(delete(CryptoHolding))
+        await session.execute(delete(CryptoPortfolio))
         await session.execute(delete(Budget))
         await session.execute(delete(GoalContribution))
         await session.execute(delete(Goal))
@@ -223,7 +235,30 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         session.add_all(TransactionSplit(**row.model_dump()) for row in payload.transaction_splits)
 
         session.add_all(AssetValuation(**row.model_dump()) for row in payload.asset_valuations)
-        session.add_all(CryptoHolding(**row.model_dump()) for row in payload.crypto_holdings)
+
+        session.add_all(CryptoPortfolio(**row.model_dump()) for row in payload.crypto_portfolios)
+        # A pre-portfolios backup has no crypto_portfolios and every holding's
+        # portfolio_id is None — give those holdings a freshly created
+        # fallback portfolio instead of leaving the NOT NULL column unset.
+        # Wired up via the `portfolio` relationship (not a raw portfolio_id
+        # int) because the fallback row has no id yet — same "assign the
+        # relationship, not the id column, before flush" reasoning as
+        # transactions_by_id/tags_by_id above.
+        fallback_portfolio: CryptoPortfolio | None = None
+        if any(row.portfolio_id is None for row in payload.crypto_holdings):
+            fallback_portfolio = CryptoPortfolio(name="Main Portfolio", color="#2a78d6")
+            session.add(fallback_portfolio)
+
+        crypto_holdings = []
+        for row in payload.crypto_holdings:
+            holding = CryptoHolding(**row.model_dump(exclude={"portfolio_id"}))
+            if row.portfolio_id is not None:
+                holding.portfolio_id = row.portfolio_id
+            else:
+                holding.portfolio = fallback_portfolio
+            crypto_holdings.append(holding)
+        session.add_all(crypto_holdings)
+
         session.add_all(CryptoTransaction(**row.model_dump()) for row in payload.crypto_transactions)
         session.add_all(Budget(**row.model_dump()) for row in payload.budgets)
         session.add_all(Goal(**row.model_dump()) for row in payload.goals)
@@ -244,6 +279,10 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await _reset_sequence(session, "transactions", payload.transactions)
         await _reset_sequence(session, "transaction_splits", payload.transaction_splits)
         await _reset_sequence(session, "asset_valuations", payload.asset_valuations)
+        # Only needed for explicit-id portfolios from payload — a fallback
+        # portfolio (no payload row) already got its id from the sequence
+        # itself, so the sequence is already correctly positioned for it.
+        await _reset_sequence(session, "crypto_portfolios", payload.crypto_portfolios)
         await _reset_sequence(session, "crypto_transactions", payload.crypto_transactions)
         await _reset_sequence(session, "budgets", payload.budgets)
         await _reset_sequence(session, "goals", payload.goals)

@@ -1,7 +1,7 @@
 import { Bitcoin, Plus, Trash2 } from "lucide-react";
 import { formatCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding } from "@/types";
+import type { CryptoHolding, CryptoPortfolio } from "@/types";
 
 interface CryptoHoldingsTableProps {
   items: CryptoHolding[];
@@ -9,6 +9,11 @@ interface CryptoHoldingsTableProps {
   onTrade: (holding: CryptoHolding) => void;
   onViewHistory: (holding: CryptoHolding) => void;
   onDelete: (holding: CryptoHolding) => void;
+  // Only passed while viewing the "All" tab — renders each row's portfolio
+  // as a small colored badge under the coin name so it's still clear which
+  // portfolio it belongs to. Omitted while a single portfolio is selected,
+  // since every row would carry the same badge.
+  portfoliosById?: Map<number, CryptoPortfolio>;
 }
 
 function PercentCell({ value }: { value: string | null }) {
@@ -23,7 +28,14 @@ function PercentCell({ value }: { value: string | null }) {
   );
 }
 
-export function CryptoHoldingsTable({ items, hidden, onTrade, onViewHistory, onDelete }: CryptoHoldingsTableProps) {
+export function CryptoHoldingsTable({
+  items,
+  hidden,
+  onTrade,
+  onViewHistory,
+  onDelete,
+  portfoliosById,
+}: CryptoHoldingsTableProps) {
   const { t } = useTranslation();
 
   if (items.length === 0) {
@@ -75,7 +87,20 @@ export function CryptoHoldingsTable({ items, hidden, onTrade, onViewHistory, onD
                     )}
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-text-primary">{holding.name}</span>
-                      <span className="block text-xs text-text-muted">{holding.symbol}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-text-muted">
+                        {holding.symbol}
+                        {portfoliosById && (
+                          <span className="flex items-center gap-1 truncate">
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: portfoliosById.get(holding.portfolio_id)?.color ?? "var(--text-muted)",
+                              }}
+                            />
+                            <span className="truncate">{portfoliosById.get(holding.portfolio_id)?.name}</span>
+                          </span>
+                        )}
+                      </span>
                     </span>
                   </div>
                 </td>

@@ -9,17 +9,42 @@ CryptoTransaction log (same "you record it, we derive it" shape as
 Goal/GoalContribution), because a sell doesn't just subtract quantity, it
 also has to leave the average cost basis of what's still held unchanged
 (see services/crypto_service.py's _compute_position).
+
+Every holding also belongs to a CryptoPortfolio (below) — a user-defined
+group like "long-term" or "memes" — so the same coin can be tracked
+separately in more than one portfolio (each as its own CryptoHolding row,
+since coingecko_id is deliberately not unique).
 """
 from datetime import date as date_
 from datetime import datetime
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.asset import Asset
 from app.models.enums import CryptoTransactionType
 from app.models.mixins import TimestampMixin
+
+
+class CryptoPortfolio(Base, TimestampMixin):
+    """A user-defined grouping of crypto holdings (e.g. "long-term",
+    "real estate fund", "memes") — same shape as Account (id, name, color,
+    is_archived), but scoped to the Crypto tab instead of Transactions.
+    Every CryptoHolding belongs to exactly one portfolio (see
+    CryptoHolding.portfolio_id below); there's no "ungrouped" state."""
+
+    __tablename__ = "crypto_portfolios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Hex color for the portfolio's tab dot — auto-assigned from the app's
+    # categorical palette at creation time (see services/crypto_service.py's
+    # _next_portfolio_color), not user-editable, same as Account.color.
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    holdings: Mapped[list["CryptoHolding"]] = relationship(back_populates="portfolio")
 
 
 class CryptoHolding(Base, TimestampMixin):
@@ -33,6 +58,13 @@ class CryptoHolding(Base, TimestampMixin):
     __tablename__ = "crypto_holdings"
 
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    # Which portfolio this coin is tracked under (see CryptoPortfolio above).
+    # RESTRICT, not CASCADE: deleting a non-empty portfolio is blocked at the
+    # service layer (services/crypto_service.py's delete_portfolio) rather
+    # than silently taking its holdings down with it.
+    portfolio_id: Mapped[int] = mapped_column(
+        ForeignKey("crypto_portfolios.id", ondelete="RESTRICT"), nullable=False
+    )
 
     # CoinGecko's stable coin id (e.g. "bitcoin") — NOT the ticker symbol,
     # which collides across unrelated coins (CoinGecko lists dozens of
@@ -53,6 +85,7 @@ class CryptoHolding(Base, TimestampMixin):
     price_change_7d: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
 
     asset: Mapped["Asset"] = relationship()
+    portfolio: Mapped["CryptoPortfolio"] = relationship(back_populates="holdings")
     transactions: Mapped[list["CryptoTransaction"]] = relationship(
         back_populates="holding", cascade="all, delete-orphan", order_by="CryptoTransaction.date"
     )

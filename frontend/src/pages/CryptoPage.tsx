@@ -1,17 +1,25 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoAddModal } from "@/components/crypto/CryptoAddModal";
 import { CryptoHoldingsTable } from "@/components/crypto/CryptoHoldingsTable";
 import { CryptoOverviewCard } from "@/components/crypto/CryptoOverviewCard";
+import { CryptoPortfolioFormModal } from "@/components/crypto/CryptoPortfolioFormModal";
+import { CryptoPortfolioTabs } from "@/components/crypto/CryptoPortfolioTabs";
 import { CryptoStatsRow } from "@/components/crypto/CryptoStatsRow";
 import { CryptoTransactionHistoryModal } from "@/components/crypto/CryptoTransactionHistoryModal";
 import { CryptoTransactionModal } from "@/components/crypto/CryptoTransactionModal";
-import { useCryptoHistory, useCryptoHoldings, useDeleteCryptoHolding, useRefreshCryptoPrices } from "@/hooks/useCrypto";
+import {
+  useCryptoHistory,
+  useCryptoHoldings,
+  useCryptoPortfolios,
+  useDeleteCryptoHolding,
+  useRefreshCryptoPrices,
+} from "@/hooks/useCrypto";
 import { getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding, CryptoRange, CryptoTransaction } from "@/types";
+import type { CryptoHolding, CryptoPortfolio, CryptoRange, CryptoTransaction } from "@/types";
 
 function formatSyncedAt(iso: string): string {
   return new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -25,12 +33,17 @@ export function CryptoPage() {
   // history) masks together instead of the toggle only affecting whichever
   // component happened to own it.
   const [hidden, setHidden] = useState(false);
-  const { data, isLoading } = useCryptoHoldings();
-  const { data: history, isLoading: isHistoryLoading } = useCryptoHistory(range);
+  // null = "All portfolios" tab.
+  const [portfolioFilter, setPortfolioFilter] = useState<number | null>(null);
+  const { data: portfolios } = useCryptoPortfolios();
+  const { data, isLoading } = useCryptoHoldings(portfolioFilter);
+  const { data: history, isLoading: isHistoryLoading } = useCryptoHistory(range, portfolioFilter);
   const refresh = useRefreshCryptoPrices();
   const deleteHolding = useDeleteCryptoHolding();
 
   const [addOpen, setAddOpen] = useState(false);
+  const [editingPortfolio, setEditingPortfolio] = useState<CryptoPortfolio | null>(null);
+  const [portfolioModalOpen, setPortfolioModalOpen] = useState(false);
   const [tradingHolding, setTradingHolding] = useState<CryptoHolding | null>(null);
   const [historyHolding, setHistoryHolding] = useState<CryptoHolding | null>(null);
   // Set together with tradingHolding when editing an entry from the history
@@ -41,6 +54,17 @@ export function CryptoPage() {
 
   const holdings = data?.holdings ?? [];
   const totalValue = holdings.reduce((sum, holding) => sum + (holding.value !== null ? Number(holding.value) : 0), 0);
+  const portfoliosById = useMemo(() => new Map((portfolios ?? []).map((p) => [p.id, p])), [portfolios]);
+
+  function openAddPortfolioModal() {
+    setEditingPortfolio(null);
+    setPortfolioModalOpen(true);
+  }
+
+  function openEditPortfolioModal(portfolio: CryptoPortfolio) {
+    setEditingPortfolio(portfolio);
+    setPortfolioModalOpen(true);
+  }
 
   function handleDelete(holding: CryptoHolding) {
     if (window.confirm(t("crypto.confirmDelete", { name: holding.name }))) {
@@ -66,6 +90,14 @@ export function CryptoPage() {
 
   return (
     <div className="space-y-5">
+      <CryptoPortfolioTabs
+        portfolios={portfolios ?? []}
+        activeId={portfolioFilter}
+        onChange={setPortfolioFilter}
+        onAdd={openAddPortfolioModal}
+        onEdit={openEditPortfolioModal}
+      />
+
       <CryptoOverviewCard
         totalValue={totalValue}
         history={history}
@@ -113,13 +145,22 @@ export function CryptoPage() {
                 onTrade={openTradeModal}
                 onViewHistory={setHistoryHolding}
                 onDelete={handleDelete}
+                portfoliosById={portfolioFilter === null ? portfoliosById : undefined}
               />
             </>
           )}
         </CardContent>
       </Card>
 
-      <CryptoAddModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <CryptoAddModal open={addOpen} onClose={() => setAddOpen(false)} defaultPortfolioId={portfolioFilter} />
+      <CryptoPortfolioFormModal
+        open={portfolioModalOpen}
+        onClose={() => setPortfolioModalOpen(false)}
+        portfolio={editingPortfolio}
+        onDeleted={() => {
+          if (editingPortfolio && portfolioFilter === editingPortfolio.id) setPortfolioFilter(null);
+        }}
+      />
       <CryptoTransactionModal
         open={tradingHolding !== null}
         onClose={closeTradeModal}

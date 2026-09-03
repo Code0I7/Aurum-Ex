@@ -106,6 +106,15 @@ class AssetValuationBackup(BaseModel):
     as_of_date: date_
 
 
+class CryptoPortfolioBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    color: str | None
+    is_archived: bool
+
+
 class CryptoHoldingBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -114,6 +123,11 @@ class CryptoHoldingBackup(BaseModel):
     # quantity here — it's derived from crypto_transactions below, not
     # stored.
     asset_id: int
+    # Defaulted so a backup exported before crypto portfolios existed still
+    # imports cleanly under the same format version — restore_backup()
+    # resolves a missing/unknown portfolio_id to an auto-created fallback
+    # portfolio (see services/backup_service.py).
+    portfolio_id: int | None = None
     coingecko_id: str
     symbol: str
     name: str
@@ -217,8 +231,9 @@ class BackupPayload(BaseModel):
     transaction_splits: list[TransactionSplitBackup] = Field(default_factory=list)
     assets: list[AssetBackup]
     asset_valuations: list[AssetValuationBackup]
-    # Defaulted so a backup exported before crypto holdings existed still
-    # imports cleanly under the same format version.
+    # Defaulted so a backup exported before crypto holdings/portfolios
+    # existed still imports cleanly under the same format version.
+    crypto_portfolios: list[CryptoPortfolioBackup] = Field(default_factory=list)
     crypto_holdings: list[CryptoHoldingBackup] = Field(default_factory=list)
     crypto_transactions: list[CryptoTransactionBackup] = Field(default_factory=list)
     # Defaulted so a backup exported before budgets existed still imports

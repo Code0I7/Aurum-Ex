@@ -3,6 +3,8 @@ import type {
   CryptoHistoryResponse,
   CryptoHolding,
   CryptoHoldingCreateInput,
+  CryptoPortfolio,
+  CryptoPortfolioInput,
   CryptoRange,
   CryptoSearchResult,
   CryptoSyncResult,
@@ -10,14 +12,34 @@ import type {
   CryptoTransactionInput,
 } from "@/types";
 
-// Also triggers the lazy once-a-day auto-refresh server-side — see
-// services/crypto_service.py.
-export function fetchCryptoHoldings() {
-  return api.get<CryptoSyncResult>("/crypto/holdings");
+export function fetchCryptoPortfolios(includeArchived = false) {
+  return api.get<CryptoPortfolio[]>(`/crypto/portfolios?include_archived=${includeArchived}`);
 }
 
-export function refreshCryptoPrices() {
-  return api.post<CryptoSyncResult>("/crypto/refresh", {});
+export function createCryptoPortfolio(input: CryptoPortfolioInput) {
+  return api.post<CryptoPortfolio>("/crypto/portfolios", input);
+}
+
+export function updateCryptoPortfolio(portfolioId: number, input: Partial<CryptoPortfolioInput>) {
+  return api.patch<CryptoPortfolio>(`/crypto/portfolios/${portfolioId}`, input);
+}
+
+export function deleteCryptoPortfolio(portfolioId: number) {
+  return api.delete<void>(`/crypto/portfolios/${portfolioId}`);
+}
+
+// Also triggers the lazy once-a-day auto-refresh server-side — see
+// services/crypto_service.py. `portfolioId` only narrows what comes back in
+// `holdings` — the sync itself (and the 24h window) always covers every
+// portfolio, see refresh_prices' own docstring.
+export function fetchCryptoHoldings(portfolioId?: number | null) {
+  const query = portfolioId != null ? `?portfolio_id=${portfolioId}` : "";
+  return api.get<CryptoSyncResult>(`/crypto/holdings${query}`);
+}
+
+export function refreshCryptoPrices(portfolioId?: number | null) {
+  const query = portfolioId != null ? `?portfolio_id=${portfolioId}` : "";
+  return api.post<CryptoSyncResult>(`/crypto/refresh${query}`, {});
 }
 
 export function createCryptoHolding(input: CryptoHoldingCreateInput) {
@@ -52,6 +74,7 @@ export function searchCryptoCoins(query: string) {
   return api.get<CryptoSearchResult[]>(`/crypto/search?q=${encodeURIComponent(query)}`);
 }
 
-export function fetchCryptoHistory(range: CryptoRange) {
-  return api.get<CryptoHistoryResponse>(`/crypto/history?range=${range}`);
+export function fetchCryptoHistory(range: CryptoRange, portfolioId?: number | null) {
+  const query = portfolioId != null ? `&portfolio_id=${portfolioId}` : "";
+  return api.get<CryptoHistoryResponse>(`/crypto/history?range=${range}${query}`);
 }

@@ -273,6 +273,59 @@ async def test_backup_roundtrip_preserves_holding_and_transaction_log(client: As
     assert money(restored["value"]) == money("100000")  # last_price survived too (2 * 50000)
 
 
+async def test_backup_roundtrip_preserves_portfolio_assignment(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    portfolio = (await client.post("/crypto/portfolios", json={"name": "Long-term"})).json()
+    resp = await client.post(
+        "/crypto/holdings",
+        json={
+            "portfolio_id": portfolio["id"],
+            "coingecko_id": "bitcoin",
+            "symbol": "btc",
+            "name": "Bitcoin",
+            "quantity": "1",
+            "price_per_unit": "40000",
+            "date": "2026-01-01",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    payload = (await client.get("/backup/export")).json()
+    assert len(payload["crypto_portfolios"]) == 1
+    assert payload["crypto_holdings"][0]["portfolio_id"] == portfolio["id"]
+
+    import_resp = await client.post("/backup/import", json=payload)
+    assert import_resp.status_code == 200, import_resp.text
+
+    restored_portfolios = (await client.get("/crypto/portfolios")).json()
+    assert len(restored_portfolios) == 1
+    assert restored_portfolios[0]["name"] == "Long-term"
+    restored_holding = (await client.get("/crypto/holdings")).json()["holdings"][0]
+    assert restored_holding["portfolio_id"] == restored_portfolios[0]["id"]
+
+
+async def test_restoring_a_pre_portfolios_backup_falls_back_to_a_default_portfolio(client: AsyncClient, monkeypatch):
+    """A backup exported before crypto portfolios existed has no
+    crypto_portfolios list and every holding's portfolio_id is absent —
+    restore_backup() must still produce a valid NOT NULL portfolio_id
+    instead of failing the import."""
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, "1", "40000")
+
+    payload = (await client.get("/backup/export")).json()
+    payload["crypto_portfolios"] = []
+    payload["crypto_holdings"][0]["portfolio_id"] = None
+
+    import_resp = await client.post("/backup/import", json=payload)
+    assert import_resp.status_code == 200, import_resp.text
+
+    restored_portfolios = (await client.get("/crypto/portfolios")).json()
+    assert len(restored_portfolios) == 1
+    restored_holding = (await client.get("/crypto/holdings")).json()["holdings"][0]
+    assert restored_holding["asset_id"] == holding["asset_id"]
+    assert restored_holding["portfolio_id"] == restored_portfolios[0]["id"]
+
+
 async def test_history_reflects_current_total_crypto_value(client: AsyncClient, monkeypatch):
     monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
     await _add_bitcoin(client, "1", "40000")
@@ -358,3 +411,105 @@ async def test_update_transaction_404_for_unknown_id(client: AsyncClient):
     resp = await client.patch("/crypto/transactions/999999", json={"quantity": "1"})
 
     assert resp.status_code == 404
+
+
+async def test_holding_without_portfolio_id_lands_in_an_auto_created_default(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client)
+
+    portfolios = (await client.get("/crypto/portfolios")).json()
+    assert len(portfolios) == 1
+    assert portfolios[0]["name"] == "Main Portfolio"
+    assert holding["portfolio_id"] == portfolios[0]["id"]
+
+
+async def test_create_portfolio_and_file_a_holding_under_it(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+
+    created = await client.post("/crypto/portfolios", json={"name": "Long-term"})
+    assert created.status_code == 201, created.text
+    portfolio = created.json()
+    assert portfolio["name"] == "Long-term"
+    assert portfolio["is_archived"] is False
+
+    resp = await client.post(
+        "/crypto/holdings",
+        json={
+            "portfolio_id": portfolio["id"],
+            "coingecko_id": "bitcoin",
+            "symbol": "btc",
+            "name": "Bitcoin",
+            "quantity": "0.5",
+            "price_per_unit": "40000",
+            "date": "2026-01-01",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["portfolio_id"] == portfolio["id"]
+
+
+async def test_same_coin_can_be_tracked_separately_in_two_portfolios(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    memes = (await client.post("/crypto/portfolios", json={"name": "Memes"})).json()
+    longterm = (await client.post("/crypto/portfolios", json={"name": "Long-term"})).json()
+
+    async def add(portfolio_id, quantity):
+        resp = await client.post(
+            "/crypto/holdings",
+            json={
+                "portfolio_id": portfolio_id,
+                "coingecko_id": "bitcoin",
+                "symbol": "btc",
+                "name": "Bitcoin",
+                "quantity": quantity,
+                "price_per_unit": "40000",
+                "date": "2026-01-01",
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    await add(memes["id"], "1")
+    await add(longterm["id"], "2")
+
+    all_holdings = (await client.get("/crypto/holdings")).json()["holdings"]
+    assert len(all_holdings) == 2
+
+    memes_holdings = (await client.get(f"/crypto/holdings?portfolio_id={memes['id']}")).json()["holdings"]
+    assert len(memes_holdings) == 1
+    assert money(memes_holdings[0]["quantity"]) == money("1")
+
+    longterm_history = (await client.get(f"/crypto/history?range=30d&portfolio_id={longterm['id']}")).json()
+    assert money(longterm_history["current"]) == money("100000")  # 2 * 50000, memes' 1 BTC excluded
+
+
+async def test_deleting_a_nonempty_portfolio_is_rejected(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client)
+    portfolio_id = holding["portfolio_id"]
+
+    resp = await client.delete(f"/crypto/portfolios/{portfolio_id}")
+
+    assert resp.status_code == 400
+
+
+async def test_archived_portfolios_are_excluded_by_default(client: AsyncClient):
+    portfolio = (await client.post("/crypto/portfolios", json={"name": "Old fund"})).json()
+
+    await client.patch(f"/crypto/portfolios/{portfolio['id']}", json={"is_archived": True})
+
+    visible = (await client.get("/crypto/portfolios")).json()
+    assert visible == []
+
+    with_archived = (await client.get("/crypto/portfolios?include_archived=true")).json()
+    assert len(with_archived) == 1
+    assert with_archived[0]["is_archived"] is True
+
+
+async def test_empty_archived_portfolio_can_be_deleted(client: AsyncClient):
+    portfolio = (await client.post("/crypto/portfolios", json={"name": "Unused"})).json()
+
+    resp = await client.delete(f"/crypto/portfolios/{portfolio['id']}")
+
+    assert resp.status_code == 204
+    assert (await client.get("/crypto/portfolios")).json() == []

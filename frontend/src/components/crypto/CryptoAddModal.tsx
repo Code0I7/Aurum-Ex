@@ -3,28 +3,34 @@ import { ApiError } from "@/api/client";
 import { searchCryptoCoins } from "@/api/crypto";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { Input, Label } from "@/components/ui/Input";
-import { useCreateCryptoHolding } from "@/hooks/useCrypto";
+import { Input, Label, Select } from "@/components/ui/Input";
+import { useCreateCryptoHolding, useCryptoPortfolios } from "@/hooks/useCrypto";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoSearchResult } from "@/types";
 
 interface CryptoAddModalProps {
   open: boolean;
   onClose: () => void;
+  // The portfolio tab active on the Crypto page when "+" was clicked — pre-
+  // selects that portfolio here instead of always defaulting to the first
+  // one. Null (the "All" tab) falls back to the first portfolio in the list.
+  defaultPortfolioId?: number | null;
 }
 
 /** Two phases in one dialog: search CoinGecko for a coin, then pick one and
  * enter how much of it is held. No separate multi-step wizard — unlike CSV
  * import, there's nothing here worth a dedicated page for. */
-export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
+export function CryptoAddModal({ open, onClose, defaultPortfolioId }: CryptoAddModalProps) {
   const { t } = useTranslation();
   const createHolding = useCreateCryptoHolding();
+  const { data: portfolios } = useCryptoPortfolios();
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CryptoSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<CryptoSearchResult | null>(null);
+  const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("");
   const [pricePerUnit, setPricePerUnit] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -41,6 +47,18 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
     setSearchError(null);
     setSaveError(null);
   }, [open]);
+
+  // Re-picked every time the dialog opens or the portfolio list loads —
+  // covers both "opened from a specific tab" and "opened from All before
+  // any portfolio existed yet, then the default one got created".
+  useEffect(() => {
+    if (!open) return;
+    if (defaultPortfolioId != null) {
+      setPortfolioId(defaultPortfolioId);
+    } else if (portfolios && portfolios.length > 0) {
+      setPortfolioId((current) => (current !== null && portfolios.some((p) => p.id === current) ? current : portfolios[0].id));
+    }
+  }, [open, defaultPortfolioId, portfolios]);
 
   useEffect(() => {
     if (!open || selected) return;
@@ -73,6 +91,7 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
     setSaveError(null);
     try {
       await createHolding.mutateAsync({
+        portfolio_id: portfolioId,
         coingecko_id: selected.coingecko_id,
         symbol: selected.symbol,
         name: selected.name,
@@ -144,6 +163,23 @@ export function CryptoAddModal({ open, onClose }: CryptoAddModalProps) {
               <span className="block text-xs text-text-muted">{selected.symbol}</span>
             </span>
           </div>
+
+          {portfolios && portfolios.length > 1 && (
+            <div>
+              <Label htmlFor="crypto-portfolio">{t("crypto.portfolio.form.nameLabel")}</Label>
+              <Select
+                id="crypto-portfolio"
+                value={portfolioId ?? ""}
+                onChange={(event) => setPortfolioId(Number(event.target.value))}
+              >
+                {portfolios.map((portfolio) => (
+                  <option key={portfolio.id} value={portfolio.id}>
+                    {portfolio.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

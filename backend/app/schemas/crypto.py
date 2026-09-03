@@ -39,7 +39,29 @@ class CryptoTransactionRead(BaseModel):
     note: str | None
 
 
+class CryptoPortfolioCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class CryptoPortfolioUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    is_archived: bool | None = None
+
+
+class CryptoPortfolioRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    color: str | None
+    is_archived: bool
+
+
 class CryptoHoldingCreate(BaseModel):
+    # Which portfolio to file this coin under — omit to use the default
+    # portfolio (the earliest-created one, auto-created if none exists yet;
+    # see services/crypto_service.py's get_or_create_default_portfolio).
+    portfolio_id: int | None = None
     coingecko_id: str = Field(min_length=1, max_length=100)
     symbol: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=150)
@@ -54,6 +76,7 @@ class CryptoHoldingCreate(BaseModel):
 
 class CryptoHoldingRead(BaseModel):
     asset_id: int
+    portfolio_id: int
     coingecko_id: str
     symbol: str
     name: str
