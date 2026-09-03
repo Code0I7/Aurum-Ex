@@ -83,6 +83,13 @@ class CryptoHolding(Base, TimestampMixin):
     price_change_1h: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
     price_change_24h: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
     price_change_7d: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
+    # 30d and 1y ride along on the same batched CoinGecko call as the three
+    # above — no extra API cost. 1y stands in for "all time" on the Crypto
+    # tab's Best/Worst Performer stat (see routes/crypto.py): CoinGecko's
+    # free tier caps historical lookback at 365 days regardless, so 1y is
+    # already the most "all time" this API key can ever give us.
+    price_change_30d: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
+    price_change_1y: Mapped[Numeric | None] = mapped_column(Numeric(10, 4), nullable=True)
 
     asset: Mapped["Asset"] = relationship()
     portfolio: Mapped["CryptoPortfolio"] = relationship(back_populates="holdings")

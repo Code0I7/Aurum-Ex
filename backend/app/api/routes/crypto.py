@@ -6,6 +6,7 @@ from app.schemas.crypto import (
     CryptoHistoryResponse,
     CryptoHoldingCreate,
     CryptoHoldingRead,
+    CryptoPerformanceResponse,
     CryptoPortfolioCreate,
     CryptoPortfolioRead,
     CryptoPortfolioUpdate,
@@ -22,6 +23,7 @@ from app.services.crypto_service import (
     create_portfolio,
     delete_portfolio,
     delete_transaction,
+    get_90d_performance,
     get_crypto_history,
     list_portfolios,
     list_transactions,
@@ -130,3 +132,13 @@ async def read_crypto_history(
     session: AsyncSession = Depends(get_session),
 ) -> CryptoHistoryResponse:
     return await get_crypto_history(session, range, portfolio_id)
+
+
+@router.get("/performance/90d", response_model=CryptoPerformanceResponse)
+async def read_90d_performance(
+    portfolio_id: int | None = None, session: AsyncSession = Depends(get_session)
+) -> CryptoPerformanceResponse:
+    """Backs the Best/Worst Performer stat only while the 90d range is
+    selected — see get_90d_performance's docstring for why this is a
+    separate on-demand call instead of a cached field like 7d/30d/1y."""
+    return await get_90d_performance(session, portfolio_id)

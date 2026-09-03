@@ -2,12 +2,21 @@ import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/Card";
 import { formatCurrency, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { CryptoHolding } from "@/types";
+import type { CryptoHolding, CryptoRange } from "@/types";
 
 interface CryptoStatsRowProps {
   holdings: CryptoHolding[];
   isLoading: boolean;
   hidden: boolean;
+  // Which window Best/Worst Performer measures price move over — kept in
+  // sync with the History chart's own range selector one level up, so
+  // switching one switches both (see CryptoPage).
+  range: CryptoRange;
+  // Real per-coin 90d % change, fetched on demand only while range==="90d"
+  // (see services/crypto_service.py's get_90d_performance) — undefined
+  // while that fetch is still in flight.
+  performance90d?: Map<number, number | null>;
+  isPerformance90dLoading: boolean;
 }
 
 interface Totals {
@@ -15,28 +24,49 @@ interface Totals {
   totalCostBasis: number;
   totalProfitLoss: number;
   totalProfitLossPercent: number | null;
-  best: CryptoHolding | null;
-  worst: CryptoHolding | null;
+  best: { holding: CryptoHolding; percent: number } | null;
+  worst: { holding: CryptoHolding; percent: number } | null;
 }
 
-function computeTotals(holdings: CryptoHolding[]): Totals {
+// Best/Worst Performer compare coins against *each other* by market price
+// move over the selected window, not against what the user personally paid
+// — a coin bought yesterday at the top can still be "best performer" here
+// if it's simply up the most of anything held today, independent of entry
+// price/timing.
+function changePercentFor(
+  holding: CryptoHolding,
+  range: CryptoRange,
+  performance90d: Map<number, number | null> | undefined
+): number | null {
+  switch (range) {
+    case "7d":
+      return holding.price_change_7d !== null ? Number(holding.price_change_7d) : null;
+    case "30d":
+      return holding.price_change_30d !== null ? Number(holding.price_change_30d) : null;
+    case "90d":
+      return performance90d?.get(holding.asset_id) ?? null;
+    case "all":
+      return holding.price_change_1y !== null ? Number(holding.price_change_1y) : null;
+  }
+}
+
+function computeTotals(
+  holdings: CryptoHolding[],
+  range: CryptoRange,
+  performance90d: Map<number, number | null> | undefined
+): Totals {
   let totalValue = 0;
   let totalCostBasis = 0;
-  let best: CryptoHolding | null = null;
-  let worst: CryptoHolding | null = null;
+  let best: Totals["best"] = null;
+  let worst: Totals["worst"] = null;
 
   for (const holding of holdings) {
     if (holding.value !== null) totalValue += Number(holding.value);
     if (holding.cost_basis !== null) totalCostBasis += Number(holding.cost_basis);
-    // Best/Worst Performer compare coins against *each other* by market
-    // price move (24h % change), not against what the user personally paid
-    // — a coin someone bought yesterday at the top can still be "best
-    // performer" here if it's simply up the most of anything they hold
-    // today, independent of their own entry price/timing.
-    if (holding.price_change_24h === null) continue;
-    const change = Number(holding.price_change_24h);
-    if (best === null || change > Number(best.price_change_24h)) best = holding;
-    if (worst === null || change < Number(worst.price_change_24h)) worst = holding;
+    const percent = changePercentFor(holding, range, performance90d);
+    if (percent === null) continue;
+    if (best === null || percent > best.percent) best = { holding, percent };
+    if (worst === null || percent < worst.percent) worst = { holding, percent };
   }
 
   const totalProfitLoss = totalValue - totalCostBasis;
@@ -56,16 +86,37 @@ function StatTile({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function PerformerTile({ label, holding }: { label: string; holding: CryptoHolding | null }) {
+// Same labels CryptoRangeSelector shows on its own pills — "all" is the
+// only one actually translated there too.
+const RANGE_LABELS: Record<Exclude<CryptoRange, "all">, string> = { "7d": "7D", "30d": "30D", "90d": "90D" };
+
+function PerformerTile({
+  label,
+  entry,
+  rangeLabel,
+  isLoading,
+}: {
+  label: string;
+  entry: Totals["best"];
+  rangeLabel: string;
+  isLoading: boolean;
+}) {
   const { t } = useTranslation();
-  if (holding === null || holding.price_change_24h === null) {
+  if (isLoading) {
+    return (
+      <StatTile label={label}>
+        <p className="text-lg font-semibold text-text-muted">{t("common.loading")}</p>
+      </StatTile>
+    );
+  }
+  if (entry === null) {
     return (
       <StatTile label={label}>
         <p className="text-lg font-semibold text-text-muted">—</p>
       </StatTile>
     );
   }
-  const percent = Number(holding.price_change_24h);
+  const { holding, percent } = entry;
   const color = percent >= 0 ? "var(--success)" : "var(--danger)";
   return (
     <StatTile label={label}>
@@ -81,12 +132,19 @@ function PerformerTile({ label, holding }: { label: string; holding: CryptoHoldi
         {percent >= 0 ? "+" : ""}
         {percent.toFixed(2)}%
       </p>
-      <p className="mt-0.5 text-xs text-text-muted">{t("crypto.stats.change24h")}</p>
+      <p className="mt-0.5 text-xs text-text-muted">{t("crypto.stats.changeLabel", { range: rangeLabel })}</p>
     </StatTile>
   );
 }
 
-export function CryptoStatsRow({ holdings, isLoading, hidden }: CryptoStatsRowProps) {
+export function CryptoStatsRow({
+  holdings,
+  isLoading,
+  hidden,
+  range,
+  performance90d,
+  isPerformance90dLoading,
+}: CryptoStatsRowProps) {
   const { t } = useTranslation();
 
   if (isLoading) {
@@ -94,8 +152,10 @@ export function CryptoStatsRow({ holdings, isLoading, hidden }: CryptoStatsRowPr
   }
   if (holdings.length === 0) return null;
 
-  const totals = computeTotals(holdings);
+  const totals = computeTotals(holdings, range, performance90d);
   const profitColor = totals.totalProfitLoss >= 0 ? "var(--success)" : "var(--danger)";
+  const rangeLabel = range === "all" ? t("common.allShort") : RANGE_LABELS[range];
+  const performerLoading = range === "90d" && isPerformance90dLoading;
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -118,8 +178,18 @@ export function CryptoStatsRow({ holdings, isLoading, hidden }: CryptoStatsRowPr
         <p className="mt-0.5 text-xs text-text-muted">{t("crypto.stats.costBasisHint")}</p>
       </StatTile>
 
-      <PerformerTile label={t("crypto.stats.bestPerformer")} holding={totals.best} />
-      <PerformerTile label={t("crypto.stats.worstPerformer")} holding={totals.worst} />
+      <PerformerTile
+        label={t("crypto.stats.bestPerformer")}
+        entry={totals.best}
+        rangeLabel={rangeLabel}
+        isLoading={performerLoading}
+      />
+      <PerformerTile
+        label={t("crypto.stats.worstPerformer")}
+        entry={totals.worst}
+        rangeLabel={rangeLabel}
+        isLoading={performerLoading}
+      />
     </div>
   );
 }

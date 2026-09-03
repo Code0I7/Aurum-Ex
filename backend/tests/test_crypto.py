@@ -407,6 +407,108 @@ async def test_update_transaction_rejects_editing_a_sell_to_exceed_holdings(clie
     assert resp.status_code == 400
 
 
+async def test_refresh_updates_30d_and_1y_change(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    await _add_bitcoin(client, "0.5", "40000")
+
+    async def counting_fetch(coingecko_ids, vs_currency):
+        return {
+            "bitcoin": crypto_service._MarketPoint(
+                price=Decimal("60000"),
+                change_1h=None,
+                change_24h=None,
+                change_7d=None,
+                change_30d=Decimal("15.5"),
+                change_1y=Decimal("120.25"),
+            )
+        }
+
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", counting_fetch)
+
+    resp = await client.post("/crypto/refresh")
+
+    holding = resp.json()["holdings"][0]
+    assert money(holding["price_change_30d"]) == money("15.5")
+    assert money(holding["price_change_1y"]) == money("120.25")
+
+
+async def test_90d_performance_reflects_a_real_market_chart_fetch(client: AsyncClient, monkeypatch):
+    """The 90d Best/Worst Performer window can't ride along with the regular
+    sync (CoinGecko's /coins/markets has no 90d bucket) — it's a separate
+    on-demand fetch, monkeypatched here at the same seam _fetch_market_data
+    is patched at elsewhere in this file."""
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client)
+
+    async def fake_90d_change(client_, api_key, coingecko_id, vs_currency):
+        return 12.5 if coingecko_id == "bitcoin" else None
+
+    monkeypatch.setattr(crypto_service, "_fetch_90d_change", fake_90d_change)
+
+    resp = await client.get("/crypto/performance/90d")
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == [{"asset_id": holding["asset_id"], "price_change_percent": 12.5}]
+
+
+async def test_90d_performance_skips_fully_sold_holdings(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    holding = await _add_bitcoin(client, "1", "40000")
+    resp = await client.post(
+        f"/crypto/holdings/{holding['asset_id']}/transactions",
+        json={"type": "sell", "quantity": "1", "price_per_unit": "45000", "date": "2026-02-01"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    calls: list[str] = []
+
+    async def fake_90d_change(client_, api_key, coingecko_id, vs_currency):
+        calls.append(coingecko_id)
+        return 5.0
+
+    monkeypatch.setattr(crypto_service, "_fetch_90d_change", fake_90d_change)
+
+    resp = await client.get("/crypto/performance/90d")
+
+    assert resp.json()["items"] == []
+    assert calls == []  # a coin with zero quantity has nothing to fetch a price for
+
+
+async def test_90d_performance_filters_by_portfolio(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
+    portfolio_a = (await client.post("/crypto/portfolios", json={"name": "A"})).json()
+    portfolio_b = (await client.post("/crypto/portfolios", json={"name": "B"})).json()
+
+    async def add(portfolio_id):
+        resp = await client.post(
+            "/crypto/holdings",
+            json={
+                "portfolio_id": portfolio_id,
+                "coingecko_id": "bitcoin",
+                "symbol": "btc",
+                "name": "Bitcoin",
+                "quantity": "1",
+                "price_per_unit": "40000",
+                "date": "2026-01-01",
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    await add(portfolio_a["id"])
+    holding_b = await add(portfolio_b["id"])
+
+    async def fake_90d_change(client_, api_key, coingecko_id, vs_currency):
+        return 3.0
+
+    monkeypatch.setattr(crypto_service, "_fetch_90d_change", fake_90d_change)
+
+    resp = await client.get(f"/crypto/performance/90d?portfolio_id={portfolio_b['id']}")
+
+    items = resp.json()["items"]
+    assert [item["asset_id"] for item in items] == [holding_b["asset_id"]]
+
+
 async def test_update_transaction_404_for_unknown_id(client: AsyncClient):
     resp = await client.patch("/crypto/transactions/999999", json={"quantity": "1"})
 

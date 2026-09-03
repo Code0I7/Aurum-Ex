@@ -6,6 +6,7 @@ import {
   deleteCryptoHolding,
   deleteCryptoPortfolio,
   deleteCryptoTransaction,
+  fetchCrypto90dPerformance,
   fetchCryptoHistory,
   fetchCryptoHoldings,
   fetchCryptoPortfolios,
@@ -71,6 +72,17 @@ export function useCryptoHistory(range: CryptoRange, portfolioId?: number | null
   return useQuery({
     queryKey: ["crypto-history", range, portfolioId ?? null],
     queryFn: () => fetchCryptoHistory(range, portfolioId),
+  });
+}
+
+// Only fires while the 90d range is actually selected — a real CoinGecko
+// call per held coin (see get_90d_performance's docstring), not something
+// to run on every Crypto tab visit the way 7d/30d/1y already do for free.
+export function useCrypto90dPerformance(range: CryptoRange, portfolioId?: number | null) {
+  return useQuery({
+    queryKey: ["crypto-performance-90d", portfolioId ?? null],
+    queryFn: () => fetchCrypto90dPerformance(portfolioId),
+    enabled: range === "90d",
   });
 }
 

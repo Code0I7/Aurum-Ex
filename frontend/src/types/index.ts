@@ -453,6 +453,10 @@ export interface CryptoHolding {
   price_change_1h: string | null;
   price_change_24h: string | null;
   price_change_7d: string | null;
+  price_change_30d: string | null;
+  // Stands in for "all time" on the Best/Worst Performer stat — CoinGecko's
+  // free tier caps historical lookback at 365 days regardless.
+  price_change_1y: string | null;
   value: string | null;
   cost_basis: string | null;
   profit_loss: string | null;
@@ -505,6 +509,18 @@ export interface CryptoSearchResult {
   symbol: string;
   name: string;
   thumb_url: string | null;
+}
+
+// Real 90-day % price change per coin, fetched on demand only while the
+// 90d range is selected — see services/crypto_service.py's
+// get_90d_performance for why this can't ride along with the regular sync.
+export interface CryptoPerformancePoint {
+  asset_id: number;
+  price_change_percent: number | null;
+}
+
+export interface CryptoPerformanceResponse {
+  items: CryptoPerformancePoint[];
 }
 
 // No "24h" — the price history is only as dense as the sync cadence (see

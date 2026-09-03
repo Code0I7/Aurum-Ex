@@ -11,6 +11,7 @@ import { CryptoStatsRow } from "@/components/crypto/CryptoStatsRow";
 import { CryptoTransactionHistoryModal } from "@/components/crypto/CryptoTransactionHistoryModal";
 import { CryptoTransactionModal } from "@/components/crypto/CryptoTransactionModal";
 import {
+  useCrypto90dPerformance,
   useCryptoHistory,
   useCryptoHoldings,
   useCryptoPortfolios,
@@ -27,7 +28,9 @@ function formatSyncedAt(iso: string): string {
 
 export function CryptoPage() {
   const { t } = useTranslation();
-  const [range, setRange] = useState<CryptoRange>("30d");
+  // "all" by default — a 30-day window makes a portfolio that's actually
+  // grown steadily for years look demotivating whenever it's mid-dip.
+  const [range, setRange] = useState<CryptoRange>("all");
   // Single "hide balance" switch for the whole tab — owned here so every
   // money-displaying section (chart, stats, allocation, table, trade
   // history) masks together instead of the toggle only affecting whichever
@@ -38,6 +41,7 @@ export function CryptoPage() {
   const { data: portfolios } = useCryptoPortfolios();
   const { data, isLoading } = useCryptoHoldings(portfolioFilter);
   const { data: history, isLoading: isHistoryLoading } = useCryptoHistory(range, portfolioFilter);
+  const { data: performance90d, isLoading: isPerformance90dLoading } = useCrypto90dPerformance(range, portfolioFilter);
   const refresh = useRefreshCryptoPrices();
   const deleteHolding = useDeleteCryptoHolding();
 
@@ -55,6 +59,10 @@ export function CryptoPage() {
   const holdings = data?.holdings ?? [];
   const totalValue = holdings.reduce((sum, holding) => sum + (holding.value !== null ? Number(holding.value) : 0), 0);
   const portfoliosById = useMemo(() => new Map((portfolios ?? []).map((p) => [p.id, p])), [portfolios]);
+  const performance90dByAsset = useMemo(
+    () => new Map((performance90d?.items ?? []).map((item) => [item.asset_id, item.price_change_percent])),
+    [performance90d]
+  );
 
   function openAddPortfolioModal() {
     setEditingPortfolio(null);
@@ -110,7 +118,14 @@ export function CryptoPage() {
         onToggleHidden={() => setHidden((prev) => !prev)}
       />
 
-      <CryptoStatsRow holdings={holdings} isLoading={isLoading} hidden={hidden} />
+      <CryptoStatsRow
+        holdings={holdings}
+        isLoading={isLoading}
+        hidden={hidden}
+        range={range}
+        performance90d={performance90dByAsset}
+        isPerformance90dLoading={isPerformance90dLoading}
+      />
 
       <Card>
         <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">

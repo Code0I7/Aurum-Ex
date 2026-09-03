@@ -136,6 +136,10 @@ class CryptoHoldingBackup(BaseModel):
     price_change_1h: Decimal | None = None
     price_change_24h: Decimal | None = None
     price_change_7d: Decimal | None = None
+    # Defaulted so a backup exported before 30d/1y existed still imports
+    # cleanly under the same format version.
+    price_change_30d: Decimal | None = None
+    price_change_1y: Decimal | None = None
 
 
 class CryptoTransactionBackup(BaseModel):

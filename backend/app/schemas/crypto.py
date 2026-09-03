@@ -93,6 +93,11 @@ class CryptoHoldingRead(BaseModel):
     price_change_1h: Decimal | None
     price_change_24h: Decimal | None
     price_change_7d: Decimal | None
+    price_change_30d: Decimal | None
+    # Stands in for "all time" on the Best/Worst Performer stat — CoinGecko's
+    # free tier caps historical lookback at 365 days regardless (see
+    # services/crypto_service.py's module docstring).
+    price_change_1y: Decimal | None
 
     # All derived from the above: value = current_price * quantity,
     # cost_basis = avg_buy_price * quantity, profit_loss = value - cost_basis.
@@ -100,6 +105,25 @@ class CryptoHoldingRead(BaseModel):
     cost_basis: Decimal | None
     profit_loss: Decimal | None
     profit_loss_percent: float | None
+
+
+class CryptoPerformancePoint(BaseModel):
+    asset_id: int
+    # None when CoinGecko's 90-day chart couldn't be fetched for this coin
+    # (rate-limited, unreachable, or the coin simply lacks 90 days of
+    # history) — the item is still listed so the frontend can render "—"
+    # for that one coin instead of the whole tile disappearing.
+    price_change_percent: float | None
+
+
+class CryptoPerformanceResponse(BaseModel):
+    """Real 90-day % price change per currently-held coin, for the Crypto
+    tab's Best/Worst Performer stat when the 90d range is selected — the one
+    window CoinGecko's batched /coins/markets call can't give us (see
+    services/crypto_service.py's get_90d_performance), so this is fetched
+    on demand, once, only when a viewer actually picks 90d."""
+
+    items: list[CryptoPerformancePoint]
 
 
 class CryptoSyncResult(BaseModel):

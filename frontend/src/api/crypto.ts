@@ -3,6 +3,7 @@ import type {
   CryptoHistoryResponse,
   CryptoHolding,
   CryptoHoldingCreateInput,
+  CryptoPerformanceResponse,
   CryptoPortfolio,
   CryptoPortfolioInput,
   CryptoRange,
@@ -77,4 +78,9 @@ export function searchCryptoCoins(query: string) {
 export function fetchCryptoHistory(range: CryptoRange, portfolioId?: number | null) {
   const query = portfolioId != null ? `&portfolio_id=${portfolioId}` : "";
   return api.get<CryptoHistoryResponse>(`/crypto/history?range=${range}${query}`);
+}
+
+export function fetchCrypto90dPerformance(portfolioId?: number | null) {
+  const query = portfolioId != null ? `?portfolio_id=${portfolioId}` : "";
+  return api.get<CryptoPerformanceResponse>(`/crypto/performance/90d${query}`);
 }

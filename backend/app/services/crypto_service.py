@@ -19,6 +19,7 @@ new holding (a one-off seed fetch, justified by the explicit user action).
 Editing quantity via a buy/sell transaction never calls CoinGecko — it
 reuses the last cached price.
 """
+import asyncio
 from datetime import date as date_
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -41,6 +42,8 @@ from app.schemas.crypto import (
     CryptoHistoryResponse,
     CryptoHoldingCreate,
     CryptoHoldingRead,
+    CryptoPerformancePoint,
+    CryptoPerformanceResponse,
     CryptoPortfolioCreate,
     CryptoPortfolioRead,
     CryptoPortfolioUpdate,
@@ -100,6 +103,12 @@ class _MarketPoint(NamedTuple):
     change_1h: Decimal | None
     change_24h: Decimal | None
     change_7d: Decimal | None
+    # Defaulted so existing call sites/tests built before these two existed
+    # don't have to name them. 1y stands in for "all time" on the Best/Worst
+    # Performer stat (see get_90d_performance's docstring on why 90d alone
+    # needs a different, on-demand code path).
+    change_30d: Decimal | None = None
+    change_1y: Decimal | None = None
 
 
 def _decimal_or_none(value: object) -> Decimal | None:
@@ -109,9 +118,12 @@ def _decimal_or_none(value: object) -> Decimal | None:
 async def _fetch_market_data(coingecko_ids: list[str], vs_currency: str) -> dict[str, _MarketPoint]:
     """One CoinGecko call for every tracked coin at once (up to 250 ids per
     /coins/markets call) — never one call per coin, that's what would
-    actually burn through a free-tier rate limit. Also returns 1h/24h/7d %
-    change in the same call, so this fully replaces a separate
-    /simple/price lookup."""
+    actually burn through a free-tier rate limit. Also returns 1h/24h/7d/30d/1y
+    % change in the same call, so this fully replaces a separate
+    /simple/price lookup. (90d isn't offered here at all — CoinGecko's own
+    supported windows skip straight from 30d to 200d; see
+    get_90d_performance for how the Crypto tab's 90d Best/Worst Performer
+    view is computed instead.)"""
     if not coingecko_ids:
         return {}
     api_key = _require_api_key()
@@ -121,7 +133,7 @@ async def _fetch_market_data(coingecko_ids: list[str], vs_currency: str) -> dict
             params={
                 "vs_currency": vs_currency,
                 "ids": ",".join(coingecko_ids),
-                "price_change_percentage": "1h,24h,7d",
+                "price_change_percentage": "1h,24h,7d,30d,1y",
             },
             headers={"x-cg-demo-api-key": api_key},
         )
@@ -138,6 +150,8 @@ async def _fetch_market_data(coingecko_ids: list[str], vs_currency: str) -> dict
             change_1h=_decimal_or_none(coin.get("price_change_percentage_1h_in_currency")),
             change_24h=_decimal_or_none(coin.get("price_change_percentage_24h_in_currency")),
             change_7d=_decimal_or_none(coin.get("price_change_percentage_7d_in_currency")),
+            change_30d=_decimal_or_none(coin.get("price_change_percentage_30d_in_currency")),
+            change_1y=_decimal_or_none(coin.get("price_change_percentage_1y_in_currency")),
         )
     return points
 
@@ -208,6 +222,8 @@ def _to_read(holding: CryptoHolding) -> CryptoHoldingRead:
         price_change_1h=holding.price_change_1h,
         price_change_24h=holding.price_change_24h,
         price_change_7d=holding.price_change_7d,
+        price_change_30d=holding.price_change_30d,
+        price_change_1y=holding.price_change_1y,
         value=value,
         cost_basis=cost_basis,
         profit_loss=profit_loss,
@@ -359,6 +375,8 @@ async def refresh_prices(session: AsyncSession, *, force: bool, portfolio_id: in
                 holding.price_change_1h = point.change_1h
                 holding.price_change_24h = point.change_24h
                 holding.price_change_7d = point.change_7d
+                holding.price_change_30d = point.change_30d
+                holding.price_change_1y = point.change_1y
                 quantity, _ = _compute_position(holding.transactions)
                 if quantity > 0:
                     await _upsert_valuation(session, holding.asset_id, quantity * point.price, today)
@@ -436,6 +454,8 @@ async def create_holding(session: AsyncSession, payload: CryptoHoldingCreate) ->
             holding.price_change_1h = point.change_1h
             holding.price_change_24h = point.change_24h
             holding.price_change_7d = point.change_7d
+            holding.price_change_30d = point.change_30d
+            holding.price_change_1y = point.change_1y
             await _upsert_valuation(session, asset.id, payload.quantity * point.price, date_.today())
         # This counts as a real sync — bump the shared timestamp so the next
         # GET /crypto/holdings doesn't immediately re-fetch every holding
@@ -610,3 +630,58 @@ async def get_crypto_history(
         change_percent=change_percent,
         series=points,
     )
+
+
+async def _fetch_90d_change(client: httpx.AsyncClient, api_key: str, coingecko_id: str, vs_currency: str) -> float | None:
+    """A coin's own real price 90 days ago vs now, straight from CoinGecko's
+    market_chart series — the closest and last point in the returned series,
+    respectively. Any failure (rate limit, outage, a coin CoinGecko has less
+    than 90 days of data for) returns None rather than raising: one coin's
+    hiccup shouldn't blank out every other tile (same "best data on hand"
+    principle as refresh_prices' own CoinGecko-outage handling)."""
+    try:
+        response = await client.get(
+            f"{COINGECKO_BASE_URL}/coins/{coingecko_id}/market_chart",
+            params={"vs_currency": vs_currency, "days": 90},
+            headers={"x-cg-demo-api-key": api_key},
+        )
+        response.raise_for_status()
+        prices = response.json().get("prices", [])
+    except httpx.HTTPError:
+        return None
+    if len(prices) < 2:
+        return None
+    first_price, last_price = prices[0][1], prices[-1][1]
+    if not first_price:
+        return None
+    return (last_price - first_price) / first_price * 100
+
+
+async def get_90d_performance(session: AsyncSession, portfolio_id: int | None) -> CryptoPerformanceResponse:
+    """Real 90-day % price change per currently-held coin, for the Crypto
+    tab's Best/Worst Performer stat when the 90d range is picked. Unlike
+    1h/24h/7d/30d/1y (all one field on the same batched /coins/markets sync
+    call, see _fetch_market_data), CoinGecko has no 90-day window on that
+    endpoint at all — the only way to get it is one market_chart call per
+    coin, so this is deliberately never part of the regular sync and only
+    ever runs on an explicit "look at 90d" user action, same justification
+    as the seed fetch on adding a new holding. Bounded concurrency (5 at
+    once) keeps a big portfolio from firing dozens of requests in the same
+    instant."""
+    holdings = await list_holdings(session, portfolio_id)
+    held = [h for h in holdings if _compute_position(h.transactions)[0] > 0]
+    if not held:
+        return CryptoPerformanceResponse(items=[])
+
+    settings = await get_or_create_app_settings(session)
+    api_key = _require_api_key()
+    semaphore = asyncio.Semaphore(5)
+
+    async def fetch_one(client: httpx.AsyncClient, holding: CryptoHolding) -> CryptoPerformancePoint:
+        async with semaphore:
+            change = await _fetch_90d_change(client, api_key, holding.coingecko_id, settings.currency.lower())
+        return CryptoPerformancePoint(asset_id=holding.asset_id, price_change_percent=change)
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        items = await asyncio.gather(*(fetch_one(client, h) for h in held))
+    return CryptoPerformanceResponse(items=list(items))
