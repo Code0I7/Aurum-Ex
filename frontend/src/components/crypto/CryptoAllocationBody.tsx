@@ -1,5 +1,5 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { formatCurrency, maskAmount } from "@/lib/format";
+import { formatCryptoAmount, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
 
@@ -65,7 +65,7 @@ function DonutTooltip({
     <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
       <p className="font-medium text-text-primary">{slice.key === "other" ? otherLabel : slice.name}</p>
       <p className="text-text-muted">
-        {maskAmount(formatCurrency(slice.amount), hidden)} · {slice.percent.toFixed(1)}%
+        {maskAmount(formatCryptoAmount(slice.amount), hidden)} · {slice.percent.toFixed(1)}%
       </p>
     </div>
   );
@@ -132,7 +132,7 @@ export function CryptoAllocationBody({ holdings, isLoading, hidden }: CryptoAllo
               <td className="py-1.5 pr-3 text-right font-medium tabular-nums text-text-primary">
                 {slice.percent.toFixed(1)}%
               </td>
-              <td className="py-1.5 text-right tabular-nums text-text-muted">{maskAmount(formatCurrency(slice.amount), hidden)}</td>
+              <td className="py-1.5 text-right tabular-nums text-text-muted">{maskAmount(formatCryptoAmount(slice.amount), hidden)}</td>
             </tr>
           ))}
         </tbody>

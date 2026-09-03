@@ -1,5 +1,5 @@
 import { Bitcoin, Plus, Trash2 } from "lucide-react";
-import { formatCurrency, maskAmount } from "@/lib/format";
+import { formatCryptoAmount, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding, CryptoPortfolio } from "@/types";
 
@@ -106,7 +106,7 @@ export function CryptoHoldingsTable({
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums text-text-primary">
                   {holding.current_price !== null
-                    ? maskAmount(formatCurrency(holding.current_price), hidden)
+                    ? maskAmount(formatCryptoAmount(holding.current_price), hidden)
                     : t("crypto.pendingPrice")}
                 </td>
                 <td className="py-3 pr-3 text-right">
@@ -120,20 +120,20 @@ export function CryptoHoldingsTable({
                 </td>
                 <td className="py-3 pr-3 text-right">
                   <span className="block tabular-nums text-text-primary">
-                    {holding.value !== null ? maskAmount(formatCurrency(holding.value), hidden) : t("crypto.pendingPrice")}
+                    {holding.value !== null ? maskAmount(formatCryptoAmount(holding.value), hidden) : t("crypto.pendingPrice")}
                   </span>
                   <span className="block text-xs tabular-nums text-text-muted">
                     {maskAmount(`${Number(holding.quantity)} ${holding.symbol}`, hidden)}
                   </span>
                 </td>
                 <td className="py-3 pr-3 text-right tabular-nums text-text-primary">
-                  {holding.avg_buy_price !== null ? maskAmount(formatCurrency(holding.avg_buy_price), hidden) : "—"}
+                  {holding.avg_buy_price !== null ? maskAmount(formatCryptoAmount(holding.avg_buy_price), hidden) : "—"}
                 </td>
                 <td className="py-3 pr-3 text-right">
                   {holding.profit_loss !== null && holding.profit_loss_percent !== null ? (
                     <>
                       <span className="block tabular-nums" style={{ color: profitColor }}>
-                        {maskAmount(`${sign}${formatCurrency(holding.profit_loss)}`, hidden)}
+                        {maskAmount(`${sign}${formatCryptoAmount(holding.profit_loss)}`, hidden)}
                       </span>
                       <span className="block text-xs tabular-nums" style={{ color: profitColor }}>
                         {sign}

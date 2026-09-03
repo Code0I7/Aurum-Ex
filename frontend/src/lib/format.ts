@@ -17,6 +17,29 @@ export function formatCurrency(amount: number | string, currency: string = getCu
   }).format(value);
 }
 
+/** Same currency formatting as formatCurrency, but scales decimal precision
+ * down to the value's own magnitude instead of always rounding to whole
+ * units — a low-cap memecoin can genuinely price at $0.000000006894, and
+ * formatCurrency's fixed 0 fraction digits would render that as "$0",
+ * indistinguishable from actually being worthless. Values >= 1 still show
+ * just 2 decimals (a coin price doesn't need more than cents once it's
+ * above a dollar). For the Crypto tab's per-coin price/holdings/avg-buy-price
+ * cells and per-transaction price — anywhere a single coin's own value
+ * needs to be told apart from zero, not just a portfolio-wide total. */
+export function formatCryptoAmount(amount: number | string, currency: string = getCurrency()): string {
+  const value = typeof amount === "string" ? Number(amount) : amount;
+  const abs = Math.abs(value);
+  const maximumFractionDigits =
+    abs === 0 || abs >= 1
+      ? 2
+      : // Leading zeros right after the decimal point before the first
+        // significant digit, plus 4 more digits of real precision beyond
+        // that — e.g. 0.000000006894 has 8 leading zeros, so this shows
+        // 12 decimal places, landing exactly on "6894" and nothing more.
+        Math.min(20, Math.max(0, -Math.floor(Math.log10(abs)) - 1) + 4);
+  return new Intl.NumberFormat(getIntlLocale(), { style: "currency", currency, maximumFractionDigits }).format(value);
+}
+
 export function formatSignedCurrency(amount: number | string, currency: string = getCurrency()): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   const sign = value > 0 ? "+" : "";
