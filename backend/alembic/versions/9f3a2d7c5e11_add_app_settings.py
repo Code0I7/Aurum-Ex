@@ -25,10 +25,15 @@ def upgrade() -> None:
         sa.Column('currency', sa.String(length=3), nullable=False, server_default='USD'),
         sa.PrimaryKeyConstraint('id'),
     )
-    # Singleton row (id=1) — app boot's seed_default_app_settings() also
-    # get-or-creates it, but seeding it here means it exists immediately
-    # after migrating, even before the app has started once.
-    op.execute("INSERT INTO app_settings (id, currency) VALUES (1, 'USD')")
+    # Singleton row (id=1) — deliberately NOT seeded here anymore (a prior
+    # version of this migration hardcoded `INSERT ... VALUES (1, 'USD')`,
+    # which silently ignored AURUM_DEFAULT_CURRENCY on a fresh install: the
+    # row already existed by the time app boot's seed_default_app_settings()
+    # ran its own get-or-create check, so a non-USD default never took).
+    # seed_default_app_settings() runs on every app boot (see main.py's
+    # lifespan) and already reads get_settings().default_currency correctly
+    # — leaving row creation to it entirely is both simpler and correct for
+    # every configured currency, not just USD.
 
 
 def downgrade() -> None:
