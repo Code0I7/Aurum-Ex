@@ -440,6 +440,12 @@ async def test_90d_performance_reflects_a_real_market_chart_fetch(client: AsyncC
     monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("50000")}))
     holding = await _add_bitcoin(client)
 
+    # get_90d_performance checks _require_api_key() itself, separately from
+    # _fetch_90d_change below — CI has no AURUM_COINGECKO_API_KEY configured
+    # (unlike a local .env), so this must be stubbed too or the route 400s
+    # before ever reaching the mocked fetch.
+    monkeypatch.setattr(crypto_service.get_settings(), "coingecko_api_key", "test-key")
+
     async def fake_90d_change(client_, api_key, coingecko_id, vs_currency):
         return 12.5 if coingecko_id == "bitcoin" else None
 
@@ -447,7 +453,7 @@ async def test_90d_performance_reflects_a_real_market_chart_fetch(client: AsyncC
 
     resp = await client.get("/crypto/performance/90d")
 
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert resp.json()["items"] == [{"asset_id": holding["asset_id"], "price_change_percent": 12.5}]
 
 
@@ -498,6 +504,8 @@ async def test_90d_performance_filters_by_portfolio(client: AsyncClient, monkeyp
     await add(portfolio_a["id"])
     holding_b = await add(portfolio_b["id"])
 
+    monkeypatch.setattr(crypto_service.get_settings(), "coingecko_api_key", "test-key")
+
     async def fake_90d_change(client_, api_key, coingecko_id, vs_currency):
         return 3.0
 
@@ -505,6 +513,7 @@ async def test_90d_performance_filters_by_portfolio(client: AsyncClient, monkeyp
 
     resp = await client.get(f"/crypto/performance/90d?portfolio_id={portfolio_b['id']}")
 
+    assert resp.status_code == 200, resp.text
     items = resp.json()["items"]
     assert [item["asset_id"] for item in items] == [holding_b["asset_id"]]
 
