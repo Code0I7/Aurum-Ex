@@ -1,17 +1,39 @@
 <div align="center">
 
-# Aurum
+# Aurum-Ex
 
 **See where every dollar comes from. Know where every dollar goes.**
 
-Aurum is a source-available personal finance operating system — a complete, granular, real-time picture of your money: cash flow, net worth, budgets, subscriptions, assets, and every income stream you own.
+**Ex — от Extended.** Aurum-Ex это расширенный форк [Aurum](https://github.com/Zproger/Aurum) от [ZProger](https://github.com/ZProger): тот же самостоятельно размещаемый учёт личных финансов, дополненный мультивалютностью, категориями произвольной вложенности, позициями в чеке, участниками и расчётами с людьми.
 
+[![Fork of Zproger/Aurum](https://img.shields.io/badge/fork%20of-Zproger%2FAurum-6E7B74.svg)](https://github.com/Zproger/Aurum)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[Features](#-core-features) • [Screenshots](#-screenshots) • [Getting Started](#-getting-started) • [API Docs](DOCS.md) • [Security](#-security--self-hosting) • [Contributing](#-contributing) • [License](#-license)
+[Отличия](#-чем-это-отличается-от-aurum) • [Getting Started](#-getting-started) • [API Docs](DOCS.md) • [Security](#-security--self-hosting) • [License](#-license) • [Благодарности](#-благодарности)
 
 </div>
+
+> **Это форк, а не оригинал.** Оригинальный проект — **[Zproger/Aurum](https://github.com/Zproger/Aurum)**, автор **[ZProger](https://github.com/ZProger)**. Здесь ведётся переработанная и расширенная версия под другой сценарий использования. Оригинал развивается независимо: вопросы и баги по нему — в его репозиторий, а не сюда.
+>
+> `Required Notice: Copyright ZProger (https://github.com/ZProger)`
+
+## 🧭 Чем это отличается от Aurum
+
+Форк вырос из попытки заменить самодельную таблицу учёта — из тех, что люди годами ведут в Google Sheets. У таких таблиц набирается набор ограничений, не решаемых внутри них самих: один уровень подкатегорий, отсутствие позиций в чеке, невозможность отделить переводы от других людей от собственного заработка и стартовый остаток счёта, который приходится проводить доходом.
+
+Направления переработки:
+
+- **Категории произвольной вложенности** вместо одного уровня, с выбором любого уровня в транзакции.
+- **Мультивалютность** с курсами ЦБ на дату операции: капитал одной суммой и с разбивкой по валютам.
+- **Позиции в чеке** — необязательные, с количеством, единицей и ценой, приведённой к базовой мере.
+- **Участники** — на кого пришёлся доход или расход, включая питомцев.
+- **Расчёты с людьми** — переводы от других людей не считаются заработком; долги и займы различаются.
+- **Справочник товаров и магазинов** — динамика цен на конкретный товар и сравнение точек продаж.
+- **Настоящий вход** вместо HTTP Basic Auth.
+- **Планирование** разовое, ежемесячное и подневное, на несколько лет вперёд.
+- **Импорт истории из таблицы** — CSV-выгрузка листа операций с предпросмотром до записи. Формат и способ приспособить разбор под свою таблицу описаны в [docs/spreadsheet-import.md](docs/spreadsheet-import.md).
+
+Работа идёт поэтапно. Ниже описан текущий функционал, во многом ещё унаследованный от оригинала; скриншоты пока тоже оригинальные.
 
 ## 🖼️ Screenshots
 
@@ -105,9 +127,11 @@ docker compose version
 ### 2. Get the code
 
 ```bash
-git clone https://github.com/Zproger/Aurum.git
-cd Aurum
+git clone https://github.com/Code0I7/Aurum-Ex.git
+cd Aurum-Ex
 ```
+
+Оригинальный Aurum, если нужен именно он: `git clone https://github.com/Zproger/Aurum.git`
 
 ### 3. Configure your environment
 
@@ -122,7 +146,8 @@ At minimum, change these two before going any further:
 | Variable | What it does |
 |---|---|
 | `AURUM_POSTGRES_PASSWORD` | Password for Aurum's own Postgres container. The template ships with `change-me` on purpose — replace it with something real. |
-| `AURUM_BASIC_AUTH_USER` / `AURUM_BASIC_AUTH_PASSWORD` | **Aurum has no login screen of its own.** Leave these blank and the app has no password at all — fine if it's only reachable from `localhost`, not fine anywhere else. Set both to put an HTTP Basic Auth prompt in front of the whole app. See [Security & Self-Hosting](#-security--self-hosting) below. |
+| `AURUM_ADMIN_PASSWORD` | Пароль администратора для первого запуска. **Можно оставить пустым** — тогда приложение при первом открытии само попросит задать пароль в браузере, и он не окажется в файле на диске. Вход обязателен в любом случае: установки без пароля больше не бывает. |
+| `AURUM_RECOVERY_KEY` | Аварийный ключ для сброса забытого пароля (`openssl rand -base64 48`). Пусто — сброс выключен. См. [Security & Self-Hosting](#-security--self-hosting). |
 
 Everything else in `.env` (currency, CORS, the port Aurum listens on) has a sensible default and can be left alone for a first run.
 
@@ -171,11 +196,18 @@ or open `/api/docs` on your running instance for interactive Swagger docs.
 
 ## 🔒 Security & Self-Hosting
 
-**Aurum has no built-in login system.** It's built for one person to self-host one private instance of their own financial data — not as a multi-tenant service with per-user accounts. That's a deliberate trade-off, not an oversight, but it means:
+**В отличие от оригинального Aurum, у Aurum-Ex есть собственный вход.** Оригинал полагался на HTTP Basic Auth в nginx: браузерное окно, без сессии, без выхода, с паролем в каждом запросе и в открытом виде в `.env`. Здесь вместо этого:
 
-- If you leave `AURUM_BASIC_AUTH_USER` / `AURUM_BASIC_AUTH_PASSWORD` unset in `.env`, **anyone who can reach the container can read, edit, and delete all of it — no password prompt at all.** This is fine if Aurum is only reachable from `localhost` or your own private network.
-- Set both variables before exposing your instance beyond your own machine (a VPS, a subdomain, a Tailscale/VPN endpoint someone else might share). This turns on an HTTP Basic Auth prompt in front of the entire app, UI and API alike.
-- For anything beyond that — a reverse proxy with TLS (Caddy, Traefik, nginx + Let's Encrypt) is on you; Aurum doesn't terminate HTTPS itself.
+- **страница входа и серверная сессия.** Пароль хранится хешем (scrypt), сессия — в HttpOnly-куке, которую не прочитать скриптом со страницы. «Выйти» действительно обрывает сессию на сервере, а не просто стирает куку;
+- **одна учётная запись на всё домохозяйство.** Это не многопользовательский режим: все входят под одним администратором и видят одни данные, а различаются участником в транзакции. Так семейный бюджет и устроен;
+- **при первом открытии приложение само просит задать пароль.** Можно задать его заранее через `AURUM_ADMIN_PASSWORD`, но тогда он какое-то время лежит в файле на диске — надёжнее оставить переменную пустой и завести пароль в браузере;
+- **забытый пароль** сбрасывается аварийным ключом `AURUM_RECOVERY_KEY` из `.env`, который знает только владелец сервера. Обычная смена пароля требует текущего, чтобы никто из домашних не заперся снаружи по случайности. Ключ не задан — сброс выключен целиком;
+- **защита от перебора:** после `AURUM_MAX_FAILED_LOGINS` неудачных попыток вход блокируется на `AURUM_LOCKOUT_MINUTES` минут.
+
+Что остаётся на вас:
+
+- **TLS.** Aurum-Ex не терминирует HTTPS сам — нужен обратный прокси (Caddy, Traefik, nginx + Let's Encrypt). Публикуя экземпляр наружу, включите заодно `AURUM_SECURE_COOKIES=true`, чтобы кука сессии не уходила по открытому HTTP;
+- **HTTP Basic Auth** (`AURUM_BASIC_AUTH_USER` / `AURUM_BASIC_AUTH_PASSWORD`) остался как необязательный второй барьер перед страницей входа. Раньше он был единственной защитой, теперь — дополнительный слой, и без него приложение уже не беззащитно.
 
 If you find a security issue, please open a private report via GitHub's Security tab rather than a public issue.
 
@@ -188,22 +220,28 @@ If you find a security issue, please open a private report via GitHub's Security
 
 ## 🤝 Contributing
 
-Aurum is built in the open, for everyone. Contributions of all kinds are welcome — code, design, documentation, ideas, and bug reports. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get a dev environment running and what a good pull request looks like.
+Это личный форк, и правки в нём подчинены задачам конкретного сценария использования. Прежде чем присылать сюда pull request, проверьте, не относится ли он к оригиналу: **исправления и улучшения базового Aurum правильнее отправлять в [Zproger/Aurum](https://github.com/Zproger/Aurum)** — так они попадут ко всем пользователям, а не только сюда. Файл [CONTRIBUTING.md](CONTRIBUTING.md) с описанием дев-окружения унаследован от оригинала и остаётся в силе.
 
 ## 📄 License
 
-Aurum is released under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+Aurum-Ex распространяется под той же лицензией, что и оригинал, — [PolyForm Noncommercial License 1.0.0](LICENSE). Форк не может смягчить условия оригинала и не пытается: файл [LICENSE](LICENSE) оставлен без единого изменения, вместе с обязательной строкой уведомления.
 
-In plain terms: you can read the code, self-host it, modify it, and use it for any personal, educational, or noncommercial purpose, for free, forever. What you can't do is take it (or a modified version of it) and sell it, host it as a paid service for others, or otherwise build a commercial product on top of it. This is **not** an OSI-approved open source license — it's **source-available**. See the [LICENSE](LICENSE) file for the exact terms, and open an [Issue](../../issues) if you have a use case you're not sure is covered.
+`Required Notice: Copyright ZProger (https://github.com/ZProger)`
 
-## ❤️ Support Aurum
+Простыми словами: код можно читать, разворачивать у себя, изменять и использовать в любых личных, учебных и некоммерческих целях бесплатно и бессрочно. Нельзя — продавать его или изменённую версию, хостить как платный сервис для других и строить на нём коммерческий продукт. Это **не** OSI-совместимая открытая лицензия, а **source-available**. Точные условия — в файле [LICENSE](LICENSE).
 
-Aurum is free and always will be for personal use. If it's helped you get a handle on your money and you'd like to help it keep growing, a donation goes a long way: **[Donate via Lava](https://app.lava.top/782447112?tabId=donate)**.
+Отдельное требование лицензии, которое касается любого, кто распространяет этот код дальше: вместе с копией нужно передавать текст лицензии (или ссылку на неё) **и** строку `Required Notice`, приведённую выше. Она относится к автору оригинала и не убирается ни при каком объёме доработок.
+
+## 🙏 Благодарности
+
+Весь фундамент этого проекта — чужая работа. **[ZProger](https://github.com/ZProger)** написал [Aurum](https://github.com/Zproger/Aurum): архитектуру, движок капитала, аналитику, докеризацию и двуязычный интерфейс, — и открыл исходный код, благодаря чему этот форк вообще стал возможен. Здесь переработана доменная модель под другой сценарий, но каркас, на котором всё держится, остался авторским.
+
+Если проект оказался полезен, поддержать стоит именно автора оригинала: **[Donate via Lava](https://app.lava.top/782447112?tabId=donate)** — реквизиты его, а не форка. И звезда оригинальному репозиторию помогает ему больше, чем звезда этому.
 
 ---
 
 <div align="center">
 
-**If Aurum helps you understand your money better, consider giving it a ⭐ — it genuinely helps the project grow.**
+**Понравилась идея? Поставьте ⭐ [оригинальному Aurum](https://github.com/Zproger/Aurum) — проект вырос из него.**
 
 </div>
