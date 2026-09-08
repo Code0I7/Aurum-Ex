@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.models.work_period import WorkPeriod
+from app.services.hourly_service import get_hourly_rates
 
 router = APIRouter(prefix="/work-periods", tags=["work-periods"])
 
@@ -90,3 +91,24 @@ async def delete_work_period(period_id: int, session: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="Work period not found")
     await session.delete(period)
     await session.commit()
+
+
+class HourlyRates(BaseModel):
+    """Ставка за час по годам и в среднем.
+
+    По годам, а не одной цифрой: за четыре года заработок меняется втрое.
+    И не по месяцам: помесячно цифра оказывается шумом — доход приходит
+    рывками, а часы в исходной таблице были годовыми.
+    """
+
+    # Ключ — год строкой: интерфейс отрезает его от даты операции напрямую.
+    years: dict[str, str]
+    # None, когда часов не введено вовсе: выдумывать ставку хуже, чем
+    # промолчать.
+    overall: str | None
+
+
+@router.get("/hourly-rates", response_model=HourlyRates)
+async def read_hourly_rates(session: AsyncSession = Depends(get_session)) -> HourlyRates:
+    rates = await get_hourly_rates(session)
+    return HourlyRates(years=rates["years"], overall=rates["overall"])

@@ -209,6 +209,15 @@ export interface TransactionInput {
   // При правке: список (включая пустой) заменяет состав целиком, отсутствие
   // поля оставляет как было.
   items?: TransactionItemInput[] | null;
+  // Кто, где и с кем. Все необязательны: быстрый ввод не должен требовать
+  // заполнять справочники.
+  participant_id?: number | null;
+  store_id?: number | null;
+  // Имеют смысл только у расчётов (external_in / external_out).
+  counterparty_id?: number | null;
+  settlement_kind?: SettlementKind | null;
+  // Запись остаётся в истории, но выпадает из всех расчётов.
+  is_excluded?: boolean;
 }
 
 export interface RecurringTransaction {
@@ -610,7 +619,9 @@ export interface AdviceResponse {
 export interface FinancialAlert {
   key: string;
   severity: string;
-  params: Record<string, number>;
+  // Строки наравне с числами: оповещение о платеже называет счёт по имени, а
+  // перечислять имена в переводах нельзя — они у каждого свои.
+  params: Record<string, number | string>;
 }
 
 export type CryptoTransactionType = "buy" | "sell";
@@ -693,6 +704,10 @@ export interface CryptoSyncResult {
   synced: boolean;
   last_synced_at: string | null;
   error_key: "unreachable" | null;
+  // Настроен ли ключ CoinGecko. Указание источника показывается только при
+  // нём: без ключа его данных в приложении нет вовсе, и ссылка была бы
+  // указанием источника, из которого ничего не взято.
+  source_configured: boolean;
   holdings: CryptoHolding[];
 }
 

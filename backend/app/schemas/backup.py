@@ -12,10 +12,15 @@ from app.models.enums import (
     CapitalRole,
     CategoryKind,
     CryptoTransactionType,
+    InvestmentKind,
+    ParticipantKind,
+    PlanKind,
     RecurringFrequency,
     RiskLevel,
     SettlementKind,
+    TradeSide,
     TransactionType,
+    UnitKind,
 )
 
 
@@ -251,6 +256,211 @@ class AppSettingsBackup(BaseModel):
     idle_cash_threshold_days: int = 60
 
 
+# --- Справочники и разделы Aurum-Ex ---
+#
+# Всё ниже добавлено после первой версии формата и объявлено со значением по
+# умолчанию (пустой список). Бэкап, снятый раньше, восстанавливается без
+# правки файла и без смены номера формата — ровно та же схема, что уже
+# применялась к тегам, разбивкам, бюджетам и целям.
+#
+# Копия, молча теряющая половину данных, хуже отсутствия копии: она обещает
+# безопасность, которой не даёт. Поэтому каждая таблица, появившаяся в
+# Aurum-Ex, попадает сюда в том же выпуске, что и сама таблица.
+
+
+class BankBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    color: str | None = None
+    sort_order: int = 0
+
+
+class CurrencyBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    symbol: str | None = None
+    name: str | None = None
+    cbr_nominal: int = 1
+    is_active: bool = True
+
+
+class ExchangeRateBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    rate_date: date_
+    rate: Decimal
+    published_for: date_ | None = None
+
+
+class UnitBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    kind: UnitKind
+    factor: Decimal = Decimal("1")
+    is_base: bool = False
+    sort_order: int = 0
+
+
+class ParticipantBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    kind: ParticipantKind
+    color: str | None = None
+    is_archived: bool = False
+
+
+class StoreBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    location: str | None = None
+    notes: str | None = None
+    is_archived: bool = False
+
+
+class CounterpartyBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    notes: str | None = None
+    is_archived: bool = False
+
+
+class ProductBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    category_id: int | None = None
+    unit_id: int | None = None
+    barcode: str | None = None
+    notes: str | None = None
+    is_archived: bool = False
+
+
+class TransactionItemBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    transaction_id: int
+    product_id: int | None = None
+    name: str
+    category_id: int | None = None
+    quantity: Decimal | None = None
+    unit_id: int | None = None
+    price: Decimal | None = None
+    amount: Decimal | None = None
+    note: str | None = None
+    position: int = 0
+
+
+class CreditTermsBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    account_id: int
+    annual_rate_percent: Decimal | None = None
+    credit_limit: Decimal | None = None
+    grace_days: int | None = None
+    payment_day: int | None = None
+    minimum_payment: Decimal | None = None
+    opened_on: date_ | None = None
+    closes_on: date_ | None = None
+    notes: str | None = None
+
+
+class PlanBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category_id: int | None = None
+    participant_id: int | None = None
+    kind: PlanKind
+    amount: Decimal
+    currency: str = "RUB"
+    valid_from: date_
+    valid_to: date_ | None = None
+    workdays_only: bool = False
+    note: str | None = None
+    is_active: bool = True
+
+
+class WorkPeriodBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    participant_id: int | None = None
+    year: int
+    month: int
+    hours: Decimal = Decimal("0")
+    workdays: int | None = None
+
+
+class InvestmentPortfolioBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    color: str | None = None
+    is_archived: bool = False
+
+
+class InvestmentHoldingBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    portfolio_id: int
+    name: str
+    ticker: str | None = None
+    kind: InvestmentKind
+    currency: str = "RUB"
+    external_id: str | None = None
+    last_price: Decimal | None = None
+    last_price_at: datetime | None = None
+    risk_level: RiskLevel = RiskLevel.MEDIUM
+    notes: str | None = None
+    is_archived: bool = False
+
+
+class InvestmentTradeBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    holding_id: int
+    side: TradeSide
+    quantity: Decimal
+    price_per_unit: Decimal
+    fee: Decimal = Decimal("0")
+    trade_date: date_
+    day_order: int = 0
+    account_id: int | None = None
+    note: str | None = None
+
+
+class WidgetBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    widget_type: str
+    title: str | None = None
+    period: str = "current_month"
+    row: int = 0
+    column: int = 0
+    width: int = 1
+    config: dict = Field(default_factory=dict)
+    is_visible: bool = True
+
+
 class BackupPayload(BaseModel):
     """A full, portable snapshot of every table. `aurum_backup_version` is
     checked on import so an incompatible/future file is rejected cleanly
@@ -287,4 +497,22 @@ class BackupPayload(BaseModel):
     recurring_transactions: list[RecurringTransactionBackup] = Field(default_factory=list)
     # Defaulted so a backup exported before the currency setting existed
     # still imports cleanly under the same format version.
+    # Справочники и разделы Aurum-Ex. Все со значением по умолчанию: бэкап,
+    # снятый до их появления, восстанавливается без правки файла.
+    banks: list[BankBackup] = Field(default_factory=list)
+    currencies: list[CurrencyBackup] = Field(default_factory=list)
+    exchange_rates: list[ExchangeRateBackup] = Field(default_factory=list)
+    units: list[UnitBackup] = Field(default_factory=list)
+    participants: list[ParticipantBackup] = Field(default_factory=list)
+    stores: list[StoreBackup] = Field(default_factory=list)
+    counterparties: list[CounterpartyBackup] = Field(default_factory=list)
+    products: list[ProductBackup] = Field(default_factory=list)
+    transaction_items: list[TransactionItemBackup] = Field(default_factory=list)
+    credit_terms: list[CreditTermsBackup] = Field(default_factory=list)
+    plans: list[PlanBackup] = Field(default_factory=list)
+    work_periods: list[WorkPeriodBackup] = Field(default_factory=list)
+    investment_portfolios: list[InvestmentPortfolioBackup] = Field(default_factory=list)
+    investment_holdings: list[InvestmentHoldingBackup] = Field(default_factory=list)
+    investment_trades: list[InvestmentTradeBackup] = Field(default_factory=list)
+    widgets: list[WidgetBackup] = Field(default_factory=list)
     app_settings: AppSettingsBackup = Field(default_factory=lambda: AppSettingsBackup(currency="USD"))

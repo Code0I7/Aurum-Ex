@@ -140,6 +140,11 @@ class CryptoSyncResult(BaseModel):
     synced: bool
     last_synced_at: datetime | None
     error_key: Literal["unreachable"] | None = None
+    # Настроен ли ключ CoinGecko. Нужен интерфейсу для указания источника:
+    # CoinGecko просит ссылаться на себя, когда его данными пользуются, — но
+    # без ключа никаких их данных в приложении нет, и ссылка была бы
+    # указанием источника, из которого ничего не взято.
+    source_configured: bool = False
     holdings: list[CryptoHoldingRead]
 
 

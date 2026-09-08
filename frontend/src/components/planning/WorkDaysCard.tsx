@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useSaveWorkPeriod, useWorkPeriods } from "@/hooks/usePlans";
+import { HelpBadge } from "@/components/ui/HelpBadge";
 import { useTranslation, getLanguage } from "@/lib/i18n";
 import { getMonthLabels } from "@/lib/format";
 
@@ -53,7 +54,10 @@ export function WorkDaysCard({ year }: { year: number }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("planning.workTitle")}</CardTitle>
+        <CardTitle className="flex items-center gap-1.5">
+          {t("planning.workTitle")}
+          <HelpBadge hintKey="help.workTime" />
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-xs text-text-muted">{t("planning.workHint")}</p>

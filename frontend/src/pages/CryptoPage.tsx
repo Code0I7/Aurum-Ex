@@ -136,6 +136,24 @@ export function CryptoPage() {
                 ? t("crypto.lastSynced", { time: formatSyncedAt(data.last_synced_at) })
                 : t("crypto.neverSynced")}
             </p>
+            {/* CoinGecko просит ссылаться на себя, когда пользуются его
+                данными, и это честная плата за бесплатный ключ. Показывается
+                только при настроенном ключе: без него ни одной их цифры в
+                приложении нет, и ссылка указывала бы на источник, из
+                которого ничего не взято. */}
+            {data?.source_configured && (
+              <p className="mt-0.5 text-xs text-text-muted">
+                {t("crypto.dataSource")}{" "}
+                <a
+                  href="https://www.coingecko.com"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="underline hover:text-text-secondary"
+                >
+                  CoinGecko
+                </a>
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => refresh.mutate()} disabled={refresh.isPending}>

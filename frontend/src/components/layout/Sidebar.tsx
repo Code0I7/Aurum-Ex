@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
-import { NAV_ITEMS } from "@/lib/navigation";
+import { NAV_GROUPS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 
@@ -16,7 +16,21 @@ function NavList({ collapsed, onNavigate }: NavListProps) {
 
   return (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 py-2">
-      {NAV_ITEMS.map((item) => {
+      {NAV_GROUPS.map((group, groupIndex) => (
+        <div key={group.labelKey ?? "main"} className={groupIndex > 0 ? "mt-3" : ""}>
+          {/* В свёрнутом меню заголовок не помещается, и вместо него группы
+              разделяет черта: без неё восемнадцать иконок подряд сливаются
+              в один столбец. */}
+          {group.labelKey &&
+            (collapsed ? (
+              <div className="mx-2 mb-2 border-t border-border" />
+            ) : (
+              <p className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                {t(group.labelKey)}
+              </p>
+            ))}
+          <div className="flex flex-col gap-0.5">
+      {group.items.map((item) => {
         const Icon = item.icon;
         const label = t(item.labelKey);
         if (item.disabled) {
@@ -62,6 +76,9 @@ function NavList({ collapsed, onNavigate }: NavListProps) {
           </NavLink>
         );
       })}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 }

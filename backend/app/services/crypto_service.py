@@ -394,7 +394,10 @@ async def refresh_prices(session: AsyncSession, *, force: bool, portfolio_id: in
     if not force and state.last_synced_at is not None and now - state.last_synced_at < AUTO_REFRESH_INTERVAL:
         holdings = await list_holdings(session, portfolio_id)
         return CryptoSyncResult(
-            synced=False, last_synced_at=state.last_synced_at, holdings=_sort_by_invested([_to_read(h) for h in holdings])
+            synced=False,
+            last_synced_at=state.last_synced_at,
+            source_configured=bool(get_settings().coingecko_api_key),
+            holdings=_sort_by_invested([_to_read(h) for h in holdings]),
         )
 
     holdings = await list_holdings(session)
@@ -437,6 +440,10 @@ async def refresh_prices(session: AsyncSession, *, force: bool, portfolio_id: in
         synced=error_key is None,
         last_synced_at=state.last_synced_at,
         error_key=error_key,
+        # CoinGecko просит ссылаться на себя, когда пользуются его данными.
+        # Без ключа его данных в приложении нет вовсе, и ссылка была бы
+        # указанием источника, из которого ничего не взято.
+        source_configured=bool(get_settings().coingecko_api_key),
         holdings=_sort_by_invested([_to_read(h) for h in visible]),
     )
 

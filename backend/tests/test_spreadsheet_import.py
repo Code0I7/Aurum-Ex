@@ -255,9 +255,11 @@ def test_repayment_does_not_mark_the_paying_account_as_credit():
     assert plan.credit_accounts == set()
 
 
-async def test_imported_credit_account_becomes_a_liability(client: AsyncClient):
-    """Счёт с процентами приезжает обязательством, и минус на нём разрешён:
-    отрицательный баланс кредитного счёта — это и есть долг."""
+async def test_an_account_with_interest_is_flagged_but_not_reclassified(client: AsyncClient):
+    """Правило «на счёт начисляли проценты → он кредитный» ошибается: с
+    дебетовой карты тоже можно заплатить проценты по рассрочке. Поэтому
+    находка показывается в отчёте, а вид счёта не
+    меняется — кто из них кредитный, знает владелец."""
     payload = csv_of(
         row(account="Маркет 2222", dds="Расходы", category="Долги - Погашение",
             sub="Проценты по кредитам", amount="1 200,00"),
@@ -270,11 +272,16 @@ async def test_imported_credit_account_becomes_a_liability(client: AsyncClient):
     assert resp.status_code == 200, resp.text
 
     accounts = {item["name"]: item for item in (await client.get("/accounts")).json()}
-    assert accounts["Маркет 2222"]["nature"] == "liability"
-    assert accounts["Маркет 2222"]["kind"] == "credit_card"
-    assert accounts["Маркет 2222"]["allow_negative"] is True
-    # Обычный счёт не задет.
+    # Имя ничего про кредит не говорит — счёт остаётся обычным.
+    assert accounts["Маркет 2222"]["nature"] == "asset"
     assert accounts["Наличные"]["nature"] == "asset"
+
+    # А в отчёте перед импортом он назван: человеку есть что проверить.
+    preview = await client.post(
+        "/import/spreadsheet/preview",
+        files={"transactions": ("transactions.csv", payload.encode("utf-8"), "text/csv")},
+    )
+    assert "Маркет 2222" in preview.json()["credit_accounts"]
 
 
 async def test_one_misfiled_row_does_not_flip_a_whole_category(client: AsyncClient):

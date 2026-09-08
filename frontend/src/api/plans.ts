@@ -1,4 +1,5 @@
 import { api } from "@/api/client";
+import type { HourlyRates } from "@/lib/hours";
 import type { Plan, PlanInput, PlanOverview, WorkPeriod, WorkPeriodInput } from "@/types";
 
 export function fetchPlans() {
@@ -29,4 +30,11 @@ export function fetchWorkPeriods(year: number) {
 // тот же месяц не бывает.
 export function saveWorkPeriod(input: WorkPeriodInput) {
   return api.put<WorkPeriod>("/work-periods", input);
+}
+
+// Ставка за час по месяцам. Помесячно, а не одной цифрой: за четыре года
+// заработок меняется втрое, и покупка 2022 года по сегодняшней ставке
+// выглядела бы втрое дешевле, чем была.
+export function fetchHourlyRates() {
+  return api.get<HourlyRates>("/work-periods/hourly-rates");
 }

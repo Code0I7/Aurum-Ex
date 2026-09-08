@@ -4,6 +4,7 @@ import {
   deletePlan,
   fetchPlanOverview,
   fetchPlans,
+  fetchHourlyRates,
   fetchWorkPeriods,
   saveWorkPeriod,
   updatePlan,
@@ -58,5 +59,15 @@ export function useSaveWorkPeriod() {
       // пересчитать, иначе февраль останется по календарным дням.
       queryClient.invalidateQueries({ queryKey: ["plans"] });
     },
+  });
+}
+
+// Ставка меняется только при вводе отработанных часов — держим её в кэше
+// долго, чтобы список операций не запрашивал её при каждой прокрутке.
+export function useHourlyRates() {
+  return useQuery({
+    queryKey: ["work-periods", "hourly-rates"],
+    queryFn: fetchHourlyRates,
+    staleTime: 10 * 60 * 1000,
   });
 }

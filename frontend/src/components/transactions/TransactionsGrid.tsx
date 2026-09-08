@@ -4,6 +4,8 @@ import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
 import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
 import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
+import { formatWorkCost, rateForDate } from "@/lib/hours";
+import { useHourlyRates } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { COLUMNS, type ColumnId, type ColumnLayout } from "@/components/transactions/columns";
@@ -26,6 +28,15 @@ interface TransactionsGridProps {
   /** Показывать ли заголовки дней с итогами. Кому-то нужен сплошной
    * список без лишних строк. */
   dayDividers: boolean;
+  /**
+   * Идёт ли список по датам.
+   *
+   * Разделители дней имеют смысл только тогда. При сортировке по сумме даты
+   * идут вперемешку, и правило «дата отличается от предыдущей строки» ставит
+   * плашку почти над каждой строкой, а один и тот же день получает её
+   * столько раз, сколько раз прерывается.
+   */
+  chronological: boolean;
 }
 
 /**
@@ -50,9 +61,11 @@ export function TransactionsGrid({
   onReorder,
   groupRepeats,
   dayDividers,
+  chronological,
 }: TransactionsGridProps) {
   const { t } = useTranslation();
   const { data: categories } = useCategories();
+  const { data: rates } = useHourlyRates();
   const { data: participants } = useParticipants();
   const { data: stores } = useStores();
   const { data: counterparties } = useCounterparties();
@@ -175,6 +188,19 @@ export function TransactionsGrid({
         );
       }
 
+      case "workCost": {
+        // Цена в рублях привычна и потому почти не ощущается; цена в рабочих
+        // днях ощущается сразу. Ставка берётся за месяц операции: за четыре
+        // года заработок меняется втрое.
+        const amount = group ? group.total : tx.amount;
+        const cost = formatWorkCost(amount, rateForDate(rates, tx.date));
+        return cost === null ? (
+          <span className="text-text-muted">—</span>
+        ) : (
+          <span className="tabular-nums text-text-muted">{cost}</span>
+        );
+      }
+
       case "balance":
         // Баланс приходит только в списке; в ответе на правку его нет.
         return tx.balance_after === null ? (
@@ -234,7 +260,7 @@ export function TransactionsGrid({
             // за день над блоком его операций. Ставится при смене даты, а
             // не перед каждой строкой.
             const previousDate = groupIndex > 0 ? groups[groupIndex - 1].head.date : null;
-            const startsNewDay = dayDividers && groupRow.head.date !== previousDate;
+            const startsNewDay = dayDividers && chronological && groupRow.head.date !== previousDate;
             const totals = dayTotals.get(groupRow.head.date);
             const isOpen = expanded.has(groupRow.key);
             // Свёрнутая группа рисуется как одна строка; раскрытая — как
@@ -244,7 +270,7 @@ export function TransactionsGrid({
 
             return [
               startsNewDay ? (
-                <tr key={`day-${groupRow.head.date}`} className="bg-surface-2/30">
+                <tr key={`day-${groupIndex}-${groupRow.head.date}`} className="bg-surface-2/30">
                   <td colSpan={columns.length + 1} className="px-3 py-1.5">
                     <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                       <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">

@@ -402,6 +402,7 @@ export function TransactionsPage() {
                 onReorder={handleReorder}
                 groupRepeats={groupRepeats}
                 dayDividers={dayDividers}
+                chronological={sort === "date_desc"}
               />
             ) : (
               // При поиске остаётся список: результаты приходят из разных

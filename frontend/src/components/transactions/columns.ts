@@ -24,6 +24,7 @@ export type ColumnId =
   | "account"
   | "amount"
   | "balance"
+  | "workCost"
   | "participant"
   | "store"
   | "counterparty"
@@ -53,6 +54,9 @@ export const COLUMNS: ColumnSpec[] = [
   { id: "account", labelKey: "transactions.columnAccount", align: "left", width: 140 },
   { id: "amount", labelKey: "transactions.columnAmount", align: "right", required: true, width: 120 },
   { id: "balance", labelKey: "transactions.columnBalance", align: "right", width: 130 },
+  // Стоимость в отработанном времени. Спрятана по умолчанию: пока часы
+  // не введены, колонка была бы столбцом прочерков.
+  { id: "workCost", labelKey: "transactions.columnWorkCost", align: "right", width: 96 },
   { id: "participant", labelKey: "transactions.columnParticipant", align: "left", width: 120 },
   { id: "store", labelKey: "transactions.columnStore", align: "left", width: 140 },
   { id: "counterparty", labelKey: "transactions.columnCounterparty", align: "left", width: 140 },

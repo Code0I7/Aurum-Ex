@@ -15,8 +15,9 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.account import Account
 from app.models.enums import AccountKind, TransactionType
@@ -135,6 +136,86 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
     )
 
 
+async def _credit_payments_due(session: AsyncSession, within_days: int = 7) -> list[dict]:
+    """Кредиты, платёж по которым близко.
+
+    Единственное оповещение здесь с настоящим сроком: остальные говорят о
+    тенденции, а это — о дате, которую можно пропустить и заплатить пеню.
+    Долг ноль означает, что платить нечего, и напоминание было бы шумом.
+    """
+    from app.models.credit import CreditTerms
+    from app.services.account_service import get_balances_by_account
+    from app.services.credit_service import next_payment_date
+
+    today = date.today()
+    rows = (
+        await session.execute(
+            select(CreditTerms, Account.name)
+            .join(Account, Account.id == CreditTerms.account_id)
+            .where(CreditTerms.payment_day.is_not(None))
+        )
+    ).all()
+    balances = await get_balances_by_account(session)
+
+    due: list[dict] = []
+    for terms, account_name in rows:
+        debt = max(-balances.get(terms.account_id, Decimal("0")), Decimal("0"))
+        if debt <= 0:
+            continue
+        payment_on = next_payment_date(terms.payment_day, today)
+        if payment_on is None:
+            continue
+        days_left = (payment_on - today).days
+        if 0 <= days_left <= within_days:
+            due.append({"name": account_name, "days": days_left})
+    return due
+
+
+async def _goals_without_an_account(session: AsyncSession) -> int:
+    """Цели, не привязанные к счёту.
+
+    Такая цель считается, но счёт не может показать «отложено»: деньги
+    обещаны, а откуда они возьмутся, неизвестно. Тихая половинчатость —
+    хуже явной, поэтому о ней говорится вслух.
+    """
+    from app.models.enums import GoalStatus
+    from app.models.goal import Goal
+
+    return int(
+        (
+            await session.execute(
+                select(func.count(Goal.id)).where(
+                    Goal.account_id.is_(None), Goal.status == GoalStatus.ACTIVE
+                )
+            )
+        ).scalar_one()
+    )
+
+
+async def _oversold_holdings(session: AsyncSession) -> int:
+    """Позиции, где продано больше, чем куплено.
+
+    Не ошибка расчёта, а пропуск в данных: забытая покупка или неверная
+    дата. Прибыль по такой позиции завышена, и молчать об этом нельзя.
+    """
+    from app.models.investment import InvestmentHolding
+    from app.services.investment_service import chronological
+    from app.services.fifo import replay
+
+    holdings = (
+        (
+            await session.execute(
+                select(InvestmentHolding)
+                .options(selectinload(InvestmentHolding.trades))
+                .where(InvestmentHolding.is_archived.is_(False))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return sum(1 for holding in holdings if replay(chronological(list(holding.trades))).oversold > 0)
+
+
 async def get_financial_alerts(session: AsyncSession) -> AlertsResponse:
     settings = await get_or_create_app_settings(session)
     alerts: list[FinancialAlert] = []
@@ -192,6 +273,37 @@ async def get_financial_alerts(session: AsyncSession) -> AlertsResponse:
                 key="idle_cash",
                 severity="warning",
                 params={"count": idle_cash_count, "days": settings.idle_cash_threshold_days},
+            )
+        )
+
+    for credit in await _credit_payments_due(session):
+        alerts.append(
+            FinancialAlert(
+                key="credit_payment_due",
+                # Единственное оповещение о дате, а не о тенденции: пропущенный
+                # платёж стоит пени сразу, а не через полгода.
+                severity="warning",
+                params={"name": credit["name"], "days": credit["days"]},
+            )
+        )
+
+    goals_unlinked = await _goals_without_an_account(session)
+    if goals_unlinked > 0:
+        alerts.append(
+            FinancialAlert(
+                key="goal_without_account",
+                severity="info",
+                params={"count": goals_unlinked},
+            )
+        )
+
+    oversold = await _oversold_holdings(session)
+    if oversold > 0:
+        alerts.append(
+            FinancialAlert(
+                key="investment_oversold",
+                severity="warning",
+                params={"count": oversold},
             )
         )
 

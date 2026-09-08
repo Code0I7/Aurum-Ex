@@ -51,6 +51,7 @@ from app.models.participant import Participant
 from app.models.store import Store
 from app.models.work_period import WorkPeriod
 from app.models.transaction import Transaction
+from app.services.category_grouping import build_nesting
 
 # Виды ДДС из исходной таблицы. Строки на русском — это буквально то, что
 # лежит в колонке; сопоставление вынесено сюда, чтобы не разбредаться
@@ -602,6 +603,11 @@ def detect_credit_accounts(rows: list[ParsedTransaction]) -> set[str]:
 
     Погашение для этого не годится: оно списывается с обычного счёта, с
     которого платят, и по нему кредитным оказался бы как раз не тот.
+
+    Результат — подсказка, а НЕ решение: вид счёта по нему не меняется.
+    Правило ошибается легко: с дебетовой карты тоже можно один раз
+    заплатить проценты по рассрочке, и карта выглядит кредитной. Кто из них
+    кредитный, знает владелец; приложение только показывает, где посмотреть.
     """
     credit_accounts: set[str] = set()
     for row in rows:
@@ -634,14 +640,19 @@ def _guess_account_kind(name: str) -> AccountKind:
     return AccountKind.CHECKING
 
 
-def _guess_account_nature(name: str, credit_accounts: set[str] | None = None) -> AccountNature:
-    """Актив или обязательство.
+def _guess_account_nature(name: str) -> AccountNature:
+    """Актив или обязательство — по названию счёта.
 
-    Найденное в данных перевешивает догадку по названию: счёт, на который
-    начисляли проценты, — обязательство, даже если в имени об этом ни слова.
+    Найденные в данных проценты по кредиту сюда НЕ входят, хотя соблазн был.
+    Правило «на счёт начисляли проценты → это кредитный счёт» легко даёт
+    неверный ответ: с дебетовой карты тоже можно один раз заплатить
+    проценты по рассрочке, и карта уехала бы в обязательства.
+
+    Проценты по-прежнему находятся (см. detect_credit_accounts) и
+    показываются в отчёте перед импортом как подсказка. Но применяет её
+    человек: он знает, что у него за счёт, а приложение только догадывается,
+    и молча угаданная неправда хуже честного вопроса.
     """
-    if credit_accounts and name in credit_accounts:
-        return AccountNature.LIABILITY
     kind = _guess_account_kind(name)
     return AccountNature.LIABILITY if kind is AccountKind.CREDIT_CARD else AccountNature.ASSET
 
@@ -729,16 +740,10 @@ async def apply_plan(
         # внутри настоящего счёта (см. detect_envelope_accounts).
         if name in plan.envelopes:
             continue
-        nature = _guess_account_nature(name, plan.credit_accounts)
+        nature = _guess_account_nature(name)
         account = Account(
             name=name,
-            # Вид счёта тоже уточняется найденным: счёт с процентами — не
-            # расчётный, даже если назван просто номером карты.
-            kind=(
-                AccountKind.CREDIT_CARD
-                if nature is AccountNature.LIABILITY and _guess_account_kind(name) is AccountKind.CHECKING
-                else _guess_account_kind(name)
-            ),
+            kind=_guess_account_kind(name),
             nature=nature,
             # Валюта счёта берётся из листа настроек, если он приложен: там
             # она указана прямо, а догадываться по названию неоткуда.
@@ -784,24 +789,102 @@ async def apply_plan(
     # вложенный — из «Подкатегории ДДС». Ограничение в один уровень было у
     # таблицы, а не у нас, поэтому дерево можно углублять и дальше.
     categories: dict[tuple[str, str | None], Category] = {}
-    for parent_name, children in plan.categories.items():
-        kind = _guess_category_kind(parent_name, plan)
-        parent = Category(name=parent_name, kind=kind, color=_next_color(len(categories)), is_default=False)
-        session.add(parent)
-        categories[(parent_name, None)] = parent
-        await session.flush()
+    # Раскладка добавляет промежуточные уровни поверх плоской пары
+    # «категория — подкатегория» (см. services/category_grouping.py).
+    #
+    # Всё адресуется парой (ветка, лист), а не именем: имена в этом дереве
+    # не уникальны. В настоящей таблице есть ветка «Вода» с подкатегорией
+    # «Вода» — так помечали трату на ветку без уточнения, — и раскладка по
+    # именам сделала бы категорию родителем самой себе.
+    nesting = build_nesting({name: sorted(children) for name, children in plan.categories.items()})
+
+    kind_by_branch: dict[str, CategoryKind] = {}
+    color_by_branch: dict[str, str] = {}
+    for index, branch_name in enumerate(plan.categories):
+        kind_by_branch[branch_name] = _guess_category_kind(branch_name, plan)
+        color_by_branch[branch_name] = _next_color(index)
+
+    def branch_of(level_name: str) -> str | None:
+        """Ветка, к которой относится новый промежуточный уровень.
+
+        Новый уровень собственных операций не имеет, и вид с цветом брать
+        ему неоткуда, кроме как у того, что под ним лежит. Иначе ветка
+        окажется наполовину доходной.
+        """
+        parent = nesting.new_levels.get(level_name)
+        if parent in kind_by_branch:
+            return parent
+        for branch, super_parent in nesting.branch_parent.items():
+            if super_parent == level_name:
+                return branch
+        return None
+
+    created_levels: dict[str, Category] = {}
+    # Сначала новые верхние уровни, потом группы внутри веток: у второго
+    # родитель — сама ветка, а она создаётся между ними.
+    for level_name, parent_name in nesting.new_levels.items():
+        if parent_name is not None:
+            continue
+        source = branch_of(level_name)
+        level = Category(
+            name=level_name,
+            kind=kind_by_branch.get(source, CategoryKind.EXPENSE),
+            parent_id=None,
+            color=color_by_branch.get(source, _next_color(len(created_levels))),
+            is_default=False,
+        )
+        session.add(level)
+        created_levels[level_name] = level
+    await session.flush()
+
+    branches: dict[str, Category] = {}
+    for branch_name, children in plan.categories.items():
+        super_parent = nesting.branch_parent.get(branch_name)
+        branch = Category(
+            name=branch_name,
+            kind=kind_by_branch[branch_name],
+            parent_id=created_levels[super_parent].id if super_parent in created_levels else None,
+            color=color_by_branch[branch_name],
+            is_default=False,
+        )
+        session.add(branch)
+        branches[branch_name] = branch
+    await session.flush()
+
+    groups: dict[str, Category] = {}
+    for level_name, parent_name in nesting.new_levels.items():
+        if parent_name is None or parent_name not in branches:
+            continue
+        group = Category(
+            name=level_name,
+            kind=kind_by_branch[parent_name],
+            parent_id=branches[parent_name].id,
+            color=color_by_branch[parent_name],
+            is_default=False,
+        )
+        session.add(group)
+        groups[level_name] = group
+    await session.flush()
+
+    total_levels = len(created_levels) + len(branches) + len(groups)
+    for branch_name, children in plan.categories.items():
+        categories[(branch_name, None)] = branches[branch_name]
         for child_name in sorted(children):
+            group_name = nesting.leaf_group.get((branch_name, child_name))
+            holder = groups[group_name] if group_name in groups else branches[branch_name]
             child = Category(
                 name=child_name,
-                kind=kind,
-                parent_id=parent.id,
-                color=parent.color,
+                kind=kind_by_branch[branch_name],
+                parent_id=holder.id,
+                color=color_by_branch[branch_name],
                 is_default=False,
             )
             session.add(child)
-            categories[(parent_name, child_name)] = child
+            categories[(branch_name, child_name)] = child
+            total_levels += 1
+
     await session.flush()
-    result.categories = len(categories)
+    result.categories = total_levels
     result.participants = len(participants)
 
     goals: dict[str, Goal] = {}

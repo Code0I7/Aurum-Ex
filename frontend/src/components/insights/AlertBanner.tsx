@@ -10,6 +10,9 @@ const ALERT_MESSAGE_KEYS: Record<string, TranslationKey> = {
   budget_exceeded: "insights.budgetExceeded",
   risky_allocation_exceeded: "insights.riskyAllocationExceeded",
   idle_cash: "insights.idleCash",
+  credit_payment_due: "insights.creditPaymentDue",
+  goal_without_account: "insights.goalWithoutAccount",
+  investment_oversold: "insights.investmentOversold",
 };
 
 function alertMessage(alert: FinancialAlert, t: ReturnType<typeof useTranslation>["t"]): string {
@@ -21,6 +24,11 @@ function alertMessage(alert: FinancialAlert, t: ReturnType<typeof useTranslation
   }
   if (alert.key === "idle_cash" && alert.params.count === 1) {
     return t("insights.idleCashOne", alert.params);
+  }
+  // Платёж сегодня и платёж через три дня — разные сообщения: «через 0 дней»
+  // не то, что человек хочет прочитать в день оплаты.
+  if (alert.key === "credit_payment_due" && alert.params.days === 0) {
+    return t("insights.creditPaymentToday", alert.params);
   }
   const messageKey = ALERT_MESSAGE_KEYS[alert.key];
   if (!messageKey) return alert.key;

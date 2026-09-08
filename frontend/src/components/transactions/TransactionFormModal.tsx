@@ -4,6 +4,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { ItemsEditor } from "@/components/transactions/ItemsEditor";
+import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
 import { TagInput } from "@/components/transactions/TagInput";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
@@ -15,6 +16,7 @@ import type {
   Tag,
   Transaction,
   TransactionInput,
+  SettlementKind,
   TransactionItemInput,
   TransactionSplitInput,
   TransactionType,
@@ -40,7 +42,22 @@ const EMPTY_FORM = {
   merchant: "",
   notes: "",
   date: todayIso(),
+  // Кто, где и с кем. Все три необязательны: быстрый ввод не должен требовать
+  // заполнять справочники, а поля, которые никто не заполняет, — это те же
+  // 43 неиспользованные подкатегории, на которых сгорела исходная таблица.
+  participant_id: "",
+  store_id: "",
+  counterparty_id: "",
+  settlement_kind: "" as SettlementKind | "",
+  // «Не учитывать»: запись остаётся в истории, но выпадает из всех расчётов.
+  // Ошибочный перевод, задвоенная строка, тестовая операция.
+  is_excluded: false,
 };
+
+// Расчёты с людьми — отдельные виды операции, а не расход с пометкой.
+// Деньги, переданные брату, ушли со счёта, но тратой не были, и складывать
+// их с покупками значило бы завысить расходы на всю сумму помощи.
+const SETTLEMENT_TYPES: TransactionType[] = ["external_out", "external_in"];
 
 interface SplitRowState {
   key: string;
@@ -73,6 +90,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const [splitMode, setSplitMode] = useState(false);
   const [splitRows, setSplitRows] = useState<SplitRowState[]>([emptySplitRow(), emptySplitRow()]);
   const [error, setError] = useState<string | null>(null);
+  const { data: participants } = useParticipants();
+  const { data: stores } = useStores();
+  const { data: counterparties } = useCounterparties();
   // Состав чека. Отдельно от разбивки по категориям и вместе с ней:
   // разбивка делит деньги и обязана сойтись с суммой, позиции описывают
   // покупку и сходиться не обязаны ничему.
@@ -104,6 +124,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         merchant: transaction.merchant ?? "",
         notes: transaction.notes ?? "",
         date: transaction.date,
+        participant_id: transaction.participant_id ? String(transaction.participant_id) : "",
+        store_id: transaction.store_id ? String(transaction.store_id) : "",
+        counterparty_id: transaction.counterparty_id ? String(transaction.counterparty_id) : "",
+        settlement_kind: transaction.settlement_kind ?? "",
+        is_excluded: transaction.is_excluded,
       });
       setTags(transaction.tags);
       setItems(
@@ -162,6 +187,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   }
 
   const isSplitEditingNow = form.type !== "transfer" && splitMode;
+  const isSettlement = SETTLEMENT_TYPES.includes(form.type);
   const splitAllocatedCents = splitRows.reduce((sum, row) => sum + toCents(row.amount), 0);
   const splitRemainingCents = toCents(form.amount) - splitAllocatedCents;
 
@@ -259,6 +285,14 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       notes: form.notes || null,
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
+      participant_id: form.participant_id ? Number(form.participant_id) : null,
+      store_id: form.store_id ? Number(form.store_id) : null,
+      // Контрагент и признак возвратности имеют смысл только у расчётов:
+      // отправлять их у обычной покупки значило бы записать связь, которой
+      // нет, и человек потом гадал бы, откуда взялся долг.
+      counterparty_id: isSettlement && form.counterparty_id ? Number(form.counterparty_id) : null,
+      settlement_kind: isSettlement && form.settlement_kind ? form.settlement_kind : null,
+      is_excluded: form.is_excluded,
       splits,
       // Позиции без названия не отправляются: пустая строка, добавленная и
       // не заполненная, — не позиция.
@@ -292,12 +326,17 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             onChange={(event) => {
               const nextType = event.target.value as TransactionType;
               setForm((prev) => ({ ...prev, type: nextType, category_id: "" }));
-              if (nextType === "transfer") setSplitMode(false);
+              if (nextType === "transfer" || SETTLEMENT_TYPES.includes(nextType)) setSplitMode(false);
             }}
           >
             <option value="expense">{t("transactions.form.typeExpense")}</option>
             <option value="income">{t("transactions.form.typeIncome")}</option>
             <option value="transfer">{t("transactions.form.typeTransfer")}</option>
+            {/* Расчёты с людьми двигают баланс, но не считаются заработком
+                или тратой — иначе помощь родителям выглядела бы расходом на
+                себя, а полученное от жены — доходом. */}
+            <option value="external_out">{t("transactions.form.typeExternalOut")}</option>
+            <option value="external_in">{t("transactions.form.typeExternalIn")}</option>
           </Select>
         </div>
 
@@ -356,7 +395,55 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           </Select>
         </div>
 
-        {form.type === "transfer" ? (
+        {isSettlement ? (
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div>
+              <Label htmlFor="counterparty">{t("transactions.form.counterpartyLabel")}</Label>
+              <Select
+                id="counterparty"
+                required
+                value={form.counterparty_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, counterparty_id: event.target.value }))}
+              >
+                <option value="" disabled>
+                  {t("transactions.form.selectCounterparty")}
+                </option>
+                {(counterparties ?? []).map((party) => (
+                  <option key={party.id} value={party.id}>
+                    {party.name}
+                  </option>
+                ))}
+              </Select>
+              {(counterparties ?? []).length === 0 && (
+                <p className="mt-1 text-xs text-text-muted">{t("transactions.form.noCounterparties")}</p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="settlement_kind">{t("transactions.form.settlementKindLabel")}</Label>
+              <Select
+                id="settlement_kind"
+                required
+                value={form.settlement_kind}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, settlement_kind: event.target.value as SettlementKind }))
+                }
+              >
+                <option value="" disabled>
+                  {t("transactions.form.selectSettlementKind")}
+                </option>
+                {/* Признак стоит на операции, а не на человеке: один и тот
+                    же человек и дарит, и одалживает. */}
+                <option value="gift">{t("transactions.form.settlementGift")}</option>
+                <option value={form.type === "external_out" ? "loan_out" : "loan_in"}>
+                  {t("transactions.form.settlementLoan")}
+                </option>
+                <option value="repayment">{t("transactions.form.settlementRepayment")}</option>
+              </Select>
+              <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementHint")}</p>
+            </div>
+          </div>
+        ) : form.type === "transfer" ? (
           <div>
             <Label htmlFor="transfer_account">{t("transactions.form.transferAccountLabel")}</Label>
             <Select
@@ -513,6 +600,58 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           <Label htmlFor="transaction-tags">{t("transactions.form.tagsLabel")}</Label>
           <TagInput value={tags} onChange={setTags} />
         </div>
+
+        {/* Кто и где. Оба поля необязательны и стоят внизу: они уточняют
+            запись, а не определяют её, и требовать их при быстром вводе
+            значило бы отпугнуть от ввода вообще. */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="participant">{t("transactions.form.participantLabel")}</Label>
+            <Select
+              id="participant"
+              value={form.participant_id}
+              onChange={(event) => setForm((prev) => ({ ...prev, participant_id: event.target.value }))}
+            >
+              <option value="">{t("transactions.form.noParticipant")}</option>
+              {(participants ?? []).map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="store">{t("transactions.form.storeLabel")}</Label>
+            <Select
+              id="store"
+              value={form.store_id}
+              onChange={(event) => setForm((prev) => ({ ...prev, store_id: event.target.value }))}
+            >
+              <option value="">{t("transactions.form.noStore")}</option>
+              {(stores ?? []).map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        {/* «Не учитывать»: запись остаётся в истории, но выпадает из всех
+            расчётов. Ошибочный перевод, задвоенная строка, тестовая
+            операция — удалять их нельзя, они были, но и считать нельзя. */}
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.is_excluded}
+            onChange={(event) => setForm((prev) => ({ ...prev, is_excluded: event.target.checked }))}
+            className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+          />
+          <span>
+            {t("transactions.form.excludedLabel")}
+            <span className="block text-xs text-text-muted">{t("transactions.form.excludedHint")}</span>
+          </span>
+        </label>
 
         {/* Состав чека — только у трат: у зарплаты нет позиций, а у перевода
             между своими счетами тем более. */}

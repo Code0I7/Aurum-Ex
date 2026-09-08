@@ -1,11 +1,10 @@
 import {
   Activity,
   ArrowLeftRight,
-  CalendarRange,
   Calculator,
+  CalendarRange,
   CandlestickChart,
   Coins,
-  ShoppingBasket,
   Flag,
   HandCoins,
   Layers,
@@ -14,6 +13,7 @@ import {
   PieChart,
   Repeat,
   Settings,
+  ShoppingBasket,
   Tags,
   Target,
   TrendingUp,
@@ -27,25 +27,78 @@ export interface NavItem {
   to: string;
   icon: LucideIcon;
   disabled?: boolean;
+  /** Объяснение раздела, показываемое кружком в шапке рядом с названием.
+   *  Живёт здесь, а не на странице: место у заголовка одно на всё
+   *  приложение, и подсказка обязана быть в нём всегда на одном месте. */
+  hintKey?: TranslationKey;
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { labelKey: "nav.dashboard", to: "/", icon: LayoutDashboard },
-  { labelKey: "nav.netWorth", to: "/net-worth", icon: TrendingUp },
-  { labelKey: "nav.investments", to: "/investments", icon: CandlestickChart },
-  { labelKey: "nav.crypto", to: "/crypto", icon: Coins },
-  { labelKey: "nav.roi", to: "/roi", icon: Calculator },
-  { labelKey: "nav.transactions", to: "/transactions", icon: ArrowLeftRight },
-  { labelKey: "nav.accounts", to: "/accounts", icon: Layers },
-  { labelKey: "nav.categories", to: "/categories", icon: Tags },
-  { labelKey: "nav.products", to: "/products", icon: ShoppingBasket },
-  { labelKey: "nav.cashFlow", to: "/cash-flow", icon: Activity },
-  { labelKey: "nav.reports", to: "/reports", icon: PieChart },
-  { labelKey: "nav.budget", to: "/budget", icon: Target },
-  { labelKey: "nav.planning", to: "/planning", icon: CalendarRange },
-  { labelKey: "nav.recurring", to: "/recurring", icon: Repeat },
-  { labelKey: "nav.goals", to: "/goals", icon: Flag },
-  { labelKey: "nav.debts", to: "/debts", icon: HandCoins },
-  { labelKey: "nav.advice", to: "/advice", icon: Lightbulb },
-  { labelKey: "nav.settings", to: "/settings", icon: Settings },
+export interface NavGroup {
+  /** Пусто у первой группы: заголовок над «Обзором» ничего не добавляет. */
+  labelKey: TranslationKey | null;
+  items: NavItem[];
+}
+
+/**
+ * Меню сгруппировано, а не выложено плоским списком.
+ *
+ * Пунктов стало восемнадцать, и плоский список такой длины перестаёт
+ * читаться: глаз ищет нужное перебором сверху вниз каждый раз. Группы
+ * отвечают на вопрос «в какой части приложения это живёт» до того, как
+ * человек начнёт читать названия.
+ *
+ * Порядок внутри групп — от того, чем пользуются каждый день, к тому, что
+ * открывают раз в месяц.
+ */
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    labelKey: null,
+    items: [
+      { labelKey: "nav.dashboard", to: "/", icon: LayoutDashboard, hintKey: "help.dashboard" },
+      { labelKey: "nav.transactions", to: "/transactions", icon: ArrowLeftRight, hintKey: "help.transactions" },
+      { labelKey: "nav.accounts", to: "/accounts", icon: Layers, hintKey: "help.accounts" },
+    ],
+  },
+  {
+    labelKey: "nav.group.analysis",
+    items: [
+      { labelKey: "nav.cashFlow", to: "/cash-flow", icon: Activity, hintKey: "help.cashFlow" },
+      { labelKey: "nav.reports", to: "/reports", icon: PieChart, hintKey: "help.reports" },
+      { labelKey: "nav.netWorth", to: "/net-worth", icon: TrendingUp, hintKey: "help.netWorth" },
+      { labelKey: "nav.advice", to: "/advice", icon: Lightbulb, hintKey: "help.advice" },
+    ],
+  },
+  {
+    labelKey: "nav.group.plans",
+    items: [
+      { labelKey: "nav.budget", to: "/budget", icon: Target, hintKey: "help.budget" },
+      { labelKey: "nav.planning", to: "/planning", icon: CalendarRange, hintKey: "help.planning" },
+      { labelKey: "nav.goals", to: "/goals", icon: Flag, hintKey: "help.goals" },
+      { labelKey: "nav.recurring", to: "/recurring", icon: Repeat, hintKey: "help.recurring" },
+      { labelKey: "nav.debts", to: "/debts", icon: HandCoins, hintKey: "help.debts" },
+    ],
+  },
+  {
+    labelKey: "nav.group.investments",
+    items: [
+      { labelKey: "nav.investments", to: "/investments", icon: CandlestickChart, hintKey: "help.investments" },
+      { labelKey: "nav.crypto", to: "/crypto", icon: Coins },
+      { labelKey: "nav.roi", to: "/roi", icon: Calculator },
+    ],
+  },
+  {
+    labelKey: "nav.group.directories",
+    items: [
+      { labelKey: "nav.categories", to: "/categories", icon: Tags, hintKey: "help.categories" },
+      { labelKey: "nav.products", to: "/products", icon: ShoppingBasket, hintKey: "help.products" },
+      { labelKey: "nav.settings", to: "/settings", icon: Settings },
+    ],
+  },
 ];
+
+/**
+ * Плоский список — для тех мест, которым нужен просто поиск по адресу
+ * (заголовок страницы в шапке). Собирается из групп, чтобы не разъехаться с
+ * меню при добавлении раздела.
+ */
+export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);

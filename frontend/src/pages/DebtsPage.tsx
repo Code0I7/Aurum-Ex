@@ -7,6 +7,7 @@ import { CreditList } from "@/components/debts/CreditList";
 import { CreditTermsModal } from "@/components/debts/CreditTermsModal";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCredits, useCreditSummary, useSettlements, useSettlementSummary } from "@/hooks/useDebts";
+import { HelpBadge } from "@/components/ui/HelpBadge";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import type { CreditTerms } from "@/types";
@@ -83,7 +84,10 @@ export function DebtsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("debts.people")}</CardTitle>
+          <CardTitle className="flex items-center gap-1.5">
+            {t("debts.people")}
+            <HelpBadge hintKey="help.settlements" />
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {settlementsLoading ? (

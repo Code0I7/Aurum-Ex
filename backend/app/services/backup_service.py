@@ -1,13 +1,17 @@
 """Full-database JSON backup & restore.
 
-Exports every row (accounts, categories, transactions, assets, asset
-valuations) as one portable JSON document a user can download from the
+Exports every row of every table as one portable JSON document a user can download from the
 browser and re-upload later. Restore fully REPLACES existing data — it's a
 snapshot restore, not a merge — so the whole operation runs in one DB
 transaction: a corrupt or incompatible file is rejected (referential checks
 run first, before any row is touched), and any failure during the swap rolls
 the database back to exactly where it was, so a bad file never leaves the
 app half-restored.
+
+Каждая таблица, появившаяся в Aurum-Ex, попадает в копию в том же выпуске,
+что и сама таблица. Копия, молча теряющая половину данных, хуже отсутствия
+копии: она обещает безопасность, которой не даёт, и обнаруживается это
+ровно тогда, когда восстанавливаться уже нужно.
 """
 from datetime import datetime, timezone
 
@@ -17,27 +21,54 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import APP_VERSION
-from app.models.account import Account
+from app.models.account import Account, Bank
 from app.models.asset import Asset, AssetValuation
 from app.models.budget import Budget
 from app.models.category import Category
+from app.models.counterparty import Counterparty
+from app.models.credit import CreditTerms
 from app.models.crypto import CryptoHolding, CryptoPortfolio, CryptoTransaction
+from app.models.currency import Currency, ExchangeRate
+from app.models.investment import InvestmentHolding, InvestmentPortfolio, InvestmentTrade
 from app.models.goal import Goal, GoalContribution
+from app.models.participant import Participant
+from app.models.plan import Plan
+from app.models.product import Product
 from app.models.recurring import RecurringTransaction
 from app.models.settings import AppSettings
+from app.models.store import Store
 from app.models.tag import Tag
-from app.models.transaction import Transaction, TransactionSplit
+from app.models.unit import Unit
+from app.models.widget import DashboardWidget
+from app.models.work_period import WorkPeriod
+from app.models.transaction import Transaction, TransactionItem, TransactionSplit
 from app.schemas.backup import (
     AccountBackup,
     AppSettingsBackup,
+    BankBackup,
     AssetBackup,
     AssetValuationBackup,
     BackupPayload,
     BudgetBackup,
     CategoryBackup,
+    CounterpartyBackup,
+    CreditTermsBackup,
+    CurrencyBackup,
     CryptoHoldingBackup,
     CryptoPortfolioBackup,
     CryptoTransactionBackup,
+    ExchangeRateBackup,
+    InvestmentHoldingBackup,
+    InvestmentPortfolioBackup,
+    InvestmentTradeBackup,
+    ParticipantBackup,
+    PlanBackup,
+    ProductBackup,
+    StoreBackup,
+    TransactionItemBackup,
+    UnitBackup,
+    WidgetBackup,
+    WorkPeriodBackup,
     GoalBackup,
     GoalContributionBackup,
     RecurringTransactionBackup,
@@ -64,6 +95,24 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     goals = (await session.execute(select(Goal))).scalars().all()
     goal_contributions = (await session.execute(select(GoalContribution))).scalars().all()
     recurring_transactions = (await session.execute(select(RecurringTransaction))).scalars().all()
+    # Справочники и разделы Aurum-Ex. Копия, молча теряющая половину данных,
+    # хуже отсутствия копии: она обещает безопасность, которой не даёт.
+    banks = (await session.execute(select(Bank))).scalars().all()
+    currencies = (await session.execute(select(Currency))).scalars().all()
+    exchange_rates = (await session.execute(select(ExchangeRate))).scalars().all()
+    units = (await session.execute(select(Unit))).scalars().all()
+    participants = (await session.execute(select(Participant))).scalars().all()
+    stores = (await session.execute(select(Store))).scalars().all()
+    counterparties = (await session.execute(select(Counterparty))).scalars().all()
+    products = (await session.execute(select(Product))).scalars().all()
+    transaction_items = (await session.execute(select(TransactionItem))).scalars().all()
+    credit_terms = (await session.execute(select(CreditTerms))).scalars().all()
+    plans = (await session.execute(select(Plan))).scalars().all()
+    work_periods = (await session.execute(select(WorkPeriod))).scalars().all()
+    investment_portfolios = (await session.execute(select(InvestmentPortfolio))).scalars().all()
+    investment_holdings = (await session.execute(select(InvestmentHolding))).scalars().all()
+    investment_trades = (await session.execute(select(InvestmentTrade))).scalars().all()
+    widgets = (await session.execute(select(DashboardWidget))).scalars().all()
     app_settings = await session.get(AppSettings, 1)
 
     return BackupPayload(
@@ -89,6 +138,24 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         goals=[GoalBackup.model_validate(row) for row in goals],
         goal_contributions=[GoalContributionBackup.model_validate(row) for row in goal_contributions],
         recurring_transactions=[RecurringTransactionBackup.model_validate(row) for row in recurring_transactions],
+        banks=[BankBackup.model_validate(row) for row in banks],
+        currencies=[CurrencyBackup.model_validate(row) for row in currencies],
+        exchange_rates=[ExchangeRateBackup.model_validate(row) for row in exchange_rates],
+        units=[UnitBackup.model_validate(row) for row in units],
+        participants=[ParticipantBackup.model_validate(row) for row in participants],
+        stores=[StoreBackup.model_validate(row) for row in stores],
+        counterparties=[CounterpartyBackup.model_validate(row) for row in counterparties],
+        products=[ProductBackup.model_validate(row) for row in products],
+        transaction_items=[TransactionItemBackup.model_validate(row) for row in transaction_items],
+        credit_terms=[CreditTermsBackup.model_validate(row) for row in credit_terms],
+        plans=[PlanBackup.model_validate(row) for row in plans],
+        work_periods=[WorkPeriodBackup.model_validate(row) for row in work_periods],
+        investment_portfolios=[
+            InvestmentPortfolioBackup.model_validate(row) for row in investment_portfolios
+        ],
+        investment_holdings=[InvestmentHoldingBackup.model_validate(row) for row in investment_holdings],
+        investment_trades=[InvestmentTradeBackup.model_validate(row) for row in investment_trades],
+        widgets=[WidgetBackup.model_validate(row) for row in widgets],
         app_settings=AppSettingsBackup.model_validate(app_settings) if app_settings else AppSettingsBackup(currency="USD"),
     )
 
@@ -190,6 +257,16 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
 
     try:
         # Children before parents.
+        await session.execute(delete(DashboardWidget))
+        await session.execute(delete(InvestmentTrade))
+        await session.execute(delete(InvestmentHolding))
+        await session.execute(delete(InvestmentPortfolio))
+        await session.execute(delete(WorkPeriod))
+        await session.execute(delete(Plan))
+        await session.execute(delete(CreditTerms))
+        await session.execute(delete(TransactionItem))
+        await session.execute(delete(Product))
+        await session.execute(delete(ExchangeRate))
         await session.execute(delete(AssetValuation))
         await session.execute(delete(CryptoTransaction))
         await session.execute(delete(CryptoHolding))
@@ -207,12 +284,26 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await session.execute(delete(Asset))
         await session.execute(delete(Category))
         await session.execute(delete(Account))
+        await session.execute(delete(Bank))
+        await session.execute(delete(Unit))
+        await session.execute(delete(Participant))
+        await session.execute(delete(Store))
+        await session.execute(delete(Counterparty))
+        await session.execute(delete(Currency))
 
         # Parents before children. Categories are additionally self-referential
         # (parent_id points at another row in the same table) — sort
         # top-level categories first so a subcategory's FK is never inserted
         # ahead of the row it points to.
         categories_in_order = sorted(payload.categories, key=lambda row: row.parent_id is not None)
+
+        # Справочники раньше всего: на них ссылаются и счета, и операции.
+        session.add_all(Bank(**row.model_dump()) for row in payload.banks)
+        session.add_all(Currency(**row.model_dump()) for row in payload.currencies)
+        session.add_all(Unit(**row.model_dump()) for row in payload.units)
+        session.add_all(Participant(**row.model_dump()) for row in payload.participants)
+        session.add_all(Store(**row.model_dump()) for row in payload.stores)
+        session.add_all(Counterparty(**row.model_dump()) for row in payload.counterparties)
 
         session.add_all(Account(**row.model_dump()) for row in payload.accounts)
         session.add_all(Category(**row.model_dump()) for row in categories_in_order)
@@ -235,6 +326,18 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         session.add_all(TransactionSplit(**row.model_dump()) for row in payload.transaction_splits)
 
         session.add_all(AssetValuation(**row.model_dump()) for row in payload.asset_valuations)
+
+        # Ссылаются на категории, единицы и счета — только после них.
+        session.add_all(ExchangeRate(**row.model_dump()) for row in payload.exchange_rates)
+        session.add_all(Product(**row.model_dump()) for row in payload.products)
+        session.add_all(TransactionItem(**row.model_dump()) for row in payload.transaction_items)
+        session.add_all(CreditTerms(**row.model_dump()) for row in payload.credit_terms)
+        session.add_all(Plan(**row.model_dump()) for row in payload.plans)
+        session.add_all(WorkPeriod(**row.model_dump()) for row in payload.work_periods)
+        session.add_all(InvestmentPortfolio(**row.model_dump()) for row in payload.investment_portfolios)
+        session.add_all(InvestmentHolding(**row.model_dump()) for row in payload.investment_holdings)
+        session.add_all(InvestmentTrade(**row.model_dump()) for row in payload.investment_trades)
+        session.add_all(DashboardWidget(**row.model_dump()) for row in payload.widgets)
 
         session.add_all(CryptoPortfolio(**row.model_dump()) for row in payload.crypto_portfolios)
         # A pre-portfolios backup has no crypto_portfolios and every holding's
