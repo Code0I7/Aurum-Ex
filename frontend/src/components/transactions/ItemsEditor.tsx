@@ -127,10 +127,19 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                 </button>
               </div>
 
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* Две строки по паре полей, а не четыре в ряд. Четыре поля
+                  в одной строке жались даже на широком экране, а порядок
+                  повторяет то, как человек читает ценник: сколько взял —
+                  сколько отдал. Цена за меру стоит последней, потому что
+                  её обычно не вводят, а получают. */}
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <Input
                   type="number"
-                  step="0.001"
+                  // step="any", а не «сотые»: 260 г за 64,99 дают 249,9615
+                  // за килограмм, и браузер с шагом в копейку отказывался
+                  // принимать такое число молча — поле просто не
+                  // отправлялось.
+                  step="any"
                   min="0"
                   placeholder={t("items.quantity")}
                   value={item.quantity ?? ""}
@@ -150,19 +159,9 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                     </option>
                   ))}
                 </select>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder={
-                    // Подпись называет базовую меру: «Цена за л» вместо
-                    // безликого «Цена за ед.», за которое приходилось
-                    // догадываться.
-                    baseUnitName(units, item.unit_id) ?? t("items.price")
-                  }
-                  value={item.price ?? ""}
-                  onChange={(event) => update(index, { price: event.target.value || null })}
-                />
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <Input
                   type="number"
                   step="0.01"
@@ -170,6 +169,19 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                   placeholder={t("items.amount")}
                   value={item.amount ?? ""}
                   onChange={(event) => update(index, { amount: event.target.value || null })}
+                />
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={
+                    // Подпись называет базовую меру: «₽ / л» вместо
+                    // безликого «Цена за ед.», за которым приходилось
+                    // догадываться, за что именно.
+                    baseUnitName(units, item.unit_id) ?? t("items.price")
+                  }
+                  value={item.price ?? ""}
+                  onChange={(event) => update(index, { price: event.target.value || null })}
                 />
               </div>
             </li>

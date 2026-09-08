@@ -9,9 +9,12 @@ interface DialogProps extends PropsWithChildren {
   open: boolean;
   onClose: () => void;
   title: ReactNode;
+  /** Шире обычного — для форм, где в строке несколько полей. На телефоне
+   *  ничего не меняет: там окно и так во всю ширину. */
+  wide?: boolean;
 }
 
-export function Dialog({ open, onClose, title, children }: DialogProps) {
+export function Dialog({ open, onClose, title, wide, children }: DialogProps) {
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -59,7 +62,10 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-surface-1 p-5 shadow-xl sm:max-w-md sm:rounded-2xl"
+        className={cn(
+          "max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-surface-1 p-5 shadow-xl sm:rounded-2xl",
+          wide ? "sm:max-w-[34rem]" : "sm:max-w-md"
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">

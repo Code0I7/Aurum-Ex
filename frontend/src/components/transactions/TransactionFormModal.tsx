@@ -55,7 +55,6 @@ const EMPTY_FORM = {
   transfer_account_id: "",
   amount: "",
   description: "",
-  merchant: "",
   date: todayIso(),
   // Кто, где и с кем. Все три необязательны: быстрый ввод не должен требовать
   // заполнять справочники, а поля, которые никто не заполняет, — это те же
@@ -136,7 +135,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         transfer_account_id: transaction.transfer_account_id ? String(transaction.transfer_account_id) : "",
         amount: transaction.amount,
         description: transaction.description ?? "",
-        merchant: transaction.merchant ?? "",
         date: transaction.date,
         participant_id: transaction.participant_id ? String(transaction.participant_id) : "",
         store_id: transaction.store_id ? String(transaction.store_id) : "",
@@ -312,7 +310,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
       amount: form.amount,
       description: form.description.trim() || null,
-      merchant: form.merchant || null,
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
       participant_id: form.participant_id ? Number(form.participant_id) : null,
@@ -402,6 +399,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
   return (
     <Dialog
+      wide
       open={open}
       onClose={onClose}
       title={transaction ? t("transactions.form.editTitle") : t("transactions.form.newTitle")}
@@ -660,15 +658,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             )}
           </div>
         )}
-
-        <div>
-          <Label htmlFor="merchant">{t("transactions.form.merchantLabel")}</Label>
-          <Input
-            id="merchant"
-            value={form.merchant}
-            onChange={(event) => setForm((prev) => ({ ...prev, merchant: event.target.value }))}
-          />
-        </div>
 
         <div>
           <Label htmlFor="transaction-tags">{t("transactions.form.tagsLabel")}</Label>

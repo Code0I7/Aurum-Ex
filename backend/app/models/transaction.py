@@ -84,10 +84,16 @@ class Transaction(Base, TimestampMixin):
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("1"))
     amount_base: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
 
-    description: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Историческое свободнотекстовое поле продавца. Оставлено ради
-    # совместимости с CSV-импортом банков, где магазин приходит строкой и
-    # ещё не сопоставлен со справочником; смысловая связь живёт в store_id.
+    # Необязательно. В исходной таблице это была вторая строка записи, а не
+    # заметка к ней: у большинства покупок сказать сверх категории нечего.
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Историческое свободнотекстовое поле продавца. Заполняется только
+    # CSV-импортом банковской выписки, где магазин приходит строкой и ещё
+    # не сопоставлен со справочником; в форме ввода поля нет — там для
+    # этого есть «Магазин», и два поля об одном приводили к тому, что
+    # сравнение цен молча теряло половину покупок.
+    #
+    # Смысловая связь живёт в store_id.
     merchant: Mapped[str | None] = mapped_column(String(150), nullable=True)
     date: Mapped[date_] = mapped_column(Date, nullable=False)
     # Порядок внутри дня. Заполняется автоматически по времени создания и

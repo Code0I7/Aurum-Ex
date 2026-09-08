@@ -48,7 +48,11 @@ class AccountBalanceItem(BaseModel):
 class LargestTransactionItem(BaseModel):
     id: int
     date: date_
-    description: str
+    # Может быть пустым: описание операции необязательно. Схема показа
+    # обязана уметь показать всё, что лежит в базе, — иначе одна строка без
+    # описания роняет целый экран. Это уже случалось трижды, каждый раз с
+    # другим полем и другим экраном.
+    description: str | None = None
     amount: Decimal
     category_name: str | None
     account_name: str
