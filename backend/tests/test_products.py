@@ -164,11 +164,13 @@ async def test_price_history_compares_litres_with_millilitres(client: AsyncClien
 
     history = (await client.get(f"/products/{juice['id']}/prices")).json()
     assert len(history["points"]) == 2
-    # 120 / (1.5 × 1000) = 0.08 ₽ за миллилитр; 55 / (500 × 1) = 0.11.
-    assert Decimal(history["points"][0]["price_per_base_unit"]).quantize(Decimal("0.0001")) == Decimal("0.0800")
-    assert Decimal(history["points"][1]["price_per_base_unit"]).quantize(Decimal("0.0001")) == Decimal("0.1100")
+    # Базовая мера — литр, а не миллилитр: «0,08 за миллилитр»
+    # арифметически верно и бесполезно, в магазине сравнивают рубли за литр.
+    # 120 / (1,5 × 1) = 80 ₽ за литр; 55 / (500 × 0,001) = 110.
+    assert Decimal(history["points"][0]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("80.00")
+    assert Decimal(history["points"][1]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("110.00")
     assert history["change_percent"] == 37.5
-    assert history["base_unit_name"] == "мл"
+    assert history["base_unit_name"] == "л"
 
 
 async def test_items_without_a_price_never_reach_the_chart(client: AsyncClient, account_id, categories):

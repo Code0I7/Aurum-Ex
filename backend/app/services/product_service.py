@@ -121,8 +121,16 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
     return dict(stats)
 
 
-def _to_read(product: Product, stats: ProductStats | None) -> ProductRead:
+def _to_read(
+    product: Product, stats: ProductStats | None, base_units: dict[str, str] | None = None
+) -> ProductRead:
     stats = stats or ProductStats()
+    # Подпись берётся по виду единицы самого товара: «кг» для сыра, «л» для
+    # сока. Товар без единицы цены за базовую меру и не имеет.
+    base_name = None
+    if product.unit is not None and base_units:
+        kind = product.unit.kind
+        base_name = base_units.get(str(kind.value if hasattr(kind, "value") else kind))
     return ProductRead(
         id=product.id,
         name=product.name,
@@ -138,7 +146,19 @@ def _to_read(product: Product, stats: ProductStats | None) -> ProductRead:
         last_price_per_base_unit=stats.last_price,
         spent_total=stats.spent_total,
         spent_year=stats.spent_year,
+        base_unit_name=base_name,
     )
+
+
+async def _base_unit_names(session: AsyncSession) -> dict[str, str]:
+    """Имя базовой меры для каждого вида: MASS → «кг», VOLUME → «л».
+
+    Нужно только для подписи. Вид без базовой единицы в словарь не
+    попадает, и цена у его товаров показывается без «за что» — это хуже,
+    чем с подписью, но лучше, чем выдуманная.
+    """
+    rows = (await session.execute(select(Unit.kind, Unit.name).where(Unit.is_base.is_(True)))).all()
+    return {str(kind.value if hasattr(kind, "value") else kind): name for kind, name in rows}
 
 
 async def list_products(session: AsyncSession, include_archived: bool = False) -> list[ProductRead]:
@@ -151,7 +171,8 @@ async def list_products(session: AsyncSession, include_archived: bool = False) -
         stmt = stmt.where(Product.is_archived.is_(False))
     products = (await session.execute(stmt)).scalars().all()
     stats = await _product_stats(session)
-    return [_to_read(product, stats.get(product.id)) for product in products]
+    base_units = await _base_unit_names(session)
+    return [_to_read(product, stats.get(product.id), base_units) for product in products]
 
 
 async def create_product(session: AsyncSession, payload: ProductCreate) -> ProductRead:
@@ -179,7 +200,7 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
     await session.commit()
     await session.refresh(product, ["category", "unit"])
     stats = await _product_stats(session)
-    return _to_read(product, stats.get(product.id))
+    return _to_read(product, stats.get(product.id), await _base_unit_names(session))
 
 
 async def delete_product(session: AsyncSession, product_id: int) -> None:
@@ -292,7 +313,7 @@ async def suggest_products(session: AsyncSession, query: str, limit: int = 10) -
     )
     products = (await session.execute(stmt)).scalars().all()
     stats = await _product_stats(session)
-    return [_to_read(product, stats.get(product.id)) for product in products]
+    return [_to_read(product, stats.get(product.id), await _base_unit_names(session)) for product in products]
 
 
 async def resolve_item_category(session: AsyncSession, category_id: int | None) -> int | None:

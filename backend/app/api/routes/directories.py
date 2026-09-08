@@ -27,7 +27,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
@@ -264,6 +264,10 @@ class UnitUpdate(BaseModel):
     kind: UnitKind | None = None
     factor: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=6)
     sort_order: int | None = None
+    # Базовая мера — та, в которой человек сравнивает цены: килограмм, а не
+    # грамм. Меняется, потому что «удобно сравнивать» — вопрос привычки, а
+    # не физики: кто-то считает бензин литрами, кто-то заправками.
+    is_base: bool | None = None
 
 
 @router.get("/units", response_model=list[UnitRead])
@@ -282,17 +286,29 @@ async def create_unit(payload: UnitCreate, session: AsyncSession = Depends(get_s
 
 @router.patch("/units/{unit_id}", response_model=UnitRead)
 async def update_unit(unit_id: int, payload: UnitUpdate, session: AsyncSession = Depends(get_session)) -> Unit:
+    """Правка единицы. Назначение базовой снимает признак с прежней:
+    двух базовых в одном виде быть не может — приведение стало бы
+    неоднозначным, и цена за «базовую» перестала бы что-либо значить."""
+    unit = await _get_or_404(session, Unit, unit_id)
+    if payload.is_base:
+        kind = payload.kind or unit.kind
+        await session.execute(
+            update(Unit).where(Unit.kind == kind, Unit.id != unit_id).values(is_base=False)
+        )
     return await _update(session, Unit, unit_id, payload)
 
 
 @router.delete("/units/{unit_id}", status_code=204)
 async def delete_unit(unit_id: int, session: AsyncSession = Depends(get_session)) -> None:
-    """Базовую единицу удалить нельзя: без неё не к чему приводить
-    остальные единицы того же вида, и вся история цен по ним рассыпается."""
-    unit = await _get_or_404(session, Unit, unit_id)
-    if unit.is_base:
-        raise HTTPException(
-            status_code=400,
-            detail="Базовая единица удаляется только вместе со своим видом измерения.",
-        )
+    """Удалить можно любую, включая базовую.
+
+    Запрет на удаление базовой был лишним: цена за базовую меру считается
+    из коэффициента самой единицы, а признак `is_base` — только подпись,
+    в каких единицах эта цена выражена. Вид, оставшийся без базовой,
+    теряет подпись, а не расчёт; вид, оставшийся без единиц вовсе, просто
+    перестаёт участвовать в сравнении цен.
+
+    Позиции чеков, где единица была указана, остаются: ссылка обнуляется,
+    и у них перестаёт считаться цена за базовую меру.
+    """
     await _delete(session, Unit, unit_id)

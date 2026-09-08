@@ -54,7 +54,7 @@ export function ProductList({ items, onEdit, onPrices, onDelete, onArchive }: Pr
             {product.last_price_per_base_unit && (
               <span className="block text-xs tabular-nums text-text-muted">
                 {formatCurrency(product.last_price_per_base_unit)}
-                {product.unit_name && ` / ${t("product.baseUnitShort")}`}
+                {product.base_unit_name && ` / ${product.base_unit_name}`}
               </span>
             )}
           </span>

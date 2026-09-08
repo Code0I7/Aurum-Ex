@@ -941,9 +941,12 @@ export type UnitKind = "weight" | "volume" | "count" | "length" | "service";
 export interface UnitInput {
   name: string;
   kind: UnitKind;
-  // Сколько базовых единиц своего вида: кг → 1000 г.
+  // Сколько базовых единиц своего вида: г → 0,001 кг.
   factor: string;
   sort_order?: number;
+  // Базовая мера вида — та, в которой сравнивают цены. Назначение новой
+  // снимает признак с прежней: двух базовых в одном виде быть не может.
+  is_base?: boolean;
 }
 
 export interface Unit {
@@ -971,6 +974,9 @@ export interface Product {
   purchases: number;
   last_bought: string | null;
   last_price_per_base_unit: string | null;
+  // В каких единицах выражена цена выше: «74 ₽ / л» читается, а
+  // «74 ₽ / ед.» заставляет догадываться.
+  base_unit_name: string | null;
   // Сколько денег ушло на товар. Кривая цены отвечает «дорожает ли»,
   // это — «сколько мне это стоит». Год скользящий, не календарный.
   spent_total: string;

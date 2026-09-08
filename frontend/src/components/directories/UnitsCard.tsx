@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { Check, Plus, Star, Trash2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
@@ -168,23 +168,40 @@ export function UnitsCard() {
                           : ` · ${t("directories.unitEquals", { factor: unit.factor })}`}
                       </span>
                     </button>
+                    {/* Назначить базовой можно любую: «удобно сравнивать» —
+                        вопрос привычки, а не физики. Кто-то считает бензин
+                        литрами, кто-то заправками. */}
                     {!unit.is_base && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          const ok = await confirm({
-                            message: t("directories.confirmDeleteUnit", { name: unit.name }),
-                            confirmLabel: t("common.delete"),
-                            tone: "danger",
-                          });
-                          if (ok) await deleteUnit.mutateAsync(unit.id);
-                        }}
-                        aria-label={t("common.delete")}
-                        className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                        onClick={() => updateUnit.mutate({ id: unit.id, input: { is_base: true } })}
+                        aria-label={t("directories.makeBase")}
+                        title={t("directories.makeBase")}
+                        className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-accent"
                       >
-                        <Trash2 size={15} />
+                        <Star size={15} />
                       </button>
                     )}
+                    {/* Удалить можно любую, включая базовую: признак базовой —
+                        только подпись, в каких единицах выражена цена, а сам
+                        расчёт идёт из коэффициента самой единицы. */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          message: unit.is_base
+                            ? t("directories.confirmDeleteBaseUnit", { name: unit.name })
+                            : t("directories.confirmDeleteUnit", { name: unit.name }),
+                          confirmLabel: t("common.delete"),
+                          tone: "danger",
+                        });
+                        if (ok) await deleteUnit.mutateAsync(unit.id);
+                      }}
+                      aria-label={t("common.delete")}
+                      className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </>
                 )}
               </li>

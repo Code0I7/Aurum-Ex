@@ -34,11 +34,16 @@ DEFAULT_CURRENCIES = [
 # Коэффициент приводит к базе: килограмм — это 1000 граммов, литр — 1000
 # миллилитров. Без этого «1,5 л за 120 ₽» и «500 мл за 55 ₽» несравнимы, и
 # отслеживание цен превращается в угадывание (см. models/unit.py).
+# (имя, вид, сколько это базовых, базовая ли)
+#
+# Базовая мера — та, в которой человек сравнивает цены в магазине:
+# килограмм, литр, штука, метр. Грамм и миллилитр в этой роли давали
+# «0,074 за миллилитр» — арифметически верно и бесполезно.
 DEFAULT_UNITS = [
-    ("г", UnitKind.MASS, Decimal("1"), True),
-    ("кг", UnitKind.MASS, Decimal("1000"), False),
-    ("мл", UnitKind.VOLUME, Decimal("1"), True),
-    ("л", UnitKind.VOLUME, Decimal("1000"), False),
+    ("кг", UnitKind.MASS, Decimal("1"), True),
+    ("г", UnitKind.MASS, Decimal("0.001"), False),
+    ("л", UnitKind.VOLUME, Decimal("1"), True),
+    ("мл", UnitKind.VOLUME, Decimal("0.001"), False),
     ("шт", UnitKind.COUNT, Decimal("1"), True),
     ("упак", UnitKind.COUNT, Decimal("1"), False),
     ("м", UnitKind.LENGTH, Decimal("1"), True),
