@@ -4,6 +4,7 @@ import {
   deletePlan,
   fetchPlanOverview,
   fetchPlans,
+  fetchWatchlist,
   fetchHourlyRates,
   fetchWorkPeriods,
   saveWorkPeriod,
@@ -25,6 +26,10 @@ export function usePlans() {
 
 export function usePlanOverview(year: number) {
   return useQuery({ queryKey: ["plans", "overview", year], queryFn: () => fetchPlanOverview(year) });
+}
+
+export function useWatchlist(year: number) {
+  return useQuery({ queryKey: ["plans", "watchlist", year], queryFn: () => fetchWatchlist(year) });
 }
 
 export function useCreatePlan() {

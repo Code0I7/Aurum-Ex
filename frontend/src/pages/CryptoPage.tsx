@@ -20,6 +20,7 @@ import {
 } from "@/hooks/useCrypto";
 import { getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { CryptoHolding, CryptoPortfolio, CryptoRange, CryptoTransaction } from "@/types";
 
 function formatSyncedAt(iso: string): string {
@@ -44,6 +45,7 @@ export function CryptoPage() {
   const { data: performance90d, isLoading: isPerformance90dLoading } = useCrypto90dPerformance(range, portfolioFilter);
   const refresh = useRefreshCryptoPrices();
   const deleteHolding = useDeleteCryptoHolding();
+  const confirm = useConfirm();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editingPortfolio, setEditingPortfolio] = useState<CryptoPortfolio | null>(null);
@@ -74,10 +76,13 @@ export function CryptoPage() {
     setPortfolioModalOpen(true);
   }
 
-  function handleDelete(holding: CryptoHolding) {
-    if (window.confirm(t("crypto.confirmDelete", { name: holding.name }))) {
-      deleteHolding.mutate(holding.asset_id);
-    }
+  async function handleDelete(holding: CryptoHolding) {
+    const ok = await confirm({
+      message: t("crypto.confirmDelete", { name: holding.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteHolding.mutate(holding.asset_id);
   }
 
   function handleEditTransaction(transaction: CryptoTransaction) {

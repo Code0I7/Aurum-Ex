@@ -35,7 +35,11 @@ from app.services.transaction_service import next_day_order, running_balances
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 _EAGER = (
-    selectinload(Transaction.account),
+    # Банк подгружается вместе со счётом: AccountRead его показывает, а
+    # ленивая загрузка в асинхронной сессии падает (MissingGreenlet), и
+    # падает не при чтении списка, а при ответе на создание операции —
+    # то есть у любого, кто привязал счёт к банку.
+    selectinload(Transaction.account).selectinload(Account.bank),
     selectinload(Transaction.category),
     selectinload(Transaction.tags),
     selectinload(Transaction.splits).selectinload(TransactionSplit.category),
@@ -195,8 +199,17 @@ async def list_transactions(
         stmt = stmt.where(Transaction.date <= end_date)
         count_stmt = count_stmt.where(Transaction.date <= end_date)
     if account_id is not None:
-        stmt = stmt.where(Transaction.account_id == account_id)
-        count_stmt = count_stmt.where(Transaction.account_id == account_id)
+        # Обе стороны перевода, а не только счёт-источник. У перевода
+        # account_id — откуда ушло, transfer_account_id — куда пришло, и
+        # фильтр по одной колонке показывал бы половину выписки: деньги,
+        # пришедшие на счёт переводом, из неё выпадали. Именно на этом
+        # запутываются пары счетов вроде «карта и рассрочка того же
+        # магазина» — половина движений между ними просто не видна.
+        account_filter = or_(
+            Transaction.account_id == account_id, Transaction.transfer_account_id == account_id
+        )
+        stmt = stmt.where(account_filter)
+        count_stmt = count_stmt.where(account_filter)
     if category_id is not None:
         # A split transaction has category_id=NULL on the row itself — the
         # category lives on its split lines instead, so filtering by exact
@@ -258,7 +271,9 @@ async def list_transactions(
     # Баланс счёта после каждой операции считается по всей его истории, а не
     # по этой странице: иначе он менялся бы от включённого фильтра и
     # перестал бы быть балансом (см. services/transaction_service.py).
-    balances = await running_balances(session, [item.id for item in items])
+    # При фильтре по счёту баланс считается для него: иначе у строки
+    # перевода в выписке получателя стоял бы остаток отправителя.
+    balances = await running_balances(session, [item.id for item in items], account_id)
     rows = [
         TransactionRead.model_validate(item, from_attributes=True).model_copy(
             update={"balance_after": balances.get(item.id)}

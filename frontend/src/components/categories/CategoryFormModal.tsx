@@ -36,6 +36,10 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
 
   const [form, setForm] = useState(emptyForm(defaultKind));
   const [error, setError] = useState<string | null>(null);
+  // Распространить цвет и значок на всю ветку. Спрашивается, а не делается
+  // молча: подкатегорию могли покрасить нарочно, и перекрасить её без
+  // спроса значило бы стереть решение человека.
+  const [applyToChildren, setApplyToChildren] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -108,6 +112,29 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
     return result;
   }, [allCategories, category, form.kind]);
 
+  // Вся ветка вниз, а не только прямые дети: перекрасить корень и оставить
+  // внуков разноцветными — половина работы.
+  const descendantCount = useMemo(() => {
+    if (!category || !allCategories) return 0;
+    const byParent = new Map<number, number[]>();
+    for (const item of allCategories) {
+      if (item.parent_id === null) continue;
+      byParent.set(item.parent_id, [...(byParent.get(item.parent_id) ?? []), item.id]);
+    }
+    let count = 0;
+    const queue = [category.id];
+    while (queue.length > 0) {
+      for (const child of byParent.get(queue.pop()!) ?? []) {
+        count += 1;
+        queue.push(child);
+      }
+    }
+    return count;
+  }, [allCategories, category]);
+
+  const styleChanged =
+    category !== null && category !== undefined && (form.color !== category.color || form.icon !== category.icon);
+
   const isSaving = createCategory.isPending || updateCategory.isPending;
 
   async function handleSubmit(event: React.FormEvent) {
@@ -120,7 +147,13 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
       if (category) {
         await updateCategory.mutateAsync({
           id: category.id,
-          input: { name: form.name, icon: form.icon, color: form.color, parent_id },
+          input: {
+            name: form.name,
+            icon: form.icon,
+            color: form.color,
+            parent_id,
+            apply_style_to_children: applyToChildren,
+          },
         });
       } else {
         await createCategory.mutateAsync({ name: form.name, kind: form.kind, icon: form.icon, color: form.color, parent_id });
@@ -192,6 +225,26 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
           <Label>{t("category.form.colorLabel")}</Label>
           <CategoryColorPicker value={form.color} onChange={(color) => setForm((prev) => ({ ...prev, color }))} />
         </div>
+
+        {/* Предложение появляется только когда есть что перекрашивать и
+            есть что менять: у листа ветки нет, а без правки цвета или значка
+            галочка ничего бы не делала. */}
+        {category && descendantCount > 0 && styleChanged && (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={applyToChildren}
+              onChange={(event) => setApplyToChildren(event.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+            />
+            <span>
+              {t("category.form.applyToChildren", { count: descendantCount })}
+              <span className="block text-xs text-text-muted">
+                {t("category.form.applyToChildrenHint")}
+              </span>
+            </span>
+          </label>
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

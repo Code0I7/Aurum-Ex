@@ -22,6 +22,14 @@ class Category(Base):
     # Fixed slot ordering keeps the donut chart's category order stable across renders.
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Список наблюдения. В исходной таблице был лист «Отследить»: несколько
+    # выбранных подкатегорий по месяцам, чтобы держать на виду не весь
+    # список, а те, за которыми человек следит прямо сейчас.
+    #
+    # Признак на самой категории, а не отдельная таблица связей: наблюдают
+    # за категорией, а не за парой «категория — год». Планирование читает
+    # его в services/plan_service.py.
+    is_watched: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Ссылка на саму себя: дерево произвольной глубины. Одноуровневое
     # ограничение оригинального Aurum снято — «Продукты → Молочное → Сыр»
     # законны, и ветку с детьми можно перенести целиком. Границы ставит

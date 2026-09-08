@@ -74,11 +74,14 @@ export function PlanTable({ overview }: PlanTableProps) {
             ))}
           </tbody>
           <tfoot>
-            <TotalsRow label={t("planning.incomeTotal")} cells={overview.income_totals} mode={mode} />
+            <TotalsRow label={t("planning.incomeTotal")} cells={overview.income_totals} mode={mode} isIncome />
+            {/* Расходы — не «по-доходному»: перерасход в этой полосе должен
+                краснеть так же, как в строке любой траты выше. */}
             <TotalsRow label={t("planning.expenseTotal")} cells={overview.expense_totals} mode={mode} />
             {/* Свободные средства — то, ради чего вся таблица: сколько
-                осталось бы, если бы всё шло по плану, и сколько осталось. */}
-            <TotalsRow label={t("planning.free")} cells={overview.free_totals} mode={mode} emphasis />
+                осталось бы, если бы всё шло по плану, и сколько осталось.
+                Читаются как доход: больше — лучше. */}
+            <TotalsRow label={t("planning.free")} cells={overview.free_totals} mode={mode} isIncome emphasis />
           </tfoot>
         </table>
       </div>
@@ -115,17 +118,19 @@ function TotalsRow({
   label,
   cells,
   mode,
+  isIncome,
   emphasis,
 }: {
   label: string;
   cells: PlanMonthCell[];
   mode: Mode;
+  /** Больше плана — это хорошо (доход, свободные средства) или плохо
+   *  (расход). Раньше стояло жёстко «хорошо» для всех трёх полос, и
+   *  перерасход по итогу расходов подсвечивался зелёным. */
+  isIncome?: boolean;
   emphasis?: boolean;
 }) {
   const total = cells.reduce((sum, cell) => sum + valueOf(cell, mode), 0);
-  // Итоговые полосы всегда читаются «по-доходному»: больше — лучше. Для
-  // расходов это верно тоже: перерасход показывается в строке свободных
-  // средств тем же минусом.
   return (
     <tr className={emphasis ? "border-t-2 border-border" : "border-t border-border/60"}>
       <th
@@ -136,9 +141,9 @@ function TotalsRow({
         {label}
       </th>
       {cells.map((cell) => (
-        <Cell key={cell.month} value={valueOf(cell, mode)} mode={mode} isIncome strong={emphasis} />
+        <Cell key={cell.month} value={valueOf(cell, mode)} mode={mode} isIncome={!!isIncome} strong={emphasis} />
       ))}
-      <Cell value={total} mode={mode} isIncome strong />
+      <Cell value={total} mode={mode} isIncome={!!isIncome} strong />
     </tr>
   );
 }

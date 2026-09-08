@@ -11,7 +11,7 @@ which rate applies where.
 from datetime import date as date_
 from decimal import Decimal
 
-from sqlalchemy import Date, Integer, Numeric, String
+from sqlalchemy import Boolean, Date, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -49,3 +49,21 @@ class AppSettings(Base):
     # working. In the app's display currency (see `currency` above).
     idle_cash_threshold_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("1000"))
     idle_cash_threshold_days: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+
+    # Что показывать при открытии. Выбирается один раз, а не каждый сеанс
+    # заново, и хранится на сервере, а не в браузере: установка
+    # однопользовательская, и настройка с ноутбука должна действовать с
+    # телефона.
+    #
+    # Период дашборда: month, year или all. Год по умолчанию — месяц при
+    # многолетней истории случайный срез, а «за всё время» отвечает на
+    # вопрос «как было вообще», тогда как открывают приложение обычно с
+    # вопросом «как у меня сейчас».
+    default_dashboard_range: Mapped[str] = mapped_column(String(10), nullable=False, default="year")
+    # Сколько операций подгружать за раз. Пятьдесят, а не двадцать: при
+    # четырёх годах истории двадцать строк — это полторы недели, и до
+    # прошлого месяца приходится долистывать.
+    default_page_size: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    # Склеивать ли одинаковые траты дня и рисовать ли разделители дней.
+    group_repeats_by_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    day_dividers_by_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

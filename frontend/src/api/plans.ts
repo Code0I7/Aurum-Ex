@@ -1,6 +1,6 @@
 import { api } from "@/api/client";
 import type { HourlyRates } from "@/lib/hours";
-import type { Plan, PlanInput, PlanOverview, WorkPeriod, WorkPeriodInput } from "@/types";
+import type { Plan, PlanInput, PlanOverview, Watchlist, WorkPeriod, WorkPeriodInput } from "@/types";
 
 export function fetchPlans() {
   return api.get<Plan[]>("/plans");
@@ -8,6 +8,12 @@ export function fetchPlans() {
 
 export function fetchPlanOverview(year: number) {
   return api.get<PlanOverview>(`/plans/overview?year=${year}`);
+}
+
+// Список наблюдения. Отдельный запрос, а не часть таблицы года: его
+// строки живут по другим правилам — по всей ветке и без плана.
+export function fetchWatchlist(year: number) {
+  return api.get<Watchlist>(`/plans/watchlist?year=${year}`);
 }
 
 export function createPlan(input: PlanInput) {

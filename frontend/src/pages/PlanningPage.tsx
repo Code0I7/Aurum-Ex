@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/Button";
 import { PlanTable } from "@/components/planning/PlanTable";
 import { PlanFormModal } from "@/components/planning/PlanFormModal";
 import { WorkDaysCard } from "@/components/planning/WorkDaysCard";
+import { WatchlistCard } from "@/components/planning/WatchlistCard";
 import { useDeletePlan, usePlanOverview, usePlans } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { formatCurrency } from "@/lib/format";
 import type { Plan } from "@/types";
 
@@ -24,6 +26,7 @@ export function PlanningPage() {
   const { data: overview, isLoading } = usePlanOverview(year);
   const { data: plans } = usePlans();
   const deletePlan = useDeletePlan();
+  const confirm = useConfirm();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
@@ -38,10 +41,13 @@ export function PlanningPage() {
     setFormOpen(true);
   }
 
-  function handleDelete(plan: Plan) {
-    if (window.confirm(t("planning.confirmDelete"))) {
-      deletePlan.mutate(plan.id);
-    }
+  async function handleDelete(plan: Plan) {
+    const ok = await confirm({
+      message: t("planning.confirmDelete"),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deletePlan.mutate(plan.id);
   }
 
   return (
@@ -88,6 +94,10 @@ export function PlanningPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Список наблюдения — под таблицей года: сначала картина целиком,
+          потом те несколько категорий, за которыми следят отдельно. */}
+      <WatchlistCard year={year} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card>

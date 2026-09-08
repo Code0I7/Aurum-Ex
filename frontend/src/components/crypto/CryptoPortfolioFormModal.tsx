@@ -4,6 +4,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input, Label } from "@/components/ui/Input";
 import { useCreateCryptoPortfolio, useDeleteCryptoPortfolio, useUpdateCryptoPortfolio } from "@/hooks/useCrypto";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { CryptoPortfolio } from "@/types";
 
 interface CryptoPortfolioFormModalProps {
@@ -23,6 +24,7 @@ export function CryptoPortfolioFormModal({ open, onClose, portfolio, onDeleted }
   const createPortfolio = useCreateCryptoPortfolio();
   const updatePortfolio = useUpdateCryptoPortfolio();
   const deletePortfolio = useDeleteCryptoPortfolio();
+  const confirm = useConfirm();
 
   const [name, setName] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -59,7 +61,12 @@ export function CryptoPortfolioFormModal({ open, onClose, portfolio, onDeleted }
 
   async function handleDelete() {
     if (!portfolio) return;
-    if (!window.confirm(t("crypto.portfolio.confirmDelete", { name: portfolio.name }))) return;
+    const ok = await confirm({
+      message: t("crypto.portfolio.confirmDelete", { name: portfolio.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (!ok) return;
     setDeleteError(null);
     try {
       await deletePortfolio.mutateAsync(portfolio.id);

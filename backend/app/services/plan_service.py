@@ -55,11 +55,12 @@ class MonthCell:
 
     @property
     def deviation(self) -> Decimal:
-        """Отклонение с точки зрения кошелька, а не арифметики.
+        """Факт минус план — без нормализации знака.
 
-        Для расхода перерасход — это минус, для дохода минус — недобор.
-        Знак должен читаться одинаково в обеих половинах таблицы: минус
-        всегда «хуже, чем собирались».
+        Смысл знака зависит от вида строки и потому остаётся за тем, кто
+        показывает таблицу: у дохода плюс — перевыполнение, у расхода тот
+        же плюс — перерасход. Нормализовать здесь означало бы, что сумма
+        колонки перестала бы сходиться с суммой её клеток.
         """
         return self.actual - self.planned
 
@@ -272,6 +273,110 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
         "expense_totals": expense_totals,
         "free_totals": free,
     }
+
+
+@dataclass
+class WatchRow:
+    """Строка списка наблюдения: категория и её двенадцать месяцев."""
+
+    category_id: int
+    name: str
+    # Путь до корня ветки: «Продукты · Сладкое». Без него две «Воды» из
+    # разных веток в списке неразличимы.
+    path: str
+    kind: CategoryKind
+    months: list[Decimal] = field(default_factory=list)
+    total: Decimal = Decimal("0")
+    # Тот же итог за предыдущий год. Ради этого список и заводят: вопрос
+    # не «сколько», а «больше или меньше, чем было».
+    previous_total: Decimal = Decimal("0")
+
+
+async def get_watchlist_overview(session: AsyncSession, year: int) -> dict:
+    """Отмеченные категории по месяцам года плюс итог прошлого года.
+
+    Замена листа «Отследить» из исходной таблицы, где несколько выбранных
+    подкатегорий выписывались помесячно вручную.
+
+    Суммы берутся по всей ветке: отметив «Продукты», человек хочет видеть
+    и сыр, лежащий двумя уровнями ниже. Поэтому отмеченные родитель и его
+    ребёнок дают пересекающиеся строки — так и задумано: целое и часть
+    смотрят одновременно, а складывать строки между собой этот список и не
+    предлагает.
+
+    Плана здесь нет намеренно. Наблюдение отвечает на вопрос «сколько это
+    у меня выходит», и требовать сначала завести план значило бы закрыть
+    список от того, ради кого он нужен, — от человека, который ещё только
+    присматривается к цифре.
+    """
+    watched = (
+        (await session.execute(select(Category).where(Category.is_watched.is_(True))))
+        .scalars()
+        .all()
+    )
+    if not watched:
+        return {"year": year, "rows": []}
+
+    tree = await load_category_tree(session)
+    names = {row.id: row.name for row in (await session.execute(select(Category))).scalars().all()}
+
+    async def amounts(for_year: int) -> dict[CategoryKind, dict[tuple[int, int, int], Decimal]]:
+        start = date_(for_year, 1, 1)
+        end = date_(for_year, 12, 31)
+        return {
+            CategoryKind.INCOME: await monthly_amounts_by_category(
+                session, transaction_type=TransactionType.INCOME, start_date=start, end_date=end
+            ),
+            CategoryKind.EXPENSE: await monthly_amounts_by_category(
+                session, transaction_type=TransactionType.EXPENSE, start_date=start, end_date=end
+            ),
+        }
+
+    current = await amounts(year)
+    previous = await amounts(year - 1)
+
+    def path_of(category_id: int) -> str:
+        # ancestors_of идёт снизу вверх; для подписи нужен порядок сверху.
+        chain = [names.get(row, "?") for row in reversed(tree.ancestors_of(category_id))]
+        chain.append(names.get(category_id, "?"))
+        return " · ".join(chain)
+
+    rows: list[WatchRow] = []
+    for category in sorted(watched, key=lambda row: (row.kind is not CategoryKind.INCOME, row.name)):
+        branch = set(tree.subtree_of(category.id))
+        source = current[category.kind]
+        months = [
+            sum(
+                (
+                    amount
+                    for (row_year, row_month, row_category), amount in source.items()
+                    if row_year == year and row_month == month and row_category in branch
+                ),
+                Decimal("0"),
+            )
+            for month in range(1, 13)
+        ]
+        previous_total = sum(
+            (
+                amount
+                for (row_year, _, row_category), amount in previous[category.kind].items()
+                if row_year == year - 1 and row_category in branch
+            ),
+            Decimal("0"),
+        )
+        rows.append(
+            WatchRow(
+                category_id=category.id,
+                name=category.name,
+                path=path_of(category.id),
+                kind=category.kind,
+                months=months,
+                total=sum(months, Decimal("0")),
+                previous_total=previous_total,
+            )
+        )
+
+    return {"year": year, "rows": rows}
 
 
 async def list_plans(session: AsyncSession) -> list[Plan]:

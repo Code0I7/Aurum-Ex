@@ -162,5 +162,13 @@ async def test_transfer_credits_the_destination_account_balance(client: AsyncCli
     )
 
     listing = (await client.get("/transactions", params={"account_id": destination["id"]})).json()["items"]
-    # 200 пришло переводом, 50 потрачено.
-    assert listing[0]["balance_after"] == "150.00"
+    # В выписку счёта попадают обе стороны перевода: и уход, и приход. Без
+    # этого половина движений между двумя своими счетами не видна.
+    assert len(listing) == 2
+
+    # 200 пришло переводом, 50 потрачено. Баланс считается для счёта, по
+    # которому фильтруем: у строки перевода иначе стоял бы остаток
+    # отправителя, и деньги выглядели бы взявшимися ниоткуда.
+    by_amount = {item["amount"]: item for item in listing}
+    assert by_amount["200.00"]["balance_after"] == "200.00"
+    assert by_amount["50.00"]["balance_after"] == "150.00"

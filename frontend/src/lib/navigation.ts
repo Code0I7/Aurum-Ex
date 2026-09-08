@@ -82,8 +82,8 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: "nav.group.investments",
     items: [
       { labelKey: "nav.investments", to: "/investments", icon: CandlestickChart, hintKey: "help.investments" },
-      { labelKey: "nav.crypto", to: "/crypto", icon: Coins },
-      { labelKey: "nav.roi", to: "/roi", icon: Calculator },
+      { labelKey: "nav.crypto", to: "/crypto", icon: Coins, hintKey: "help.crypto" },
+      { labelKey: "nav.roi", to: "/roi", icon: Calculator, hintKey: "help.roi" },
     ],
   },
   {
@@ -91,7 +91,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { labelKey: "nav.categories", to: "/categories", icon: Tags, hintKey: "help.categories" },
       { labelKey: "nav.products", to: "/products", icon: ShoppingBasket, hintKey: "help.products" },
-      { labelKey: "nav.settings", to: "/settings", icon: Settings },
+      { labelKey: "nav.settings", to: "/settings", icon: Settings, hintKey: "help.settings" },
     ],
   },
 ];

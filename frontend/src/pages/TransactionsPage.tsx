@@ -19,14 +19,22 @@ import {
   useTransactionYears,
 } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import { useViewDefault } from "@/hooks/useViewDefault";
+import { useAppSettings } from "@/hooks/useSettings";
 import { useTags } from "@/hooks/useTags";
 import type { TransactionSort } from "@/api/transactions";
 import { useTranslation } from "@/lib/i18n";
-import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
+import {
+  buildHierarchicalCategories,
+  categoryOptionPrefix,
+  translateCategoryName,
+} from "@/lib/categoryLabels";
 import type { Transaction, TransactionType } from "@/types";
 
-const PAGE_SIZE = 20;
+
 
 /** Parses a query-param month, falling back to `fallback` for anything
  * missing or out of range (e.g. a hand-edited URL). Must check `value`
@@ -51,13 +59,44 @@ export function TransactionsPage() {
   // the month/year the user was already looking at (?year=&month=) so this
   // page doesn't reset back to the current month.
   const [searchParams] = useSearchParams();
+  const { data: settings } = useAppSettings();
+  const { data: accounts } = useAccounts(false);
+  // Сколько подгружать за раз — настройка, а не константа. Список и так
+  // ограничен выбранным месяцем, который переключается кнопками, но
+  // месяцы разной плотности: две с половиной тысячи операций за четыре
+  // года — это под полсотни в месяц, и на двадцати строках обычный месяц
+  // разваливается на три страницы. В поиске, который идёт по всей
+  // истории, тем более.
+  const pageSize = settings?.default_page_size ?? 50;
   const [year, setYear] = useState(() => parseYearParam(searchParams.get("year"), now.getFullYear()));
   const [month, setMonth] = useState(() => parseMonthParam(searchParams.get("month"), now.getMonth() + 1));
+  // Насколько широко смотрим. Месяц — обычный режим ведения учёта, но
+  // выписка по счёту за один август ни о чём не говорит: путаницу между
+  // парой связанных счетов видно только на всей истории. Запоминается,
+  // потому что человек, разбирающийся с переводами, делает это не за один
+  // заход.
+  const [scope, setScope] = useLocalStorageState<"month" | "year" | "all">(
+    "aurum:transactions-scope",
+    "month"
+  );
   const [type, setType] = useState<TransactionType | "">("");
   const [categoryId, setCategoryId] = useState<string>("");
+  // Выписка по одному счёту. Без неё распутать пару счетов вроде «карта и
+  // рассрочка того же магазина» невозможно: движения между ними видно
+  // только вперемешку со всем остальным.
+  const [accountId, setAccountId] = useState<string>("");
   const [tagId, setTagId] = useState<string>("");
   const [sort, setSort] = useState<TransactionSort>("date_desc");
   const [page, setPage] = useState(1);
+
+  // Переход по ссылке с дашборда несёт месяц в адресе — значит спрашивают
+  // именно про него, и сохранённый широкий период на этот раз уступает.
+  const deepLinkedMonth = searchParams.get("month") !== null;
+  useEffect(() => {
+    if (deepLinkedMonth) setScope("month");
+    // Один раз при заходе: дальше период переключает человек.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Raw text follows every keystroke; the debounced value is what actually
   // drives the query, so we're not refetching on every character typed.
@@ -83,7 +122,11 @@ export function TransactionsPage() {
   // Склейка одинаковых операций одного дня: четыре поездки на автобусе
   // показываются одной строкой «Автобус ×4». Включена по умолчанию — именно
   // такие серии и забивают список, — но выключается одним нажатием.
-  const [groupRepeats, setGroupRepeats] = useLocalStorageState<boolean>("aurum:transactions-group", true);
+  const [groupRepeats, setGroupRepeats] = useViewDefault(
+    "aurum:transactions-group",
+    settings?.group_repeats_by_default,
+    true,
+  );
   // Постранично или лентой с кнопкой «Загрузить ещё». Страницы предсказуемы
   // и не растут в памяти — на четырёх годах истории это заметно; лента
   // удобнее, когда листаешь подряд. Верного ответа для всех случаев нет,
@@ -91,7 +134,11 @@ export function TransactionsPage() {
   const [paging, setPaging] = useLocalStorageState<"pages" | "feed">("aurum:transactions-paging", "pages");
   // Разделители дней с итогами. Включены по умолчанию — так список читается
   // как банковская выписка, — но кому-то нужен сплошной перечень.
-  const [dayDividers, setDayDividers] = useLocalStorageState<boolean>("aurum:transactions-day-dividers", true);
+  const [dayDividers, setDayDividers] = useViewDefault(
+    "aurum:transactions-day-dividers",
+    settings?.day_dividers_by_default,
+    true,
+  );
   // Сохранённая раскладка переживает обновления приложения, в которых
   // колонки появляются и исчезают, — сверяем её с текущим набором.
   const layout = reconcileLayout(storedLayout);
@@ -123,14 +170,17 @@ export function TransactionsPage() {
   const commonFilters = {
     // A search looks for a purchase from an unknown month, so it must span
     // every period instead of being boxed into the currently selected one.
-    year: isSearching ? undefined : year,
-    month: isSearching ? undefined : month,
+    // Поиск идёт по всей истории независимо от выбранного периода: ищут
+    // покупку, о которой не помнят, в каком она была месяце.
+    year: isSearching || scope === "all" ? undefined : year,
+    month: isSearching || scope !== "month" ? undefined : month,
     search: isSearching ? search : undefined,
     type: type || undefined,
     category_id: categoryId ? Number(categoryId) : undefined,
+    account_id: accountId ? Number(accountId) : undefined,
     tag_id: tagId ? Number(tagId) : undefined,
     sort,
-    page_size: PAGE_SIZE,
+    page_size: pageSize,
   };
 
   const paged = useTransactions({ ...commonFilters, page }, paging === "pages");
@@ -144,8 +194,14 @@ export function TransactionsPage() {
   const isError = paging === "pages" ? paged.isError : feed.isError;
 
   const deleteTransaction = useDeleteTransaction();
+  const confirm = useConfirm();
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const scopes: Array<{ key: "month" | "year" | "all"; label: string }> = [
+    { key: "month", label: t("dashboard.rangeMonth") },
+    { key: "year", label: t("dashboard.rangeYear") },
+    { key: "all", label: t("dashboard.rangeAll") },
+  ];
   // Grouped by kind and hierarchical within each group (a subcategory right
   // under its own parent, indented) — a bare "Sweets" option next to
   // top-level categories reads as if it were one itself.
@@ -168,10 +224,13 @@ export function TransactionsPage() {
     setModalOpen(true);
   }
 
-  function handleDelete(transaction: Transaction) {
-    if (window.confirm(t("transactions.confirmDelete", { description: transaction.description }))) {
-      deleteTransaction.mutate(transaction.id);
-    }
+  async function handleDelete(transaction: Transaction) {
+    const ok = await confirm({
+      message: t("transactions.confirmDelete", { description: transaction.description }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteTransaction.mutate(transaction.id);
   }
 
   /** Leaves search mode and switches the month/year selectors to whichever
@@ -181,6 +240,9 @@ export function TransactionsPage() {
     const date = new Date(`${transaction.date}T00:00:00`);
     setYear(date.getFullYear());
     setMonth(date.getMonth() + 1);
+    // И период сужается до месяца: иначе «показать в контексте» вернуло бы
+    // ту же ленту за всё время, из которой человек только что пришёл.
+    setScope("month");
     setSearchInput("");
     setSearch("");
     setPage(1);
@@ -188,27 +250,53 @@ export function TransactionsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className={`min-w-0 flex-1 ${isSearching ? "pointer-events-none opacity-50" : ""}`}>
-            <MonthSelector
-              month={month}
-              onChange={(value) => {
-                setMonth(value);
-                setPage(1);
-              }}
-            />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className={`min-w-0 flex-1 space-y-3 ${isSearching ? "pointer-events-none opacity-50" : ""}`}>
+          <div className="flex flex-wrap items-center gap-1">
+            {scopes.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  setScope(item.key);
+                  setPage(1);
+                }}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                  scope === item.key
+                    ? "bg-surface-2 text-text-primary"
+                    : "text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
-          <div className={isSearching ? "pointer-events-none opacity-50" : ""}>
-            <YearSelector
-              years={years ?? [now.getFullYear()]}
-              year={year}
-              onChange={(value) => {
-                setYear(value);
-                setPage(1);
-              }}
-            />
-          </div>
+          {/* Выбор месяца и года прячется, когда он ни на что не влияет:
+              переключатель, который ничего не меняет, — обещание, которого
+              приложение не выполняет. */}
+          {scope !== "all" && (
+            <div className="flex items-center gap-3">
+              {scope === "month" && (
+                <div className="min-w-0 flex-1">
+                  <MonthSelector
+                    month={month}
+                    onChange={(value) => {
+                      setMonth(value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+              )}
+              <YearSelector
+                years={years ?? [now.getFullYear()]}
+                year={year}
+                onChange={(value) => {
+                  setYear(value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {/* Перенос истории из таблицы — операция разовая, поэтому
@@ -273,6 +361,21 @@ export function TransactionsPage() {
           <option value="transfer">{t("transactions.transfer")}</option>
         </Select>
         <Select
+          value={accountId}
+          onChange={(event) => {
+            setAccountId(event.target.value);
+            setPage(1);
+          }}
+          className="sm:w-44"
+        >
+          <option value="">{t("transactions.allAccounts")}</option>
+          {(accounts ?? []).map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </Select>
+        <Select
           value={categoryId}
           onChange={(event) => {
             setCategoryId(event.target.value);
@@ -285,7 +388,7 @@ export function TransactionsPage() {
             <optgroup label={t("reports.expenseGroup")}>
               {expenseCategoryOptions.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.indented ? `    ↳ ` : ""}
+                  {categoryOptionPrefix(category.depth)}
                   {translateCategoryName(category.name)}
                 </option>
               ))}
@@ -295,7 +398,7 @@ export function TransactionsPage() {
             <optgroup label={t("reports.incomeGroup")}>
               {incomeCategoryOptions.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.indented ? `    ↳ ` : ""}
+                  {categoryOptionPrefix(category.depth)}
                   {translateCategoryName(category.name)}
                 </option>
               ))}

@@ -189,3 +189,67 @@ def test_every_table_is_either_backed_up_or_deliberately_excluded():
     # И наоборот: список исключений не должен ссылаться на то, чего уже нет.
     stale = NOT_BACKED_UP - tables
     assert not stale, f"в списке исключений таблицы, которых больше нет: {sorted(stale)}"
+
+
+async def test_every_table_keeps_its_rows_through_a_restore(client: AsyncClient, account_id, categories):
+    """Сверка по всем таблицам разом: сколько строк было до выгрузки,
+    столько же должно остаться после восстановления.
+
+    Проверять поштучно бессмысленно — забудут дописать проверку ровно для той
+    таблицы, которую забыли положить в копию. Здесь пересчитываются все, и
+    новая таблица попадает под проверку сама.
+    """
+    # Заводим по строке в справочниках, до которых поимённые проверки не
+    # доходят: банк, метка, курс валюты, участник, виджет дашборда.
+    bank = (await client.post("/banks", json={"name": "Первый банк"})).json()
+    await client.patch(f"/accounts/{account_id}", json={"bank_id": bank["id"]})
+    await client.post("/participants", json={"name": "Иван", "kind": "person"})
+    await client.post("/stores", json={"name": "Магазин у дома"})
+    await client.post("/counterparties", json={"name": "Брат"})
+
+    tag = (await client.post("/tags", json={"name": "важное", "color": "#2a78d6"})).json()
+    resp = await client.post(
+        "/transactions",
+        json={
+            "account_id": account_id,
+            "type": "expense",
+            "amount": "100.00",
+            "description": "Покупка",
+            "date": "2026-03-01",
+            "category_id": categories["Groceries"]["id"],
+            "tag_ids": [tag["id"]],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    before = await _table_counts(client)
+    backup = (await client.get("/backup/export")).json()
+    assert (await client.post("/backup/import", json=backup)).status_code == 200
+
+    after = await _table_counts(client)
+    lost = {name: (before[name], after[name]) for name in before if before[name] != after[name]}
+    assert not lost, f"после восстановления строки не сошлись: {lost}"
+
+
+async def _table_counts(client: AsyncClient) -> dict[str, int]:
+    """Сколько строк в каждой таблице, кроме намеренно не копируемых.
+
+    Считается через ту же сессию, что и запросы теста, — иначе пришлось бы
+    заводить второе подключение и следить, чтобы оно видело те же данные.
+    """
+    from sqlalchemy import func, select
+
+    from app.api.deps import get_session
+    from app.main import app
+
+    override = app.dependency_overrides[get_session]
+    counts: dict[str, int] = {}
+    async for session in override():
+        for table in Base.metadata.sorted_tables:
+            if table.name in NOT_BACKED_UP:
+                continue
+            counts[table.name] = int(
+                (await session.execute(select(func.count()).select_from(table))).scalar_one()
+            )
+        break
+    return counts

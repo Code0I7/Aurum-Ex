@@ -16,11 +16,14 @@ from app.schemas.plan import (
     PlanRead,
     PlanRowOut,
     PlanUpdate,
+    WatchlistOut,
+    WatchRowOut,
 )
 from app.services.plan_service import (
     create_plan,
     delete_plan,
     get_plan_overview,
+    get_watchlist_overview,
     list_plans,
     update_plan,
 )
@@ -73,6 +76,32 @@ async def read_plan_overview(
         income_totals=[_cell(cell) for cell in overview["income_totals"]],
         expense_totals=[_cell(cell) for cell in overview["expense_totals"]],
         free_totals=[_cell(cell) for cell in overview["free_totals"]],
+    )
+
+
+@router.get("/watchlist", response_model=WatchlistOut)
+async def read_watchlist(
+    year: int = Query(..., ge=1970, le=2200), session: AsyncSession = Depends(get_session)
+) -> WatchlistOut:
+    """Отмеченные категории по месяцам. Что отмечено — признак на самой
+    категории, поэтому список меняется через /categories, а не отдельным
+    ресурсом: наблюдение — свойство категории, а не самостоятельная вещь.
+    """
+    overview = await get_watchlist_overview(session, year)
+    return WatchlistOut(
+        year=overview["year"],
+        rows=[
+            WatchRowOut(
+                category_id=row.category_id,
+                name=row.name,
+                path=row.path,
+                kind=row.kind,
+                months=row.months,
+                total=row.total,
+                previous_total=row.previous_total,
+            )
+            for row in overview["rows"]
+        ],
     )
 
 

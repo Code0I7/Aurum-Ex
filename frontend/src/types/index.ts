@@ -74,9 +74,11 @@ export interface Category {
   color: string;
   sort_order: number;
   is_default: boolean;
-  // Subcategory parent, one level deep only (a category whose own parent_id
-  // is set can't itself have children — enforced backend-side).
+  // Родитель. Вложенность произвольной глубины: ограничение в один уровень
+  // снято, границы ставит бэкенд (циклы, вид, предел глубины).
   parent_id: number | null;
+  // В списке наблюдения на вкладке планирования.
+  is_watched: boolean;
 }
 
 export interface CategoryInput {
@@ -90,6 +92,9 @@ export interface CategoryInput {
 
 // kind is fixed at creation on the backend (CategoryUpdate has no kind field).
 export interface CategoryUpdateInput {
+  // Применить цвет и значок ко всей ветке под категорией.
+  apply_style_to_children?: boolean;
+  is_watched?: boolean;
   name?: string;
   icon?: string | null;
   color?: string;
@@ -755,6 +760,13 @@ export interface AppSettings {
   risky_allocation_threshold_percent: number;
   idle_cash_threshold_amount: string;
   idle_cash_threshold_days: number;
+  // Что показывать при открытии. Хранится на сервере, а не в браузере:
+  // установка однопользовательская, и выбор с ноутбука должен действовать
+  // с телефона.
+  default_dashboard_range: DashboardRange;
+  default_page_size: number;
+  group_repeats_by_default: boolean;
+  day_dividers_by_default: boolean;
 }
 
 export interface HealthStatus {
@@ -819,6 +831,24 @@ export interface PlanOverview {
   expense_totals: PlanMonthCell[];
   // Свободные средства: доходы минус расходы, по плану и по факту.
   free_totals: PlanMonthCell[];
+}
+
+export interface WatchRow {
+  category_id: number;
+  name: string;
+  // «Продукты · Сладкое»: имена категорий не уникальны, и без пути две
+  // одинаковые строки не различить.
+  path: string;
+  kind: CategoryKind;
+  // Двенадцать сумм, январь — декабрь.
+  months: string[];
+  total: string;
+  previous_total: string;
+}
+
+export interface Watchlist {
+  year: number;
+  rows: WatchRow[];
 }
 
 export interface WorkPeriod {

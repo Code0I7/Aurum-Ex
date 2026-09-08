@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { GoalList } from "@/components/goals/GoalList";
 import { GoalFormModal } from "@/components/goals/GoalFormModal";
 import { GoalContributionModal } from "@/components/goals/GoalContributionModal";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useDeleteGoal, useGoals } from "@/hooks/useGoals";
 import { useTranslation } from "@/lib/i18n";
 import type { Goal } from "@/types";
@@ -13,6 +14,7 @@ export function GoalsPage() {
   const { t } = useTranslation();
   const { data: goals, isLoading } = useGoals();
   const deleteGoal = useDeleteGoal();
+  const confirm = useConfirm();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
@@ -34,10 +36,13 @@ export function GoalsPage() {
     setContributionOpen(true);
   }
 
-  function handleDelete(goal: Goal) {
-    if (window.confirm(t("goal.confirmDelete", { name: goal.name }))) {
-      deleteGoal.mutate(goal.id);
-    }
+  async function handleDelete(goal: Goal) {
+    const ok = await confirm({
+      message: t("goal.confirmDelete", { name: goal.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteGoal.mutate(goal.id);
   }
 
   return (

@@ -6,6 +6,7 @@ import { AccountList } from "@/components/accounts/AccountList";
 import { AccountFormModal } from "@/components/accounts/AccountFormModal";
 import { useAccounts, useDeleteAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { Account, AccountWithBalance } from "@/types";
 
 export function AccountsPage() {
@@ -14,6 +15,7 @@ export function AccountsPage() {
   const { data: accounts, isLoading } = useAccounts(showArchived);
   const updateAccount = useUpdateAccount();
   const deleteAccount = useDeleteAccount();
+  const confirm = useConfirm();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -32,10 +34,13 @@ export function AccountsPage() {
     updateAccount.mutate({ id: account.id, input: { is_archived: !account.is_archived } });
   }
 
-  function handleDelete(account: AccountWithBalance) {
-    if (window.confirm(t("account.confirmDelete", { name: account.name }))) {
-      deleteAccount.mutate(account.id);
-    }
+  async function handleDelete(account: AccountWithBalance) {
+    const ok = await confirm({
+      message: t("account.confirmDelete", { name: account.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteAccount.mutate(account.id);
   }
 
   return (

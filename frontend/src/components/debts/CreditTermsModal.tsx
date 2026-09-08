@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useDeleteCreditTerms, useSaveCreditTerms } from "@/hooks/useDebts";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { AccountWithBalance, CreditTerms } from "@/types";
 
 interface CreditTermsModalProps {
@@ -36,6 +37,7 @@ export function CreditTermsModal({ open, onClose, terms, candidates }: CreditTer
   const { t } = useTranslation();
   const saveTerms = useSaveCreditTerms();
   const removeTerms = useDeleteCreditTerms();
+  const confirm = useConfirm();
 
   const [accountId, setAccountId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -93,7 +95,12 @@ export function CreditTermsModal({ open, onClose, terms, candidates }: CreditTer
 
   async function handleRemove() {
     if (!terms) return;
-    if (!window.confirm(t("debts.confirmRemoveTerms", { name: terms.account_name }))) return;
+    const ok = await confirm({
+      message: t("debts.confirmRemoveTerms", { name: terms.account_name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (!ok) return;
     await removeTerms.mutateAsync(terms.account_id);
     onClose();
   }

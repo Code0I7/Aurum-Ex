@@ -11,6 +11,8 @@ import { AlertBanner } from "@/components/insights/AlertBanner";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { formatCurrency, formatSignedCurrency, formatTransactionDate } from "@/lib/format";
+import { useViewDefault } from "@/hooks/useViewDefault";
+import { useAppSettings } from "@/hooks/useSettings";
 import { useTranslation } from "@/lib/i18n";
 import type { DashboardRange } from "@/types";
 
@@ -30,10 +32,16 @@ export function DashboardPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  // «За всё время» по умолчанию: при четырёх годах истории месяц —
-  // случайный срез, и открываться на нём значит прятать почти всё, что
-  // человек ввёл.
-  const [range, setRange] = useState<DashboardRange>("all");
+  // Период по умолчанию настраивается; год — если ничего не выбрано.
+  // Месяц при многолетней истории случайный срез, а «за всё время»
+  // отвечает на вопрос «как было вообще», тогда как открывают приложение
+  // обычно с вопросом «как у меня сейчас».
+  const { data: settings } = useAppSettings();
+  const [range, setRange] = useViewDefault<DashboardRange>(
+    "aurum:dashboard-range",
+    settings?.default_dashboard_range,
+    "year",
+  );
   const { data: years } = useTransactionYears();
 
   const { data, isLoading, isError } = useDashboardSummary(year, month, range);
@@ -95,7 +103,16 @@ export function DashboardPage() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      {/* Пять карточек, когда введены часы, иначе четыре. Заработок за
+          час не заменяет норму сбережений: это разные вопросы — «сколько
+          я оставляю себе» и «во что мне обходится покупка», — и подменять
+          один другим значит убирать метрику, на которую человек только
+          что смотрел. */}
+      <div
+        className={`grid grid-cols-2 gap-3 sm:gap-4 ${
+          data?.earned_per_hour ? "lg:grid-cols-5" : "lg:grid-cols-4"
+        }`}
+      >
         <StatCard
           label={t("dashboard.statRealIncomeLabel")}
           value={isLoading ? "…" : formatCurrency(data?.real_income ?? 0)}
@@ -114,23 +131,20 @@ export function DashboardPage() {
           caption={t("dashboard.statNetCaption")}
           tone={Number(data?.net ?? 0) >= 0 ? "success" : "danger"}
         />
-        {/* Заработок за час занимает место нормы сбережений, когда часы
-            введены: он переводит покупки на язык времени — «монитор стоил
-            четыре дня» доходит быстрее, чем «17 273 ₽». Без часов остаётся
-            прежняя карточка. */}
-        {data?.earned_per_hour ? (
+        <StatCard
+          label={t("dashboard.statSavingsRateLabel")}
+          value={isLoading ? "…" : rate === null ? "—" : formatPercent(rate)}
+          caption={t("dashboard.statSavingsRateCaption")}
+          tone={rate === null ? "default" : rate >= 0 ? "success" : "danger"}
+        />
+        {/* Заработок за час появляется только при введённых часах: без них
+            карточка показывала бы прочерк в каждом периоде. */}
+        {data?.earned_per_hour && (
           <StatCard
             label={t("dashboard.statHourlyLabel")}
             value={formatCurrency(data.earned_per_hour)}
             caption={t("dashboard.statHourlyCaption", { hours: Number(data.hours_worked) })}
             tone="default"
-          />
-        ) : (
-          <StatCard
-            label={t("dashboard.statSavingsRateLabel")}
-            value={isLoading ? "…" : rate === null ? "—" : formatPercent(rate)}
-            caption={t("dashboard.statSavingsRateCaption")}
-            tone={rate === null ? "default" : rate >= 0 ? "success" : "danger"}
           />
         )}
       </div>

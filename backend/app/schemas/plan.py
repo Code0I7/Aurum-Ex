@@ -82,6 +82,26 @@ class PlanRowOut(BaseModel):
     actual_total: Decimal
 
 
+class WatchRowOut(BaseModel):
+    category_id: int
+    name: str
+    # «Продукты · Сладкое» — путь до корня ветки: имена категорий не
+    # уникальны, и без пути две одинаковые строки не различить.
+    path: str
+    kind: CategoryKind
+    # Двенадцать сумм, январь — декабрь.
+    months: list[Decimal]
+    total: Decimal
+    previous_total: Decimal
+
+
+class WatchlistOut(BaseModel):
+    """Список наблюдения: замена листа «Отследить» из исходной таблицы."""
+
+    year: int
+    rows: list[WatchRowOut]
+
+
 class PlanOverviewOut(BaseModel):
     """Год целиком: строки по категориям и три итоговых полосы."""
 

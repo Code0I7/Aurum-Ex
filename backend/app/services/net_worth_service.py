@@ -270,11 +270,22 @@ async def _risk_level_summary(
 
 
 def _resolve_start_date(range_key: str, cash_events: list[tuple[date_, Decimal]], asset_events: list[tuple[date_, Decimal]], today: date_) -> date_:
-    if range_key in RANGE_DAYS:
-        return today - timedelta(days=RANGE_DAYS[range_key] - 1)
+    """Начало графика для выбранного периода.
 
+    Никогда не раньше первой записи, даже когда просят пять лет, а истории
+    два года. Иначе график открывается ровной линией по нулю за годы, когда
+    учёта не было, — а это утверждение: «капитал тогда был нулевым». На самом
+    деле он был неизвестен, и разница существенная: ровная линия в полграфика
+    съедает масштаб у самих данных и рисует рост, которого не было.
+    """
     all_dates = [e[0] for e in cash_events] + [e[0] for e in asset_events]
-    return min(all_dates) if all_dates else today
+    earliest = min(all_dates) if all_dates else today
+
+    if range_key in RANGE_DAYS:
+        requested = today - timedelta(days=RANGE_DAYS[range_key] - 1)
+        return max(requested, earliest)
+
+    return earliest
 
 
 async def get_net_worth_summary(session: AsyncSession, range_key: str) -> NetWorthSummary:

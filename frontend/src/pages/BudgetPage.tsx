@@ -10,6 +10,7 @@ import { BudgetFormModal } from "@/components/budget/BudgetFormModal";
 import { useBudgets, useBudgetStatus, useDeleteBudget } from "@/hooks/useBudgets";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { Budget, BudgetStatus } from "@/types";
 
@@ -23,6 +24,7 @@ export function BudgetPage() {
   const { data: budgets } = useBudgets();
   const { data: status, isLoading } = useBudgetStatus(year, month);
   const deleteBudget = useDeleteBudget();
+  const confirm = useConfirm();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
@@ -44,10 +46,13 @@ export function BudgetPage() {
     setModalOpen(true);
   }
 
-  function handleDelete(item: BudgetStatus) {
-    if (window.confirm(t("budget.confirmDelete", { name: translateCategoryName(item.category_name) }))) {
-      deleteBudget.mutate(item.budget_id);
-    }
+  async function handleDelete(item: BudgetStatus) {
+    const ok = await confirm({
+      message: t("budget.confirmDelete", { name: translateCategoryName(item.category_name) }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteBudget.mutate(item.budget_id);
   }
 
   return (

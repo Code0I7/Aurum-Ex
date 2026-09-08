@@ -98,8 +98,28 @@ async def update_category(
         # вложенность»: человек раскладывает накопившиеся категории, не
         # разбирая их по одной.
         await _validate_parent(session, updates["parent_id"], category.kind, category_id=category_id)
+    apply_to_children = updates.pop("apply_style_to_children", False)
     for field, value in updates.items():
         setattr(category, field, value)
+
+    if apply_to_children and ("color" in updates or "icon" in updates):
+        # Вся ветка вниз, а не только прямые дети: перекрасить «Продукты» и
+        # оставить «Сыр» разноцветным под перекрашенным «Молочным» — половина
+        # работы, за которой всё равно придётся возвращаться.
+        tree = await load_category_tree(session)
+        descendants = tree.descendants_of(category_id)
+        if descendants:
+            children = (
+                (await session.execute(select(Category).where(Category.id.in_(descendants))))
+                .scalars()
+                .all()
+            )
+            for child in children:
+                if "color" in updates:
+                    child.color = category.color
+                if "icon" in updates:
+                    child.icon = category.icon
+
     await session.commit()
     await session.refresh(category)
     return category

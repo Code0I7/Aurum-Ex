@@ -85,7 +85,9 @@ def running_balance_subquery() -> Select:
     ).subquery()
 
 
-async def running_balances(session: AsyncSession, transaction_ids: list[int]) -> dict[int, Decimal]:
+async def running_balances(
+    session: AsyncSession, transaction_ids: list[int], for_account_id: int | None = None
+) -> dict[int, Decimal]:
     """Баланс счёта после каждой из указанных операций.
 
     К накопительной сумме прибавляются начальный остаток счёта и приходы по
@@ -93,6 +95,12 @@ async def running_balances(session: AsyncSession, transaction_ids: list[int]) ->
     запросом, а не оконной функцией: у строки перевода счёт-получатель лежит
     в другой колонке, и одним разбиением по account_id обе стороны не
     охватить.
+
+    `for_account_id` — когда список отфильтрован по одному счёту, баланс
+    считается для НЕГО, а не для того, что записан в строке. Иначе у строки
+    перевода в выписке получателя показывался бы остаток отправителя: на
+    паре счетов вроде «карта и рассрочка того же магазина» это выглядит как
+    деньги, взявшиеся ниоткуда, и запутывает ровно там, где выписка и нужна.
     """
     if not transaction_ids:
         return {}
@@ -107,6 +115,21 @@ async def running_balances(session: AsyncSession, transaction_ids: list[int]) ->
     ).all()
     if not rows:
         return {}
+
+    if for_account_id is not None:
+        # Смотрим выписку одного счёта: перевод, пришедший на него, в
+        # накопительной сумме по account_id не отражён вовсе (там он числится
+        # за отправителем), поэтому дельту для таких строк обнуляем — приход
+        # добавится ниже вместе с остальными входящими переводами.
+        own = {
+            transaction_id
+            for transaction_id, account_id, _ in rows
+            if account_id == for_account_id
+        }
+        rows = [
+            (transaction_id, for_account_id, delta if transaction_id in own else Decimal("0"))
+            for transaction_id, account_id, delta in rows
+        ]
 
     account_ids = {account_id for _, account_id, _ in rows}
     openings = dict(

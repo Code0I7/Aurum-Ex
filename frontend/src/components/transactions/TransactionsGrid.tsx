@@ -344,9 +344,11 @@ export function TransactionsGrid({
                   className={cn(
                     "max-w-[280px] truncate px-3 py-2 text-text-primary",
                     column.align === "right" && "text-right",
-                    // Операции раскрытой группы сдвинуты вправо, чтобы было
-                    // видно, что они относятся к строке выше.
-                    collapsed && "pl-7"
+                    // Принадлежность к группе показывается фоном строки и
+                    // тонкой линией у левого края, а не отступом: любой
+                    // отступ сдвигает содержимое, и колонки раскрытой группы
+                    // перестают совпадать с колонками таблицы.
+                    collapsed && columnIndex === 0 && "border-l-2 border-text-muted/40"
                   )}
                 >
                   {columnIndex === 0 ? (

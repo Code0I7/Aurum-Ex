@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { useCryptoTransactions, useDeleteCryptoTransaction } from "@/hooks/useCrypto";
 import { formatCryptoAmount, formatTransactionDate, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { CryptoHolding, CryptoTransaction } from "@/types";
 
 interface CryptoTransactionHistoryModalProps {
@@ -17,13 +18,20 @@ export function CryptoTransactionHistoryModal({ open, onClose, holding, hidden, 
   const { t } = useTranslation();
   const { data: transactions, isLoading } = useCryptoTransactions(holding ? holding.asset_id : null);
   const deleteTransaction = useDeleteCryptoTransaction();
+  // Хук стоит до раннего возврата: порядок вызовов должен быть
+  // одинаковым на каждом рендере, иначе React ломается на первом же
+  // null вместо холдинга.
+  const confirm = useConfirm();
 
   if (!holding) return null;
 
-  function handleDelete(transactionId: number) {
-    if (window.confirm(t("crypto.history.confirmDelete"))) {
-      deleteTransaction.mutate(transactionId);
-    }
+  async function handleDelete(transactionId: number) {
+    const ok = await confirm({
+      message: t("crypto.history.confirmDelete"),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteTransaction.mutate(transactionId);
   }
 
   return (

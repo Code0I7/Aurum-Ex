@@ -14,7 +14,12 @@ import { useDeleteTransaction, useTransactions, useTransactionYears } from "@/ho
 import type { TransactionSort } from "@/api/transactions";
 import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
 import { useTranslation } from "@/lib/i18n";
-import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
+import {
+  buildHierarchicalCategories,
+  categoryOptionPrefix,
+  translateCategoryName,
+} from "@/lib/categoryLabels";
 import type { Transaction } from "@/types";
 
 const PAGE_SIZE = 20;
@@ -41,15 +46,26 @@ export function ReportsPage() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
+  const { startDate, endDate } = computeRange(range, customRange);
+  const { data: ranking, isLoading: isRankingLoading } = useCategoryRanking("expense", startDate, endDate);
+
   useEffect(() => {
-    if (categoryId === null && categories && categories.length > 0) {
+    if (categoryId !== null) return;
+    // Открываемся на самой крупной статье, а не на первой по алфавиту:
+    // отчёт открывают с вопросом «куда уходят деньги», и первая буква
+    // названия к нему отношения не имеет. Пока рейтинг не пришёл, ждём —
+    // мигнуть чужой категорией и переключиться хуже, чем показать пусто.
+    if (ranking && ranking.items.length > 0) {
+      setCategoryId(ranking.items[0].category_id);
+      return;
+    }
+    // Рейтинг пуст (нет трат за период) — берём хоть что-нибудь, иначе
+    // страница остаётся без выбранной статьи навсегда.
+    if (ranking && categories && categories.length > 0) {
       const firstExpense = categories.find((category) => category.kind === "expense");
       setCategoryId((firstExpense ?? categories[0]).id);
     }
-  }, [categories, categoryId]);
-
-  const { startDate, endDate } = computeRange(range, customRange);
-  const { data: ranking, isLoading: isRankingLoading } = useCategoryRanking("expense", startDate, endDate);
+  }, [categories, categoryId, ranking]);
   const { data: report, isLoading: isReportLoading } = useCategorySpendingReport(categoryId, startDate, endDate);
   const { data: transactions, isLoading: isTransactionsLoading } = useTransactions({
     category_id: categoryId ?? undefined,
@@ -60,6 +76,7 @@ export function ReportsPage() {
     page_size: PAGE_SIZE,
   });
   const deleteTransaction = useDeleteTransaction();
+  const confirm = useConfirm();
 
   // Hierarchical within each group (a subcategory right under its own
   // parent, indented) — a bare "Sweets" option next to top-level categories
@@ -79,10 +96,13 @@ export function ReportsPage() {
     setModalOpen(true);
   }
 
-  function handleDelete(transaction: Transaction) {
-    if (window.confirm(t("transactions.confirmDelete", { description: transaction.description }))) {
-      deleteTransaction.mutate(transaction.id);
-    }
+  async function handleDelete(transaction: Transaction) {
+    const ok = await confirm({
+      message: t("transactions.confirmDelete", { description: transaction.description }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteTransaction.mutate(transaction.id);
   }
 
   return (
@@ -102,7 +122,7 @@ export function ReportsPage() {
               <optgroup label={t("reports.expenseGroup")}>
                 {expenseCategories.map((category) => (
                   <option key={category.id} value={category.id}>
-                    {category.indented ? `    ↳ ` : ""}
+                    {categoryOptionPrefix(category.depth)}
                     {translateCategoryName(category.name)}
                   </option>
                 ))}
@@ -112,7 +132,7 @@ export function ReportsPage() {
               <optgroup label={t("reports.incomeGroup")}>
                 {incomeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
-                    {category.indented ? `    ↳ ` : ""}
+                    {categoryOptionPrefix(category.depth)}
                     {translateCategoryName(category.name)}
                   </option>
                 ))}

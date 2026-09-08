@@ -12,6 +12,7 @@ import { AlertBanner } from "@/components/insights/AlertBanner";
 import { useNetWorthSummary } from "@/hooks/useNetWorth";
 import { useAssets, useDeleteAsset } from "@/hooks/useAssets";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { Asset, NetWorthRange } from "@/types";
 
 export function NetWorthPage() {
@@ -23,6 +24,7 @@ export function NetWorthPage() {
   const { data: summary, isLoading: isSummaryLoading } = useNetWorthSummary(range);
   const { data: assets, isLoading: isAssetsLoading } = useAssets();
   const deleteAsset = useDeleteAsset();
+  const confirm = useConfirm();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -37,10 +39,13 @@ export function NetWorthPage() {
     setModalOpen(true);
   }
 
-  function handleDelete(asset: Asset) {
-    if (window.confirm(t("netWorth.confirmDeleteAsset", { name: asset.name }))) {
-      deleteAsset.mutate(asset.id);
-    }
+  async function handleDelete(asset: Asset) {
+    const ok = await confirm({
+      message: t("netWorth.confirmDeleteAsset", { name: asset.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteAsset.mutate(asset.id);
   }
 
   return (

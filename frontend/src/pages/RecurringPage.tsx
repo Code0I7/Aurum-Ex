@@ -6,12 +6,14 @@ import { RecurringList } from "@/components/recurring/RecurringList";
 import { RecurringFormModal } from "@/components/recurring/RecurringFormModal";
 import { useDeleteRecurring, usePostRecurring, useRecurring } from "@/hooks/useRecurring";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { RecurringTransaction } from "@/types";
 
 export function RecurringPage() {
   const { t } = useTranslation();
   const { data: items, isLoading } = useRecurring();
   const deleteRecurring = useDeleteRecurring();
+  const confirm = useConfirm();
   const postRecurring = usePostRecurring();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,10 +29,13 @@ export function RecurringPage() {
     setModalOpen(true);
   }
 
-  function handleDelete(item: RecurringTransaction) {
-    if (window.confirm(t("recurring.confirmDelete", { name: item.description }))) {
-      deleteRecurring.mutate(item.id);
-    }
+  async function handleDelete(item: RecurringTransaction) {
+    const ok = await confirm({
+      message: t("recurring.confirmDelete", { name: item.description }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteRecurring.mutate(item.id);
   }
 
   function handlePost(item: RecurringTransaction) {

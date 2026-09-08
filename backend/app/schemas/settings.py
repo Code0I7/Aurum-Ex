@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +11,14 @@ class AppSettingsRead(BaseModel):
     risky_allocation_threshold_percent: int
     idle_cash_threshold_amount: Decimal
     idle_cash_threshold_days: int
+
+    # Что показывать при открытии. Настраивается один раз и хранится на
+    # сервере: установка однопользовательская, и выбор, сделанный на
+    # ноутбуке, должен действовать с телефона.
+    default_dashboard_range: str = "year"
+    default_page_size: int = 50
+    group_repeats_by_default: bool = True
+    day_dividers_by_default: bool = True
 
 
 class AppSettingsUpdate(BaseModel):
@@ -32,3 +41,11 @@ class AppSettingsUpdate(BaseModel):
     # depository account needs to hit before idle_cash fires.
     idle_cash_threshold_amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     idle_cash_threshold_days: int | None = Field(default=None, ge=1, le=365)
+
+    # Период дашборда при открытии: month, year или all.
+    default_dashboard_range: Literal["month", "year", "all"] | None = None
+    # Сколько операций подгружать за раз. Верхняя граница есть: страница на
+    # тысячу строк грузится дольше, чем прокручиваются пятьдесят.
+    default_page_size: int | None = Field(default=None, ge=10, le=500)
+    group_repeats_by_default: bool | None = None
+    day_dividers_by_default: bool | None = None

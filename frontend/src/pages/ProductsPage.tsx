@@ -7,6 +7,7 @@ import { ProductFormModal } from "@/components/products/ProductFormModal";
 import { PriceHistoryModal } from "@/components/products/PriceHistoryModal";
 import { useDeleteProduct, useProducts } from "@/hooks/useProducts";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { Product } from "@/types";
 
 /**
@@ -21,6 +22,7 @@ export function ProductsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data: products, isLoading } = useProducts(showArchived);
   const deleteProduct = useDeleteProduct();
+  const confirm = useConfirm();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -31,10 +33,13 @@ export function ProductsPage() {
     setFormOpen(true);
   }
 
-  function handleDelete(product: Product) {
-    if (window.confirm(t("product.confirmDelete", { name: product.name }))) {
-      deleteProduct.mutate(product.id);
-    }
+  async function handleDelete(product: Product) {
+    const ok = await confirm({
+      message: t("product.confirmDelete", { name: product.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (ok) deleteProduct.mutate(product.id);
   }
 
   return (

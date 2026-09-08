@@ -7,6 +7,7 @@ import { CategoryList } from "@/components/categories/CategoryList";
 import { useCategoryTotals, useCategories, useDeleteCategory } from "@/hooks/useCategories";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { Category, CategoryKind } from "@/types";
 
 // Alphabetical by displayed (translated) name — same locale-aware sort
@@ -28,6 +29,7 @@ export function CategoriesPage() {
   const { t, language } = useTranslation();
   const { data: categories, isLoading } = useCategories();
   const deleteCategory = useDeleteCategory();
+  const confirm = useConfirm();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -46,14 +48,19 @@ export function CategoriesPage() {
   }
 
   async function handleDelete(category: Category) {
-    if (!window.confirm(t("category.confirmDelete", { name: category.name }))) return;
+    const ok = await confirm({
+      message: t("category.confirmDelete", { name: category.name }),
+      confirmLabel: t("common.delete"),
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteCategory.mutateAsync(category.id);
     } catch {
       // The only way a delete 400s is a default category that still has
       // transactions pointing at it (api/routes/categories.py) — a custom
       // category has no such guard and always succeeds.
-      window.alert(t("category.defaultDeleteBlocked"));
+      await confirm({ message: t("category.defaultDeleteBlocked"), acknowledgeOnly: true });
     }
   }
 

@@ -10,7 +10,11 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
-import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
+import {
+  buildHierarchicalCategories,
+  categoryOptionPrefix,
+  translateCategoryName,
+} from "@/lib/categoryLabels";
 import { formatCurrency } from "@/lib/format";
 import type {
   Tag,
@@ -485,7 +489,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               <option value="">{t("transactions.form.noCategory")}</option>
               {categorySelectOptions.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.indented ? `    ↳ ` : ""}
+                  {categoryOptionPrefix(category.depth)}
                   {translateCategoryName(category.name)}
                 </option>
               ))}

@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/Button";
 import { ApiError } from "@/api/client";
 import { exportBackup, importBackup } from "@/api/backup";
 import { useTranslation } from "@/lib/i18n";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 
 export function BackupCard() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
 
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -41,7 +43,10 @@ export function BackupCard() {
     event.target.value = "";
     if (!file) return;
 
-    const confirmed = window.confirm(t("backup.confirmImport", { filename: file.name }));
+    const confirmed = await confirm({
+      message: t("backup.confirmImport", { filename: file.name }),
+      tone: "danger",
+    });
     if (!confirmed) return;
 
     setIsImporting(true);

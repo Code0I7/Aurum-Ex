@@ -57,6 +57,9 @@ class CategoryBackup(BaseModel):
     # Defaulted so a backup exported before subcategories existed still
     # imports cleanly under the same format version.
     parent_id: int | None = None
+    # То же и здесь: копия, снятая до появления списка наблюдения,
+    # восстанавливается с пустым списком, а не падает.
+    is_watched: bool = False
 
 
 class TagBackup(BaseModel):

@@ -25,6 +25,9 @@ function invalidateCategoryConsumers(queryClient: ReturnType<typeof useQueryClie
   queryClient.invalidateQueries({ queryKey: ["budgets"] });
   queryClient.invalidateQueries({ queryKey: ["budget-status"] });
   queryClient.invalidateQueries({ queryKey: ["recurring"] });
+  // Список наблюдения — признак на самой категории, а таблица года
+  // раскладывает факт по веткам: и то и другое меняется вместе с категорией.
+  queryClient.invalidateQueries({ queryKey: ["plans"] });
 }
 
 export function useCreateCategory() {
