@@ -1,8 +1,14 @@
 import { api } from "@/api/client";
-import type { Goal, GoalContributionInput, GoalInput } from "@/types";
+import type { AccountReservation, Goal, GoalContributionInput, GoalInput } from "@/types";
 
 export function fetchGoals() {
   return api.get<Goal[]>("/goals");
+}
+
+/** Чем занята часть остатка каждого счёта — по целям. Для полосы на
+ *  обзоре: один отрезок на цель, с подписью, на что отложено. */
+export function fetchReservations() {
+  return api.get<AccountReservation[]>("/goals/reservations");
 }
 
 export function createGoal(input: GoalInput) {

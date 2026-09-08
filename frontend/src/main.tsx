@@ -12,6 +12,19 @@ import "@/lib/theme";
 import "@/lib/design";
 import "@/index.css";
 
+// Служебный работник нужен ровно для одного: без него Chrome не
+// предлагает «добавить на главный экран». Регистрация не мешает
+// обычной работе и молча пропускается там, где её нет, — например
+// на http://localhost без TLS.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Установка на главный экран просто не предложится. Ронять
+      // из-за этого приложение незачем.
+    });
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

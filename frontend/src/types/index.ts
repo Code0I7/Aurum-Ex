@@ -503,13 +503,27 @@ export interface Goal {
   // Счёт, на котором физически лежат отложенные деньги. Без него счёт не
   // сможет показать «отложено»: непонятно, откуда цель копит.
   account_id: number | null;
+  // Активна, достигнута или отменена. Завершение ручное: потратить
+  // накопленное — событие, о котором приложению неоткуда узнать, деньги
+  // уходят обычной тратой.
+  status: GoalStatus;
+  // Дата завершения. Пусто, пока копится.
+  closed_at: string | null;
   current_amount: string;
+  // Сколько всего вносили, без учёта возвратов. У завершённой цели
+  // это единственное осмысленное число.
+  deposited: string;
   remaining: string;
   percent: number;
   is_reached: boolean;
+  // Откуда отложено: копить можно с нескольких счетов.
+  by_account: GoalReservation[];
 }
 
 export interface GoalInput {
+  // Завершение цели идёт тем же PATCH, что и переименование: отдельный
+  // маршрут «закрыть» описывал бы то же самое вторым способом.
+  status?: GoalStatus;
   name: string;
   target_amount: string;
   target_date: string | null;
@@ -577,6 +591,10 @@ export interface GoalContributionInput {
   amount: string;
   date: string;
   note?: string | null;
+  // С какого счёта откладываем (или на какой возвращаем). Пусто — берётся
+  // счёт самой цели: в привычном случае «одна цель, одна карта» выбирать
+  // нечего.
+  account_id?: number | null;
 }
 
 export interface Budget {
@@ -765,6 +783,9 @@ export interface AppSettings {
   // установка однопользовательская, и выбор с ноутбука должен действовать
   // с телефона.
   default_dashboard_range: DashboardRange;
+  // Счёт, подставляемый в новую операцию. Основная карта одна, и
+  // выбирать её каждый раз — лишний шаг на самом частом действии.
+  default_account_id: number | null;
   default_page_size: number;
   group_repeats_by_default: boolean;
   day_dividers_by_default: boolean;
@@ -832,6 +853,22 @@ export interface PlanOverview {
   expense_totals: PlanMonthCell[];
   // Свободные средства: доходы минус расходы, по плану и по факту.
   free_totals: PlanMonthCell[];
+}
+
+export type GoalStatus = "active" | "achieved" | "cancelled";
+
+export interface GoalReservation {
+  account_id: number;
+  account_name: string;
+  amount: string;
+}
+
+/** Отрезок на полосе счёта: чем именно занята часть остатка. */
+export interface AccountReservation {
+  account_id: number;
+  goal_id: number;
+  goal_name: string;
+  amount: string;
 }
 
 export interface SimilarTransaction {

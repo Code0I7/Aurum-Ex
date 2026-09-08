@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addGoalContribution, createGoal, deleteGoal, fetchGoals, updateGoal } from "@/api/goals";
+import {
+  addGoalContribution,
+  createGoal,
+  deleteGoal,
+  fetchGoals,
+  fetchReservations,
+  updateGoal,
+} from "@/api/goals";
 import type { GoalContributionInput, GoalInput } from "@/types";
 
 function useInvalidateGoals() {
@@ -17,6 +24,13 @@ export function useCreateGoal() {
     mutationFn: (input: GoalInput) => createGoal(input),
     onSuccess: invalidate,
   });
+}
+
+/** Резервы по счетам — для полосы на обзоре. Отдельный запрос, а не
+ *  часть списка целей: обзору не нужны сами цели, а списку целей не нужна
+ *  разбивка по счетам в обратную сторону. */
+export function useReservations() {
+  return useQuery({ queryKey: ["goals", "reservations"], queryFn: fetchReservations });
 }
 
 export function useUpdateGoal() {

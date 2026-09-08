@@ -253,3 +253,57 @@ async def _table_counts(client: AsyncClient) -> dict[str, int]:
             )
         break
     return counts
+
+
+# Колонки, которые копия не переносит намеренно. Всё остальное обязано в
+# ней быть — иначе восстановление молча возвращает значение по умолчанию.
+COLUMNS_NOT_BACKED_UP = {
+    # Служебные отметки времени: они относятся к строке в этой базе, а не
+    # к данным, и после восстановления должны проставиться заново.
+    "created_at",
+    "updated_at",
+    # Единственная строка настроек всегда id=1.
+    ("app_settings", "id"),
+}
+
+
+def test_every_column_is_in_the_backup():
+    """Проверка от настоящей потери. Настройки вида — период обзора, размер
+    страницы, склейка повторов, разделители дней — добавились миграцией
+    0002, а в схему копии их дописать забыли. Копия снималась без ошибки,
+    восстанавливалась без ошибки, и настройки молча возвращались к
+    умолчанию; заметить это можно было бы только по тому, что список
+    операций снова открывается на двадцати строках.
+
+    Проверка таблиц такого не ловит: таблица-то в копии есть. Поэтому
+    сверяются колонки.
+    """
+    from app.db.base import Base
+    from app.schemas import backup as backup_schemas
+
+    # Схема копии для таблицы ищется по имени класса: FooBarBackup для
+    # foo_bars. Пары, где это правило не работает, перечислены явно.
+    special = {"app_settings": "AppSettingsBackup", "dashboard_widgets": "WidgetBackup"}
+
+    missing: list[str] = []
+    for table in Base.metadata.sorted_tables:
+        if table.name in NOT_BACKED_UP:
+            continue
+        class_name = special.get(table.name)
+        if class_name is None:
+            singular = table.name[:-1] if table.name.endswith("s") else table.name
+            class_name = "".join(part.title() for part in singular.split("_")) + "Backup"
+        schema = getattr(backup_schemas, class_name, None)
+        if schema is None:
+            # Схема названа иначе — не повод молчать, но и не эта проверка.
+            continue
+        fields = set(schema.model_fields)
+        for column in table.columns:
+            if column.name in COLUMNS_NOT_BACKED_UP:
+                continue
+            if (table.name, column.name) in COLUMNS_NOT_BACKED_UP:
+                continue
+            if column.name not in fields:
+                missing.append(f"{table.name}.{column.name} -> {class_name}")
+
+    assert not missing, "Колонки не попадают в резервную копию: " + ", ".join(sorted(missing))

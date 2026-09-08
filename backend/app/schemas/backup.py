@@ -2,6 +2,7 @@
 from datetime import date as date_
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -12,6 +13,7 @@ from app.models.enums import (
     CapitalRole,
     CategoryKind,
     CryptoTransactionType,
+    GoalStatus,
     InvestmentKind,
     ParticipantKind,
     PlanKind,
@@ -73,6 +75,10 @@ class TransactionBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    # Публичный идентификатор записи. Переносится, чтобы ссылка на операцию,
+    # выписанная вне приложения, пережила восстановление; новый в этом
+    # случае означал бы, что все прежние ссылки указывают в никуда.
+    uuid: UUID | None = None
     account_id: int
     category_id: int | None
     transfer_account_id: int | None
@@ -212,6 +218,13 @@ class GoalBackup(BaseModel):
     name: str
     target_amount: Decimal
     target_date: date_ | None
+    # Счёт, на котором лежит отложенное, и чем цель закончилась. Ничего из
+    # этого в копию не попадало: восстановленная установка возвращала все
+    # цели активными и без привязки к счетам, то есть заново резервировала
+    # деньги под то, что давно куплено.
+    account_id: int | None = None
+    status: GoalStatus = GoalStatus.ACTIVE
+    closed_at: date_ | None = None
 
 
 class GoalContributionBackup(BaseModel):
@@ -222,6 +235,12 @@ class GoalContributionBackup(BaseModel):
     amount: Decimal
     date: date_
     note: str | None
+    # С какого счёта отложено. Без этого поля восстановление теряет
+    # разбивку резерва по счетам, и цель, накопленная с двух карт,
+    # возвращается как накопленная ниоткуда.
+    account_id: int | None = None
+    # Трата, которой цель была реализована.
+    transaction_id: int | None = None
 
 
 class RecurringTransactionBackup(BaseModel):
@@ -257,6 +276,19 @@ class AppSettingsBackup(BaseModel):
     # still imports cleanly under the same format version.
     idle_cash_threshold_amount: Decimal = Decimal("1000")
     idle_cash_threshold_days: int = 60
+    # С какой даты данным можно доверять. Проставляется при переносе
+    # таблицы и отсекает советы по неполной истории.
+    reliable_from: date_ | None = None
+    # Настройки вида. Их не было в копии вовсе — колонки добавились
+    # миграциями после первой версии формата, а сюда их дописать забыли, и
+    # восстановление молча возвращало значения по умолчанию. Заметить это
+    # можно было бы только по тому, что список операций после
+    # восстановления снова открывается на двадцати строках.
+    default_dashboard_range: str = "year"
+    default_page_size: int = 50
+    group_repeats_by_default: bool = True
+    day_dividers_by_default: bool = True
+    default_account_id: int | None = None
 
 
 # --- Справочники и разделы Aurum-Ex ---

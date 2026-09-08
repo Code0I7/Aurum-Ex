@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
-import { Input, Label } from "@/components/ui/Input";
+import { Input, Label, Select } from "@/components/ui/Input";
 import { useAddGoalContribution } from "@/hooks/useGoals";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useTranslation } from "@/lib/i18n";
 import type { Goal } from "@/types";
 
@@ -20,14 +21,19 @@ export function GoalContributionModal({ open, onClose, goal }: GoalContributionM
   const { t } = useTranslation();
   const addContribution = useAddGoalContribution();
 
+  const { data: accounts } = useAccounts(false);
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayIso());
+  const [accountId, setAccountId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setAmount("");
     setDate(todayIso());
+    // Счёт цели — разумное начальное значение: чаще всего копят с той же
+    // карты, что и в прошлый раз.
+    setAccountId(goal?.account_id ? String(goal.account_id) : "");
     setError(null);
   }, [open, goal]);
 
@@ -37,10 +43,20 @@ export function GoalContributionModal({ open, onClose, goal }: GoalContributionM
     setError(null);
 
     try {
-      await addContribution.mutateAsync({ id: goal.id, input: { amount, date } });
+      await addContribution.mutateAsync({
+        id: goal.id,
+        input: { amount, date, account_id: accountId ? Number(accountId) : null },
+      });
       onClose();
-    } catch {
-      setError(t("goal.contribution.saveError"));
+    } catch (err) {
+      // Единственный содержательный отказ — попытка вернуть с счёта
+      // больше, чем с него откладывали. Сообщение об этом полезнее
+      // общего «не удалось сохранить».
+      setError(
+        err instanceof Error && err.message.includes("more than was set aside")
+          ? t("goal.contribution.tooMuchBack")
+          : t("goal.contribution.saveError")
+      );
     }
   }
 
@@ -75,6 +91,22 @@ export function GoalContributionModal({ open, onClose, goal }: GoalContributionM
             />
           </div>
         </div>
+        <div>
+          <Label htmlFor="contribution-account">{t("goal.contribution.accountLabel")}</Label>
+          <Select
+            id="contribution-account"
+            value={accountId}
+            onChange={(event) => setAccountId(event.target.value)}
+          >
+            <option value="">{t("goal.contribution.noAccount")}</option>
+            {(accounts ?? []).map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+
         <p className="text-xs text-text-muted">{t("goal.contribution.hint")}</p>
 
         {error && <p className="text-sm text-danger">{error}</p>}

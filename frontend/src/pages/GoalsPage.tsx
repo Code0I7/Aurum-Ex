@@ -6,14 +6,16 @@ import { GoalList } from "@/components/goals/GoalList";
 import { GoalFormModal } from "@/components/goals/GoalFormModal";
 import { GoalContributionModal } from "@/components/goals/GoalContributionModal";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
-import { useDeleteGoal, useGoals } from "@/hooks/useGoals";
+import { useDeleteGoal, useGoals, useUpdateGoal } from "@/hooks/useGoals";
 import { useTranslation } from "@/lib/i18n";
-import type { Goal } from "@/types";
+import { formatCurrency } from "@/lib/format";
+import type { Goal, GoalStatus } from "@/types";
 
 export function GoalsPage() {
   const { t } = useTranslation();
   const { data: goals, isLoading } = useGoals();
   const deleteGoal = useDeleteGoal();
+  const updateGoal = useUpdateGoal();
   const confirm = useConfirm();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -45,11 +47,35 @@ export function GoalsPage() {
     if (ok) deleteGoal.mutate(goal.id);
   }
 
+  /**
+   * Завершение цели ничего не вычитает со счёта.
+   *
+   * Деньги уже ушли обычной тратой — вычесть их ещё раз значило бы
+   * посчитать расход дважды. Исчезает только пометка: отрезок резерва на
+   * полосе счёта.
+   */
+  async function handleStatusChange(goal: Goal, status: GoalStatus) {
+    if (status !== "active") {
+      const ok = await confirm({
+        title: t(status === "achieved" ? "goal.markAchieved" : "goal.markCancelled"),
+        message: t(status === "achieved" ? "goal.confirmAchieved" : "goal.confirmCancelled", {
+          name: goal.name,
+          amount: formatCurrency(goal.current_amount),
+        }),
+      });
+      if (!ok) return;
+    }
+    updateGoal.mutate({ id: goal.id, input: { status } });
+  }
+
+  const active = (goals ?? []).filter((goal) => goal.status === "active");
+  const closed = (goals ?? []).filter((goal) => goal.status !== "active");
+
   return (
     <div className="space-y-5">
       <Card>
         <CardHeader>
-          <CardTitle>{t("nav.goals")}</CardTitle>
+          <CardTitle>{t("goal.activeTitle")}</CardTitle>
           <Button onClick={openCreateModal}>
             <Plus size={16} />
             {t("common.add")}
@@ -60,14 +86,35 @@ export function GoalsPage() {
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
             <GoalList
-              items={goals ?? []}
+              items={active}
               onContribute={openContributionModal}
               onEdit={openEditModal}
               onDelete={handleDelete}
+              onStatusChange={handleStatusChange}
             />
           )}
         </CardContent>
       </Card>
+
+      {/* Завершённые не исчезают и не схлопываются в ноль: накопленное
+          осталось историей, и «копил девять месяцев» — часть ответа на
+          вопрос, чего эта покупка стоила. */}
+      {closed.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("goal.closedTitle")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GoalList
+              items={closed}
+              onContribute={openContributionModal}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+              onStatusChange={handleStatusChange}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <GoalFormModal open={formOpen} onClose={() => setFormOpen(false)} goal={editingGoal} />
       <GoalContributionModal

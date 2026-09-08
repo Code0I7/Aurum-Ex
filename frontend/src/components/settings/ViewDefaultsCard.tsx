@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Input";
 import { useAppSettings, useUpdateAppSettings } from "@/hooks/useSettings";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useTranslation } from "@/lib/i18n";
 import type { DashboardRange } from "@/types";
 
@@ -16,6 +17,7 @@ export function ViewDefaultsCard() {
   const { t } = useTranslation();
   const { data: settings } = useAppSettings();
   const update = useUpdateAppSettings();
+  const { data: accounts } = useAccounts(false);
 
   if (!settings) return null;
 
@@ -42,6 +44,28 @@ export function ViewDefaultsCard() {
               <option value="year">{t("dashboard.rangeYear")}</option>
               <option value="all">{t("dashboard.rangeAll")}</option>
             </select>
+          </div>
+
+          <div>
+            <Label htmlFor="default-account">{t("settings.defaultAccount")}</Label>
+            <select
+              id="default-account"
+              value={settings.default_account_id ?? ""}
+              onChange={(event) =>
+                update.mutate({
+                  default_account_id: event.target.value ? Number(event.target.value) : null,
+                })
+              }
+              className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
+            >
+              <option value="">{t("settings.defaultAccountNone")}</option>
+              {(accounts ?? []).map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-text-muted">{t("settings.defaultAccountHint")}</p>
           </div>
 
           <div>

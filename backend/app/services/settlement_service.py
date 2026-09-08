@@ -147,11 +147,14 @@ async def get_reserved_by_account(session: AsyncSession) -> dict[int, Decimal]:
     from app.models.enums import GoalStatus
     from app.models.goal import Goal, GoalContribution
 
+    # Счёт берётся у взноса, а не у цели: копить можно с нескольких
+    # счетов, и «три тысячи наличными, две безналом» — это две разные
+    # пометки на двух разных остатках, а не одна на пять тысяч.
     rows = (
         await session.execute(
-            select(Goal.account_id, GoalContribution.amount)
-            .join(GoalContribution, GoalContribution.goal_id == Goal.id)
-            .where(Goal.account_id.is_not(None), Goal.status == GoalStatus.ACTIVE)
+            select(GoalContribution.account_id, GoalContribution.amount)
+            .join(Goal, Goal.id == GoalContribution.goal_id)
+            .where(GoalContribution.account_id.is_not(None), Goal.status == GoalStatus.ACTIVE)
         )
     ).all()
 

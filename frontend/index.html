@@ -8,6 +8,12 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/brand/favicon-192.png" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <!-- Установка на домашний экран. Chrome смотрит в манифест,
+         iOS — в мета-теги ниже: у него своего манифеста нет. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Aurum-Ex" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#08080a" />
     <title>Aurum-Ex — Личные финансы</title>

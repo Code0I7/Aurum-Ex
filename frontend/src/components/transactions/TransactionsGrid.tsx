@@ -82,7 +82,7 @@ export function TransactionsGrid({
   // перерисовывается после каждой правки, и индекс раскрыл бы соседа.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const groups = useMemo(() => groupTransactions(items, groupRepeats), [items, groupRepeats]);
-  const { drag, start, move, end } = useRowDrag(onReorder);
+  const { drag, arm, move, end, consumeClickSuppression } = useRowDrag(onReorder);
 
   // Итог по каждому дню — то, что в банковских выписках стоит в шапке дня.
   // Переводы в него не входят: это движение своих же денег между
@@ -342,6 +342,16 @@ export function TransactionsGrid({
             <tr
               key={tx.id}
               data-row-id={tx.id}
+              // Тянуть можно за само тело строки: перетаскивание начнётся,
+              // только когда указатель уйдёт с места. Кнопки внутри строки
+              // исключены — иначе нажатие на «удалить» превращалось бы в
+              // перетаскивание.
+              onPointerDown={(event) => {
+                if ((event.target as HTMLElement).closest("button, a, input")) return;
+                const meta = siblingsByRow.get(tx.id);
+                if (!meta) return;
+                arm(event, { transaction: tx, indexInDay: meta.indexInDay }, meta.siblings);
+              }}
               onPointerMove={move}
               onPointerUp={end}
               // Щелчок по строке открывает правку. Кнопка карандаша
@@ -353,6 +363,9 @@ export function TransactionsGrid({
                 // по ближайшей кнопке, а не по списку — иначе следующая
                 // добавленная кнопка молча начала бы открывать редактор.
                 if ((event.target as HTMLElement).closest("button, a, input")) return;
+                // Щелчок после перетаскивания — не щелчок: человек двигал
+                // строку, а не открывал её.
+                if (consumeClickSuppression()) return;
                 // Выделение текста мышью заканчивается щелчком по строке.
                 // Открывать редактор в ответ на попытку скопировать сумму
                 // значит отменять эту попытку.
@@ -394,10 +407,17 @@ export function TransactionsGrid({
                         title={t("transactions.dragHandle")}
                         onPointerDown={(event) => {
                           const meta = siblingsByRow.get(tx.id);
-                          if (!meta || meta.siblings.length < 2) return;
-                          start(event, { transaction: tx, indexInDay: meta.indexInDay }, meta.siblings);
+                          if (!meta) return;
+                          arm(event, { transaction: tx, indexInDay: meta.indexInDay }, meta.siblings, true);
                         }}
-                        className="-ml-1 cursor-grab touch-none rounded p-0.5 text-text-muted transition active:cursor-grabbing sm:opacity-0 sm:group-hover:opacity-100"
+                        // Только на узких экранах. Пальцем за тело строки
+                        // тянуть нельзя: браузер решает «прокрутка или жест»
+                        // в момент касания, и отдать движение нам можно
+                        // только выключив прокрутку заранее — то есть для
+                        // всего списка. Ручка — единственное место, где
+                        // touch-action выключен, поэтому список
+                        // прокручивается как обычно.
+                        className="-ml-1 cursor-grab touch-none rounded p-0.5 text-text-muted transition active:cursor-grabbing sm:hidden"
                       >
                         <GripVertical size={13} />
                       </button>

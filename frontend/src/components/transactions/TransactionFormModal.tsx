@@ -25,6 +25,7 @@ import {
 import { fetchSimilarTransactions } from "@/api/transactions";
 import type { SimilarTransaction } from "@/types";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { useAppSettings } from "@/hooks/useSettings";
 import { DirectoryPicker } from "@/components/transactions/DirectoryPicker";
 import { formatCurrency } from "@/lib/format";
 import type {
@@ -170,7 +171,17 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           : [emptySplitRow(), emptySplitRow()]
       );
     } else {
-      setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
+      // Счёт по умолчанию — «основная карта» из настроек. Первый в
+      // списке остаётся запасным вариантом: пока настройка не задана,
+      // поведение прежнее, а не пустое поле.
+      const preferred =
+        settings?.default_account_id &&
+        (accounts ?? []).some((account) => account.id === settings.default_account_id)
+          ? String(settings.default_account_id)
+          : accounts?.[0]
+            ? String(accounts[0].id)
+            : "";
+      setForm({ ...EMPTY_FORM, account_id: preferred });
       setTags([]);
       setItems([]);
       setSplitMode(false);
@@ -193,6 +204,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const createParticipant = useCreateParticipant();
   const createStore = useCreateStore();
   const createCounterparty = useCreateCounterparty();
+  const { data: settings } = useAppSettings();
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
 
   function updateSplitRow(key: string, patch: Partial<SplitRowState>) {

@@ -16,6 +16,9 @@ class AppSettingsRead(BaseModel):
     # сервере: установка однопользовательская, и выбор, сделанный на
     # ноутбуке, должен действовать с телефона.
     default_dashboard_range: str = "year"
+    # Счёт, подставляемый в новую операцию. Пусто — подставлять нечего, и
+    # человек выбирает счёт сам, как раньше.
+    default_account_id: int | None = None
     default_page_size: int = 50
     group_repeats_by_default: bool = True
     day_dividers_by_default: bool = True
@@ -44,6 +47,7 @@ class AppSettingsUpdate(BaseModel):
 
     # Период дашборда при открытии: month, year или all.
     default_dashboard_range: Literal["month", "year", "all"] | None = None
+    default_account_id: int | None = None
     # Сколько операций подгружать за раз. Верхняя граница есть: страница на
     # тысячу строк грузится дольше, чем прокручиваются пятьдесят.
     default_page_size: int | None = Field(default=None, ge=10, le=500)

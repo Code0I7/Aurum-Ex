@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { HelpBadge } from "@/components/ui/HelpBadge";
 import { Input, Label } from "@/components/ui/Input";
 import { suggestProducts } from "@/api/products";
 import { useUnits } from "@/hooks/useProducts";
@@ -38,8 +39,17 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
     // заставлять человека перемножать два числа, которые он только что
     // ввёл, незачем. Введённую вручную сумму не трогаем.
     const item = next[index];
+    // Пересчёт в обе стороны. Раньше он шёл только от цены к сумме, и
+    // человек, вписавший сумму из чека, терял её при следующей правке
+    // количества. Хуже того, «цена» молча означала цену за единицу: пол-литра
+    // воды, введённые как «500» и «36», давали 18 000 — количество в
+    // миллилитрах, цена за бутылку.
     if (("price" in patch || "quantity" in patch) && item.price && item.quantity) {
       item.amount = (Number(item.price) * Number(item.quantity)).toFixed(2);
+    } else if ("amount" in patch && item.amount && item.quantity && Number(item.quantity) !== 0) {
+      // Вписали сумму — цена за единицу выводится из неё. Четыре знака, а
+      // не два: цена за миллилитр или за грамм иначе округляется в ноль.
+      item.price = (Number(item.amount) / Number(item.quantity)).toFixed(4);
     }
     onChange(next);
   }
@@ -55,7 +65,10 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label>{t("items.title")}</Label>
+        <span className="flex items-center gap-1.5">
+          <Label>{t("items.title")}</Label>
+          <HelpBadge hintKey="items.priceHint" />
+        </span>
         <button
           type="button"
           onClick={addRow}

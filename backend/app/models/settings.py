@@ -11,7 +11,7 @@ which rate applies where.
 from datetime import date as date_
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, Integer, Numeric, String
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -63,6 +63,15 @@ class AppSettings(Base):
     # Сколько операций подгружать за раз. Пятьдесят, а не двадцать: при
     # четырёх годах истории двадцать строк — это полторы недели, и до
     # прошлого месяца приходится долистывать.
+    # Счёт, который подставляется в новую операцию. Основная карта у
+    # человека одна, и выбирать её каждый раз из списка — лишний шаг на
+    # самом частом действии в приложении.
+    #
+    # SET NULL: удалённый счёт просто перестаёт подставляться, а не роняет
+    # форму ввода ссылкой в пустоту.
+    default_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
+    )
     default_page_size: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     # Склеивать ли одинаковые траты дня и рисовать ли разделители дней.
     group_repeats_by_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

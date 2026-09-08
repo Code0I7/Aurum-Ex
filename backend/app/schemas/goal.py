@@ -22,6 +22,32 @@ class GoalUpdate(BaseModel):
     target_amount: Decimal | None = Field(default=None, gt=0)
     target_date: date_ | None = None
     account_id: int | None = None
+    # Завершение цели — ручное и намеренно не автоматическое. Накопить
+    # нужную сумму и потратить её — разные события, и второе приложению
+    # неоткуда узнать: деньги уходят обычной тратой, без пометок.
+    #
+    # ACHIEVED снимает резерв, потому что деньги уже потрачены со счёта
+    # обычным расходом; вычитать их ещё раз значило бы посчитать трату
+    # дважды. CANCELLED снимает резерв по другой причине — передумали, — и
+    # различать их стоит: половина целей заканчивается вторым способом.
+    status: GoalStatus | None = None
+
+
+class GoalReservation(BaseModel):
+    """Сколько этой целью отложено на конкретном счёте."""
+
+    account_id: int
+    account_name: str
+    amount: Decimal
+
+
+class AccountReservation(BaseModel):
+    """Отрезок на полосе счёта: чем именно занята часть остатка."""
+
+    account_id: int
+    goal_id: int
+    goal_name: str
+    amount: Decimal
 
 
 class GoalContributionCreate(BaseModel):
@@ -30,6 +56,10 @@ class GoalContributionCreate(BaseModel):
     amount: Decimal
     date: date_
     note: str | None = Field(default=None, max_length=200)
+    # С какого счёта откладываем (или на какой возвращаем). Необязателен:
+    # цель можно вести и без привязки к счёту — тогда она остаётся планом
+    # накопления и ничего не резервирует.
+    account_id: int | None = None
 
     @field_validator("amount")
     @classmethod
@@ -51,7 +81,16 @@ class GoalRead(BaseModel):
     # непонятно откуда взялся, а счёт не может показать «отложено».
     account_id: int | None = None
     status: GoalStatus = GoalStatus.ACTIVE
+    # Дата завершения — достигнута или отменена. Пусто, пока копится.
+    closed_at: date_ | None = None
     current_amount: Decimal
+    # Сколько всего вносили, без учёта возвратов. У завершённой цели это
+    # единственное осмысленное число: перенос старой таблицы записывал
+    # трату накопленного возвратом, и итог схлопывался в ноль — «накоплено
+    # 0 ₽» там, где копили полгода.
+    deposited: Decimal = Decimal("0")
     remaining: Decimal
     percent: float
     is_reached: bool
+    # Откуда отложено. Пусто у целей без привязки к счёту.
+    by_account: list[GoalReservation] = Field(default_factory=list)
