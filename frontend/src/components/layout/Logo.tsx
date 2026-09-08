@@ -1,38 +1,46 @@
 /**
- * Aurum's mark: a coin with an "A" monogram. Rendered as inline SVG (not the
- * 🜚 alchemical-gold emoji this replaced) because emoji glyph coverage for
- * that character is inconsistent across platforms/fonts and rendered
- * mangled for the user — an SVG always looks the same everywhere. Kept in
- * sync with public/favicon.svg.
+ * Знак приложения.
+ *
+ * Раньше рисовался прямо здесь встроенным SVG — золотой монетой с засечной
+ * «A», унаследованной от оригинального Aurum (она, в свою очередь, заменяла
+ * символ 🜚, который на части систем показывался квадратиком). Теперь это
+ * файл `public/brand/mark.svg`, а компонент только отводит ему место.
+ *
+ * Причина в замене, а не в красоте: знак меняют оформлением, а не правкой
+ * кода, и держать его в двух видах — здесь и в `public/favicon.svg` —
+ * значило бы, что однажды они разойдутся. Так подменяется один файл, и всё
+ * приложение обновляется разом.
+ *
+ * Слот горизонтальный, 3:2. Высота задаётся вызывающим кодом, ширина
+ * считается от неё: так знак вписывается и в свёрнутое меню шириной 72
+ * точки, и в шапку экрана входа. Размеры файла — docs/brand.md.
  */
 interface LogoProps {
+  /** Высота знака в точках. Ширина — полтора от неё. */
   size?: number;
   className?: string;
 }
 
+/** Соотношение сторон слота. Меняется вместе с mark.svg и docs/brand.md —
+ *  врозь их менять нельзя, иначе знак поедет. */
+const ASPECT = 1.5;
+
 export function Logo({ size = 24, className }: LogoProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="aurumCoin" x1="5" y1="4" x2="27" y2="28" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#f7d488" />
-          <stop offset="0.55" stopColor="#eda100" />
-          <stop offset="1" stopColor="#a8690a" />
-        </linearGradient>
-      </defs>
-      <circle cx="16" cy="16" r="14.5" fill="url(#aurumCoin)" stroke="#7a4e08" strokeWidth="1.2" />
-      <circle cx="16" cy="16" r="11.5" fill="none" stroke="#7a4e08" strokeWidth="0.6" opacity="0.45" />
-      <text
-        x="16"
-        y="21.5"
-        fontFamily="Georgia, 'Times New Roman', serif"
-        fontSize="15"
-        fontWeight="700"
-        textAnchor="middle"
-        fill="#3a2405"
-      >
-        A
-      </text>
-    </svg>
+    <img
+      src="/brand/mark.svg"
+      width={Math.round(size * ASPECT)}
+      height={size}
+      className={className}
+      alt=""
+      // Знак ничего не сообщает сверх соседней подписи «Aurum-Ex», а там,
+      // где подписи нет, рядом стоит заголовок страницы. Пустой alt честнее
+      // выдуманного описания: экранный диктор пропустит картинку вместо
+      // того, чтобы читать одно и то же дважды.
+      aria-hidden="true"
+      // Знак нужен в первом кадре: он стоит в шапке, и отложенная загрузка
+      // дала бы прыжок разметки на каждом заходе.
+      decoding="sync"
+    />
   );
 }

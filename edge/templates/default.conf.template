@@ -1,0 +1,114 @@
+# Внешняя дверь: TLS и калитка.
+#
+# Отдельный nginx перед `web`, а не настройка в самом `web`: тот раздаёт
+# статику и проксирует API, и подмешивать туда сертификаты значило бы,
+# что локальный запуск на ноутбуке требует их тоже. Здесь же всё, что
+# имеет смысл только при публикации наружу, и ничего больше.
+#
+# Порт нестандартный, потому что 443 на этой машине занят Xray: два
+# процесса один порт не слушают. Домен и ключ приходят из переменных
+# окружения — подставляет их штатный скрипт образа nginx
+# (20-envsubst-on-templates.sh), а 10-check-env.sh перед ним следит,
+# чтобы пустых значений в конфиг не попало.
+
+# Калитка. Смысл: страница входа не должна показываться тому, кто просто
+# нашёл домен. Приложение и так требует пароль, но форма входа сама по
+# себе сообщает, что здесь есть что взламывать.
+#
+# Ключ приходит либо кукой (обычный заход), либо параметром ?k= (первый
+# заход по секретной ссылке). Второе кладёт куку на год, поэтому ссылка
+# нужна ровно один раз, а дальше работает закладка.
+map $cookie_aurum_gate $gate_cookie {
+    default 0;
+    "${AURUM_GATE_KEY}" 1;
+}
+
+map $arg_k $gate_query {
+    default 0;
+    "${AURUM_GATE_KEY}" 1;
+}
+
+map "$gate_cookie$gate_query" $gate_ok {
+    "~1" 1;
+    default 0;
+}
+
+map $arg_k $gate_set_cookie {
+    "${AURUM_GATE_KEY}" "aurum_gate=${AURUM_GATE_KEY}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=31536000";
+    default "";
+}
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+ssl_session_timeout 1d;
+ssl_session_cache shared:AurumSSL:10m;
+ssl_session_tickets off;
+
+# Чужое или отсутствующее имя в SNI — обрыв рукопожатия. Сканеру, который
+# ходит по адресам, а не по именам, отвечать нечем: он даже не узнает,
+# что здесь TLS.
+server {
+    listen 443 ssl default_server;
+    http2 on;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${AURUM_DOMAIN};
+
+    # Сертификат монтируется каталогами live и archive: в live лежат
+    # символические ссылки на archive, и подмонтировать одни только файлы
+    # значило бы, что после обновления сертификата контейнер продолжит
+    # держать старый — ссылка меняется, а точка монтирования нет.
+    ssl_certificate     /etc/letsencrypt/live/${AURUM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${AURUM_DOMAIN}/privkey.pem;
+
+    add_header Set-Cookie $gate_set_cookie;
+    # Личные финансы в поиске не нужны никому.
+    add_header X-Robots-Tag "noindex, nofollow, noarchive, nosnippet, noimageindex" always;
+    add_header Referrer-Policy "same-origin" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Восстановление из резервной копии — загрузка файла со всей историей.
+    client_max_body_size 32m;
+
+    # Встроенный DNS докера. Нужен из-за того, что адрес контейнера `web`
+    # меняется при каждом его пересоздании, а nginx без резолвера
+    # разбирает имя один раз при старте и потом держит устаревший адрес:
+    # после обычного `docker compose up -d` дверь начала бы отдавать 502,
+    # и починкой была бы перезагрузка того, что вообще не менялось.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location / {
+        # 444 — молчаливый обрыв без ответа. Страница «доступ запрещён»
+        # подтвердила бы, что по этому имени что-то есть.
+        if ($gate_ok = 0) {
+            return 444;
+        }
+
+        # Имя через переменную — именно это заставляет nginx спрашивать DNS
+        # на каждый запрос. Плата за приём: с переменной адрес запроса надо
+        # передавать явно, иначе до приложения дойдёт голый «/».
+        set $upstream_web web;
+
+        proxy_http_version 1.1;
+        proxy_pass http://$upstream_web:80$request_uri;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}

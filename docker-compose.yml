@@ -45,13 +45,41 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "${AURUM_WEB_PORT:-3000}:80"
+      # Только петля. Наружу приложение выходит через edge, за TLS; открытый
+      # HTTP-порт на всех интерфейсах — это пароль в открытом виде, стоит
+      # кому-то однажды разрешить порт в межсетевом экране.
+      - "127.0.0.1:${AURUM_WEB_PORT:-3000}:80"
     environment:
       # Both unset = no login screen at all. See frontend/docker-entrypoint.d/20-basic-auth.sh.
       AURUM_BASIC_AUTH_USER: ${AURUM_BASIC_AUTH_USER:-}
       AURUM_BASIC_AUTH_PASSWORD: ${AURUM_BASIC_AUTH_PASSWORD:-}
     depends_on:
       - backend
+
+  # Внешняя дверь: TLS плюс калитка по секретной ссылке. Включается
+  # профилем, потому что на ноутбуке ей делать нечего — там нет ни домена,
+  # ни сертификата. На сервере профиль задаётся строкой COMPOSE_PROFILES в
+  # .env, поэтому обычная `docker compose up -d` поднимает и её тоже.
+  edge:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    profiles: ["public"]
+    ports:
+      - "${AURUM_PUBLIC_PORT:-48443}:443"
+    environment:
+      AURUM_DOMAIN: ${AURUM_DOMAIN:-}
+      AURUM_GATE_KEY: ${AURUM_GATE_KEY:-}
+    volumes:
+      - ./edge/templates:/etc/nginx/templates:ro
+      - ./edge/docker-entrypoint.d/10-check-env.sh:/docker-entrypoint.d/10-check-env.sh:ro
+      # Только свой сертификат, а не весь /etc/letsencrypt: соседние домены
+      # на этой машине принадлежат чужому сервису, и их закрытые ключи
+      # нашему контейнеру видеть незачем. Каталог archive нужен потому, что
+      # в live лежат символические ссылки на него.
+      - /etc/letsencrypt/live/${AURUM_DOMAIN:-none}:/etc/letsencrypt/live/${AURUM_DOMAIN:-none}:ro
+      - /etc/letsencrypt/archive/${AURUM_DOMAIN:-none}:/etc/letsencrypt/archive/${AURUM_DOMAIN:-none}:ro
+    depends_on:
+      - web
 
 volumes:
   aurum_pgdata:

@@ -1,12 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <defs>
-    <linearGradient id="aurumCoin" x1="5" y1="4" x2="27" y2="28" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f7d488"/>
-      <stop offset="0.55" stop-color="#eda100"/>
-      <stop offset="1" stop-color="#a8690a"/>
-    </linearGradient>
-  </defs>
-  <circle cx="16" cy="16" r="14.5" fill="url(#aurumCoin)" stroke="#7a4e08" stroke-width="1.2"/>
-  <circle cx="16" cy="16" r="11.5" fill="none" stroke="#7a4e08" stroke-width="0.6" opacity="0.45"/>
-  <text x="16" y="21.5" font-family="Georgia, 'Times New Roman', serif" font-size="15" font-weight="700" text-anchor="middle" fill="#3a2405">A</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Aurum-Ex">
+  <!--
+    Значок вкладки. Квадрат со скруглением в духе material — не круг: круглая
+    монета с засечной «A» смотрелась чужеродно рядом с остальным оформлением.
+
+    Одна буква, а не «A-Ex»: значок читают шириной в шестнадцать точек, и
+    четыре знака в этом размере сливаются в пятно.
+
+    Цвета фиксированные, без медиазапроса: панель вкладок у браузеров своя,
+    и подстроиться под неё нельзя — поэтому графитовая подложка со светлой
+    буквой и тонкой каймой, чтобы значок не пропадал ни на светлой полосе,
+    ни на тёмной.
+
+    Временная отрисовка под будущий файл: заменяется целиком, размеры и
+    прочие форматы см. docs/brand.md.
+  -->
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#23262b" stroke="#ffffff" stroke-opacity="0.14" stroke-width="1.4"/>
+  <text x="16" y="23" text-anchor="middle" fill="#f6f7f9"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="20" font-weight="700">A</text>
 </svg>

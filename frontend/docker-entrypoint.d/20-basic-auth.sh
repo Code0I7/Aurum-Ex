@@ -2,15 +2,20 @@
 # Runs automatically before nginx starts (official nginx image convention:
 # every executable script in /docker-entrypoint.d/ is sourced on boot).
 #
-# Aurum's backend has no login system by design (see backend/app/main.py) —
-# it's built for one person self-hosting their own instance, not a
-# multi-tenant service. That means whoever can reach this container can
-# read, edit, and delete all financial data with no password at all. This
-# script is the only gate in front of that: if AURUM_BASIC_AUTH_USER and
-# AURUM_BASIC_AUTH_PASSWORD are set, it turns on HTTP Basic Auth for the
-# whole app (UI + API) at the nginx layer, in front of everything except
-# the health check endpoint (which must stay reachable for Docker's own
-# HEALTHCHECK and external uptime monitors).
+# Второй, необязательный слой поверх собственного входа приложения.
+#
+# В оригинальном Aurum входа не было вовсе, и этот скрипт был единственной
+# защитой. У Aurum-Ex вход свой — страница логина, сессия в куке, задержка
+# после неудачных попыток, — поэтому basic auth здесь ровно для одного:
+# чтобы форма входа не показывалась постороннему, который просто нашёл
+# адрес. Если AURUM_BASIC_AUTH_USER и AURUM_BASIC_AUTH_PASSWORD заданы,
+# nginx требует пароль на всё (интерфейс и API), кроме проверки
+# работоспособности — она должна отвечать без пароля, иначе HEALTHCHECK
+# докера и внешний мониторинг сочтут контейнер мёртвым.
+#
+# При публикации наружу ту же работу делает калитка по секретной ссылке
+# (см. edge/templates/default.conf.template): она удобнее тем, что вводить
+# ничего не нужно, а закрывает то же самое.
 set -eu
 
 AUTH_FRAGMENT=/etc/nginx/basic-auth.conf
@@ -25,8 +30,5 @@ EOF
   echo "[aurum] Basic auth enabled for user '${AURUM_BASIC_AUTH_USER}'."
 else
   : > "$AUTH_FRAGMENT"
-  echo "[aurum] WARNING: AURUM_BASIC_AUTH_USER / AURUM_BASIC_AUTH_PASSWORD are not set." >&2
-  echo "[aurum] This instance has NO authentication — anyone who can reach it can read," >&2
-  echo "[aurum] edit, and delete all financial data. Fine for 'localhost only'. Before" >&2
-  echo "[aurum] exposing this beyond your own machine, set both variables in .env." >&2
+  echo "[aurum] Basic auth is off — the app's own login screen is the only gate." >&2
 fi
