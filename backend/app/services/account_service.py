@@ -12,20 +12,51 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
-from app.models.enums import TransactionType
+from app.models.enums import AccountKind, AccountNature, TransactionType
 from app.models.transaction import Transaction
 from app.schemas.account import AccountCreate, AccountUpdate, AccountWithBalance
 
+# Kinds whose balance is a debt rather than savings. Used only to pick a
+# default when the user doesn't state a nature — the stored value always
+# wins afterwards, because an account's nature can legitimately differ from
+# what its kind suggests (a store instalment account is OTHER by kind).
+_LIABILITY_KINDS = {AccountKind.CREDIT_CARD, AccountKind.LOAN}
+
 
 async def _account_balances(session: AsyncSession) -> dict[int, Decimal]:
-    result = await session.execute(
-        select(Transaction.type, Transaction.amount, Transaction.account_id, Transaction.transfer_account_id)
-    )
+    """Опорная точка баланса — начальный остаток счёта, а не ноль: деньги,
+    лежавшие на счёте до первой записи, входят в баланс, но доходом не
+    являются (см. models/account.py). Формула — "начальный остаток плюс
+    заработано минус потрачено".
+
+    Именно это слагаемое обычно отсутствует в самодельных таблицах: класть
+    деньги на счёт там можно только операцией, а операция бывает лишь
+    доходом или расходом. Отсюда стартовый остаток, проведённый доходом, и
+    завышенный заработок за первый год учёта."""
+    opening_result = await session.execute(select(Account.id, Account.opening_balance))
     balances: dict[int, Decimal] = defaultdict(Decimal)
-    for tx_type, amount, account_id, transfer_account_id in result.all():
-        if tx_type == TransactionType.INCOME:
+    for account_id, opening_balance in opening_result.all():
+        balances[account_id] = opening_balance or Decimal("0")
+
+    result = await session.execute(
+        select(
+            Transaction.type,
+            Transaction.amount,
+            Transaction.account_id,
+            Transaction.transfer_account_id,
+            Transaction.is_excluded,
+        )
+    )
+    for tx_type, amount, account_id, transfer_account_id, is_excluded in result.all():
+        # Записи, помеченные "не учитывать", видны в истории, но на деньги
+        # не влияют — возвращённый товар, отменённая операция.
+        if is_excluded:
+            continue
+        # EXTERNAL_IN/OUT двигают баланс так же, как доход и расход: разница
+        # только в том, что они не попадают в заработок (см. TransactionType).
+        if tx_type in (TransactionType.INCOME, TransactionType.EXTERNAL_IN):
             balances[account_id] += amount
-        elif tx_type == TransactionType.EXPENSE:
+        elif tx_type in (TransactionType.EXPENSE, TransactionType.EXTERNAL_OUT):
             balances[account_id] -= amount
         elif tx_type == TransactionType.TRANSFER:
             balances[account_id] -= amount
@@ -34,12 +65,24 @@ async def _account_balances(session: AsyncSession) -> dict[int, Decimal]:
     return balances
 
 
+def resolve_nature(kind: AccountKind, explicit: AccountNature | None) -> AccountNature:
+    """Природа счёта, заданная пользователем, либо выведенная из вида."""
+    if explicit is not None:
+        return explicit
+    return AccountNature.LIABILITY if kind in _LIABILITY_KINDS else AccountNature.ASSET
+
+
 def _to_read(account: Account, balance: Decimal) -> AccountWithBalance:
     return AccountWithBalance(
         id=account.id,
         name=account.name,
-        type=account.type,
+        kind=account.kind,
+        nature=account.nature,
+        bank_id=account.bank_id,
         currency=account.currency,
+        opening_balance=account.opening_balance,
+        opening_date=account.opening_date,
+        allow_negative=account.allow_negative,
         color=account.color,
         is_archived=account.is_archived,
         balance=balance,
@@ -56,19 +99,32 @@ async def list_accounts(session: AsyncSession, include_archived: bool) -> list[A
 
 
 async def create_account(session: AsyncSession, payload: AccountCreate) -> AccountWithBalance:
-    account = Account(**payload.model_dump())
+    data = payload.model_dump()
+    # Природа и разрешение уходить в минус выводятся из вида счёта, если
+    # пользователь не задал их явно: дебетовая карта уйти в минус не может,
+    # кредитная — только так и живёт.
+    nature = resolve_nature(payload.kind, payload.nature)
+    data["nature"] = nature
+    if payload.allow_negative is None:
+        data["allow_negative"] = nature is AccountNature.LIABILITY
+    account = Account(**data)
     session.add(account)
     await session.commit()
     await session.refresh(account)
-    # A brand-new account has no transactions yet — no need to query.
-    return _to_read(account, Decimal("0"))
+    # A brand-new account has only its opening balance — no need to query.
+    return _to_read(account, account.opening_balance or Decimal("0"))
 
 
 async def update_account(session: AsyncSession, account_id: int, payload: AccountUpdate) -> AccountWithBalance:
     account = await session.get(Account, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    # Смена вида счёта без явного указания природы переводит и природу —
+    # иначе карта, ставшая кредитной, продолжила бы считаться активом.
+    if "kind" in changes and "nature" not in changes:
+        changes["nature"] = resolve_nature(changes["kind"], None)
+    for field, value in changes.items():
         setattr(account, field, value)
     await session.commit()
     await session.refresh(account)

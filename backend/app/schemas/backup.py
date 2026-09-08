@@ -3,16 +3,18 @@ from datetime import date as date_
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import (
-    AccountType,
+    AccountKind,
+    AccountNature,
     AssetClass,
     CapitalRole,
     CategoryKind,
     CryptoTransactionType,
     RecurringFrequency,
     RiskLevel,
+    SettlementKind,
     TransactionType,
 )
 
@@ -22,10 +24,19 @@ class AccountBackup(BaseModel):
 
     id: int
     name: str
-    type: AccountType
+    # Переименовано вместе с моделью: type -> kind (см. models/enums.py).
+    kind: AccountKind
     currency: str
     color: str | None
     is_archived: bool
+
+    # Поля Aurum-Ex со значениями по умолчанию — бэкап, снятый до их
+    # появления, восстанавливается без правки файла.
+    nature: AccountNature = AccountNature.ASSET
+    bank_id: int | None = None
+    opening_balance: Decimal = Decimal("0")
+    opening_date: date_ | None = None
+    allow_negative: bool = False
 
 
 class CategoryBackup(BaseModel):
@@ -63,6 +74,30 @@ class TransactionBackup(BaseModel):
     merchant: str | None
     notes: str | None
     date: date_
+
+    # Поля Aurum-Ex. У всех есть значение по умолчанию, поэтому бэкап,
+    # снятый до их появления, восстанавливается без правки файла: валюта
+    # берётся базовой, курс — единичным, сумма в базовой валюте равна
+    # исходной. Ровно тот случай, ради которого в файл пишется версия
+    # приложения (см. APP_VERSION в core/config.py).
+    currency: str = "RUB"
+    exchange_rate: Decimal = Decimal("1")
+    amount_base: Decimal | None = None
+    participant_id: int | None = None
+    store_id: int | None = None
+    counterparty_id: int | None = None
+    settlement_kind: SettlementKind | None = None
+    is_excluded: bool = False
+    day_order: int = 0
+
+    @model_validator(mode="after")
+    def _fill_amount_base(self) -> "TransactionBackup":
+        # Старый бэкап не знает о сумме в базовой валюте — для однвалютной
+        # установки она совпадает с самой суммой.
+        if self.amount_base is None:
+            self.amount_base = self.amount
+        return self
+
     # Defaulted so a backup exported before tags existed still imports
     # cleanly under the same format version. Not a plain column — populated
     # explicitly in build_backup() from the `tags` relationship, since

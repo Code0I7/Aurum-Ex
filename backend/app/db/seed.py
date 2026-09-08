@@ -5,14 +5,45 @@ The expense categories are assigned hues from the dataviz skill's validated
 reordered/cycled) so the dashboard donut chart is colorblind-safe out of the
 box. See CLAUDE.md-adjacent design notes in UPDATES.md for the source.
 """
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.account import Account
 from app.models.category import Category
-from app.models.enums import AccountType, CategoryKind
+from app.models.currency import Currency
+from app.models.enums import AccountKind, CategoryKind, UnitKind
 from app.models.settings import AppSettings
+from app.models.unit import Unit
+
+# (code, symbol, name, nominal ЦБ) — валюты, с которых начинается установка.
+# Базовая валюта добавляется отдельно из настроек, если её здесь нет: она
+# нужна всегда, а остальные — только если человек ими действительно платит.
+# Нулевой курс к самой себе нигде не хранится (см. models/currency.py).
+DEFAULT_CURRENCIES = [
+    ("RUB", "₽", "Российский рубль", 1),
+    ("USD", "$", "Доллар США", 1),
+    ("EUR", "€", "Евро", 1),
+    ("CNY", "¥", "Китайский юань", 1),
+    ("THB", "฿", "Таиландский бат", 10),
+]
+
+# (name, kind, factor, is_base) — по одной базовой единице на вид измерения.
+# Коэффициент приводит к базе: килограмм — это 1000 граммов, литр — 1000
+# миллилитров. Без этого «1,5 л за 120 ₽» и «500 мл за 55 ₽» несравнимы, и
+# отслеживание цен превращается в угадывание (см. models/unit.py).
+DEFAULT_UNITS = [
+    ("г", UnitKind.MASS, Decimal("1"), True),
+    ("кг", UnitKind.MASS, Decimal("1000"), False),
+    ("мл", UnitKind.VOLUME, Decimal("1"), True),
+    ("л", UnitKind.VOLUME, Decimal("1000"), False),
+    ("шт", UnitKind.COUNT, Decimal("1"), True),
+    ("упак", UnitKind.COUNT, Decimal("1"), False),
+    ("м", UnitKind.LENGTH, Decimal("1"), True),
+    ("оплата", UnitKind.SERVICE, Decimal("1"), True),
+]
 
 # (name, icon, color) — order doubles as sort_order / palette slot index.
 DEFAULT_EXPENSE_CATEGORIES = [
@@ -59,6 +90,39 @@ async def seed_default_categories(session: AsyncSession) -> None:
     await session.commit()
 
 
+async def seed_default_currencies(session: AsyncSession) -> None:
+    """Заводит список валют и следит, чтобы базовая валюта в нём была.
+
+    Проверка базовой валюты идёт отдельно от общего засева: список могли
+    почистить руками, а установка без собственной валюты — сломанная, все
+    суммы приводятся именно к ней."""
+    existing = await session.execute(select(Currency.code))
+    known = {code for (code,) in existing.all()}
+
+    for code, symbol, name, nominal in DEFAULT_CURRENCIES:
+        if code not in known:
+            session.add(Currency(code=code, symbol=symbol, name=name, cbr_nominal=nominal))
+            known.add(code)
+
+    base_code = get_settings().default_currency.upper()
+    if base_code not in known:
+        session.add(Currency(code=base_code, symbol=None, name=None, cbr_nominal=1))
+
+    await session.commit()
+
+
+async def seed_default_units(session: AsyncSession) -> None:
+    """Единицы измерения с коэффициентом приведения к базе своего вида."""
+    existing = await session.execute(select(Unit.id).limit(1))
+    if existing.first() is not None:
+        return
+
+    for order, (name, kind, factor, is_base) in enumerate(DEFAULT_UNITS):
+        session.add(Unit(name=name, kind=kind, factor=factor, is_base=is_base, sort_order=order))
+
+    await session.commit()
+
+
 async def seed_default_account(session: AsyncSession) -> None:
     """Creates one starter account so the Transactions form always has a
     destination to post to, even before the (future) accounts management UI
@@ -70,7 +134,7 @@ async def seed_default_account(session: AsyncSession) -> None:
     session.add(
         Account(
             name="Main Account",
-            type=AccountType.CHECKING,
+            kind=AccountKind.CHECKING,
             currency=get_settings().default_currency,
             color="#2a78d6",
         )

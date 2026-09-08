@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # title, /api/health (which the frontend reads to show it in Settings), and
 # embedded in exported backups so an old file can be told apart from a
 # current one.
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.0.0-alpha.4"
 
 
 class Settings(BaseSettings):
@@ -34,6 +34,41 @@ class Settings(BaseSettings):
     # Crypto tab's endpoints 400 with a clear message until this is set,
     # rather than silently hitting CoinGecko's much stingier keyless tier.
     coingecko_api_key: str = ""
+
+    # --- Вход (см. services/auth_service.py) ---
+
+    # Имя администратора. Одна учётная запись на всё домохозяйство: люди
+    # различаются участником в транзакции, а не логином.
+    admin_username: str = "admin"
+
+    # Пароль администратора для первого запуска. Если пуст, приложение
+    # поднимается в режиме первичной настройки и просит задать пароль в
+    # браузере — так он не остаётся в открытом виде в файле на диске.
+    # Задан — учётная запись создаётся при старте; после этого значение
+    # можно (и стоит) убрать из .env, пароль уже лежит в базе хешем.
+    admin_password: str = ""
+
+    # Аварийный ключ для сброса забытого пароля. Длинная случайная строка,
+    # которую знает только владелец сервера: обычная смена пароля требует
+    # текущего, а этот ключ — единственный обход. Пуст по умолчанию, и
+    # тогда сброс просто недоступен.
+    recovery_key: str = ""
+
+    # Сколько живёт сессия без повторного входа. Две недели — компромисс
+    # между "не логиниться каждый день" и "чужая вкладка не остаётся
+    # открытой навсегда".
+    session_ttl_hours: int = 24 * 14
+
+    # Защита от перебора: сколько неудачных попыток подряд до блокировки и
+    # на сколько минут блокировать. Считается по учётной записи, а не по
+    # адресу — учётка одна, и подобрать её пароль с разных адресов не легче.
+    max_failed_logins: int = 10
+    lockout_minutes: int = 15
+
+    # Ставить ли на куку сессии флаг Secure (только по HTTPS). По умолчанию
+    # выключено, иначе вход сломается на http://localhost, с которого
+    # начинают все. Включить при публикации наружу за TLS.
+    secure_cookies: bool = False
 
     @property
     def database_url(self) -> str:

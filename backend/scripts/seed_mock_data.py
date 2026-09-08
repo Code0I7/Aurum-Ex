@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 
 from app.db.session import AsyncSessionLocal
 from app.models import Account, Asset, AssetValuation, Category, Transaction
-from app.models.enums import AccountType, AssetClass, TransactionType
+from app.models.enums import AccountKind, AssetClass, TransactionType
 
 random.seed(42)
 
@@ -59,7 +59,7 @@ async def wipe_mock_data(session) -> Account:
     result = await session.execute(select(Account).where(Account.name == "Main Account"))
     main_account = result.scalar_one_or_none()
     if main_account is None:
-        main_account = Account(name="Main Account", type=AccountType.CHECKING, currency="USD", color="#2a78d6")
+        main_account = Account(name="Main Account", kind=AccountKind.CHECKING, currency="USD", color="#2a78d6")
         session.add(main_account)
         await session.flush()
     return main_account
@@ -311,8 +311,8 @@ async def main() -> None:
         print("Wiping prior mock data (transactions, assets, extra accounts)...")
         main_account = await wipe_mock_data(session)
 
-        savings = Account(name="Savings", type=AccountType.SAVINGS, currency="USD", color="#1baf7a")
-        credit_card = Account(name="Credit Card", type=AccountType.CREDIT_CARD, currency="USD", color="#e34948")
+        savings = Account(name="Savings", kind=AccountKind.SAVINGS, currency="USD", color="#1baf7a")
+        credit_card = Account(name="Credit Card", kind=AccountKind.CREDIT_CARD, currency="USD", color="#e34948")
         session.add_all([savings, credit_card])
         await session.commit()
         await session.refresh(savings)

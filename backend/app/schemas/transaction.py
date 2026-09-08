@@ -1,10 +1,11 @@
 from datetime import date as date_
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.text import capitalize_first_letter
-from app.models.enums import TransactionType
+from app.models.enums import SettlementKind, TransactionType
 from app.schemas.account import AccountRead
 from app.schemas.category import CategoryRead
 from app.schemas.tag import TagRead
@@ -83,11 +84,31 @@ class TransactionFields(BaseModel):
     category_id: int | None = None
     transfer_account_id: int | None = None
     type: TransactionType
-    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     description: str = Field(min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
     notes: str | None = None
     date: date_
+
+    # Валюта операции. None означает "не указана" — тогда берётся валюта
+    # счёта: платёж с долларовой карты по умолчанию в долларах. Отличить
+    # "не передано" от "передано RUB" на уровне модели невозможно, поэтому
+    # признак живёт здесь, а не в Transaction.currency с его дефолтом.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+    # Измерения, все необязательные (см. models/transaction.py): комиссия
+    # банка не относится ни к кому, у подписки нет магазина, а контрагент
+    # осмыслен только для операций с внешними людьми.
+    participant_id: int | None = None
+    store_id: int | None = None
+    counterparty_id: int | None = None
+    settlement_kind: SettlementKind | None = None
+
+    # Запись видна в истории, но в суммы и графики не входит — замена
+    # самодельному обнулению количества в исходной таблице.
+    is_excluded: bool = False
+    # Порядок внутри дня; проставляется сервером, правится перетаскиванием.
+    day_order: int = 0
 
     # Auto-capitalizes "траты на продукты" -> "Траты на продукты" so mixed
     # casing from quick manual entry doesn't need fixing by hand later.
@@ -149,11 +170,20 @@ class TransactionUpdate(BaseModel):
     category_id: int | None = None
     transfer_account_id: int | None = None
     type: TransactionType | None = None
-    amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
     description: str | None = Field(default=None, min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
     notes: str | None = None
     date: date_ | None = None
+    # Пропущена -> валюта не меняется; передана -> курс и сумма в базовой
+    # валюте пересчитываются (см. routes/transactions.py, _apply_currency).
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    participant_id: int | None = None
+    store_id: int | None = None
+    counterparty_id: int | None = None
+    settlement_kind: SettlementKind | None = None
+    is_excluded: bool | None = None
+    day_order: int | None = None
     # Omitted -> tags untouched; sent (even as []) -> replaces the full tag set.
     tag_ids: list[int] | None = None
     # Omitted -> splits untouched; sent (even as []) -> replaces the full
@@ -181,10 +211,31 @@ class TransactionRead(TransactionFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    # Публичный идентификатор записи. В таблице колонка скрыта по
+    # умолчанию — нужна, когда операцию надо назвать по имени вне
+    # приложения (например, в отчёте об импорте).
+    uuid: UUID
     account: AccountRead
     category: CategoryRead | None = None
     tags: list[TagRead] = Field(default_factory=list)
     splits: list[TransactionSplitRead] = Field(default_factory=list)
+
+    # Баланс счёта после этой операции — то самое «было 0, стало 500, потом
+    # 350». Заполняется только в списке (см. routes/transactions.py); у
+    # одиночного ответа на создание или правку остаётся None, потому что
+    # считать накопительный итог ради одной строки незачем.
+    balance_after: Decimal | None = None
+
+
+class TransactionReorder(BaseModel):
+    """Новое место операции среди операций того же счёта за тот же день.
+
+    Позиция, а не соседний идентификатор: интерфейс знает, куда строку
+    бросили, а не между кем и кем. Выход за границы списка не ошибка — он
+    зажимается к ближайшему краю, потому что бросок мимо цели не должен
+    оборачиваться сообщением об ошибке."""
+
+    position: int = Field(ge=0)
 
 
 class TransactionPage(BaseModel):

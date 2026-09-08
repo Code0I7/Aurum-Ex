@@ -1,14 +1,45 @@
+from datetime import date as date_
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import AccountType
+from app.models.enums import AccountKind, AccountNature
+
+
+class BankBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    sort_order: int = 0
+
+
+class BankCreate(BankBase):
+    pass
+
+
+class BankUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    sort_order: int | None = None
+
+
+class BankRead(BankBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
 
 
 class AccountBase(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    type: AccountType = AccountType.CHECKING
-    currency: str = Field(default="USD", min_length=3, max_length=3)
+    # Renamed from `type` — see models/enums.py, AccountKind.
+    kind: AccountKind = AccountKind.CHECKING
+    # Optional on input: the service fills it in from `kind` (credit cards
+    # and loans become liabilities) unless the user overrides it.
+    nature: AccountNature | None = None
+    bank_id: int | None = None
+    currency: str = Field(default="RUB", min_length=3, max_length=3)
+    opening_balance: Decimal = Decimal("0")
+    opening_date: date_ | None = None
+    allow_negative: bool | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
@@ -18,8 +49,13 @@ class AccountCreate(AccountBase):
 
 class AccountUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
-    type: AccountType | None = None
+    kind: AccountKind | None = None
+    nature: AccountNature | None = None
+    bank_id: int | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    opening_balance: Decimal | None = None
+    opening_date: date_ | None = None
+    allow_negative: bool | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     is_archived: bool | None = None
 
@@ -32,7 +68,12 @@ class AccountRead(AccountBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    # Narrowed from the optional forms above: on the way out these are
+    # always resolved.
+    nature: AccountNature
+    allow_negative: bool
     is_archived: bool
+    bank: BankRead | None = None
 
 
 class AccountWithBalance(AccountRead):

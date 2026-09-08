@@ -26,7 +26,7 @@ class RecurringTransaction(Base, TimestampMixin):
     )
 
     type: Mapped[TransactionType] = mapped_column(
-        Enum(TransactionType, name="recurring_transaction_type", native_enum=False, length=10), nullable=False
+        Enum(TransactionType, name="recurring_transaction_type", native_enum=False, length=15), nullable=False
     )
     amount: Mapped[Numeric] = mapped_column(Numeric(14, 2), nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False)
