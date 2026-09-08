@@ -311,7 +311,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             : null,
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
       amount: form.amount,
-      description: form.description,
+      description: form.description.trim() || null,
       merchant: form.merchant || null,
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
@@ -456,9 +456,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
         <div>
           <Label htmlFor="description">{t("transactions.form.descriptionLabel")}</Label>
+          {/* Без required. Описание необязательно с beta.4: в исходной
+              таблице это была вторая строка записи, а не заметка, и у
+              большинства покупок сказать сверх категории нечего.
+              Ограничение сняли в схеме, а в форме оно осталось — браузер
+              продолжал требовать текст, которого приложение уже не ждёт. */}
           <Input
             id="description"
-            required
             placeholder={t("transactions.form.descriptionPlaceholder")}
             value={form.description}
             onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}

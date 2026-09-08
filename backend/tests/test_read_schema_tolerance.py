@@ -83,3 +83,27 @@ async def test_writing_such_a_row_through_the_app_is_still_refused(
     новые нулевые строки приложение по-прежнему не даёт."""
     resp = await client.post("/transactions", json=txn_payload(account_id, amount=amount))
     assert resp.status_code == 422
+
+
+async def test_transaction_without_description_is_accepted(client: AsyncClient, account_id):
+    """Описание необязательно: в исходной таблице это была вторая строка
+    записи, а не заметка, и у большинства покупок сказать сверх категории
+    нечего. Требовать текст значит заставлять придумывать «Продукты» и
+    «Покупка» — описания хуже пустых, потому что выглядят содержательными.
+    """
+    payload = txn_payload(account_id, amount="100.00")
+    payload.pop("description")
+    resp = await client.post("/transactions", json=payload)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["description"] is None
+
+
+async def test_blank_description_is_stored_as_absent(client: AsyncClient, account_id):
+    """Пустая строка приходит из формы, где поле просто не заполнили.
+    Хранить её отдельно от «не задано» незачем: в списке они выглядят
+    одинаково, а в проверках расходятся."""
+    resp = await client.post(
+        "/transactions", json=txn_payload(account_id, amount="100.00", description="   ")
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["description"] is None
