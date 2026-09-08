@@ -41,7 +41,7 @@ async def test_idle_cash_ignores_a_recently_touched_account(client: AsyncClient,
 
 
 async def test_idle_cash_ignores_investment_accounts(client: AsyncClient, categories):
-    investment = await client.post("/accounts", json={"name": "Brokerage", "type": "investment", "currency": "USD"})
+    investment = await client.post("/accounts", json={"name": "Brokerage", "kind": "investment", "currency": "USD"})
     investment_id = investment.json()["id"]
     await client.post(
         "/transactions",

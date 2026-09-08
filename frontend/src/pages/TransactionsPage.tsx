@@ -6,10 +6,20 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { MonthSelector } from "@/components/layout/MonthSelector";
 import { YearSelector } from "@/components/layout/YearSelector";
+import { ColumnPicker } from "@/components/transactions/ColumnPicker";
+import { TransactionsGrid } from "@/components/transactions/TransactionsGrid";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
+import { DEFAULT_LAYOUT, reconcileLayout, type ColumnLayout } from "@/components/transactions/columns";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
-import { useTransactions, useDeleteTransaction, useTransactionYears } from "@/hooks/useTransactions";
+import {
+  useTransactions,
+  useDeleteTransaction,
+  useInfiniteTransactions,
+  useReorderTransaction,
+  useTransactionYears,
+} from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useTags } from "@/hooks/useTags";
 import type { TransactionSort } from "@/api/transactions";
 import { useTranslation } from "@/lib/i18n";
@@ -62,13 +72,52 @@ export function TransactionsPage() {
   }, [searchInput]);
   const isSearching = search.length > 0;
 
+  // Вид и раскладка колонок переживают перезагрузку: человек настраивает их
+  // под себя один раз, и возвращать таблицу к умолчанию на каждый заход
+  // значило бы обесценить саму настройку.
+  const [view, setView] = useLocalStorageState<"table" | "list">("aurum:transactions-view", "table");
+  const [storedLayout, setStoredLayout] = useLocalStorageState<ColumnLayout>(
+    "aurum:transactions-columns",
+    DEFAULT_LAYOUT
+  );
+  // Склейка одинаковых операций одного дня: четыре поездки на автобусе
+  // показываются одной строкой «Автобус ×4». Включена по умолчанию — именно
+  // такие серии и забивают список, — но выключается одним нажатием.
+  const [groupRepeats, setGroupRepeats] = useLocalStorageState<boolean>("aurum:transactions-group", true);
+  // Постранично или лентой с кнопкой «Загрузить ещё». Страницы предсказуемы
+  // и не растут в памяти — на четырёх годах истории это заметно; лента
+  // удобнее, когда листаешь подряд. Верного ответа для всех случаев нет,
+  // поэтому выбор оставлен человеку и запоминается.
+  const [paging, setPaging] = useLocalStorageState<"pages" | "feed">("aurum:transactions-paging", "pages");
+  // Сохранённая раскладка переживает обновления приложения, в которых
+  // колонки появляются и исчезают, — сверяем её с текущим набором.
+  const layout = reconcileLayout(storedLayout);
+
+  const reorderTransaction = useReorderTransaction();
+
+  /**
+   * Переставляет операцию на визуальную позицию внутри её дня.
+   *
+   * Список идёт от нового к старому, а day_order растёт от раннего к
+   * позднему — то есть визуальный порядок обратен хранимому. Перевод одной
+   * формулой здесь: раньше кнопки двигали строку по day_order напрямую, и
+   * на экране всё уезжало в противоположную сторону.
+   */
+  const handleReorder = (transaction: Transaction, visualIndex: number, countInDay: number) => {
+    const position = Math.max(0, countInDay - 1 - visualIndex);
+    if (position === transaction.day_order) return;
+    reorderTransaction.mutate({ id: transaction.id, position });
+  };
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const { data: years } = useTransactionYears();
-  const { data, isLoading, isError } = useTransactions({
+  // Фильтры общие для обоих режимов; различается только то, как запрашиваются
+  // страницы — по одной или с накоплением.
+  const commonFilters = {
     // A search looks for a purchase from an unknown month, so it must span
     // every period instead of being boxed into the currently selected one.
     year: isSearching ? undefined : year,
@@ -78,12 +127,22 @@ export function TransactionsPage() {
     category_id: categoryId ? Number(categoryId) : undefined,
     tag_id: tagId ? Number(tagId) : undefined,
     sort,
-    page,
     page_size: PAGE_SIZE,
-  });
+  };
+
+  const paged = useTransactions({ ...commonFilters, page }, paging === "pages");
+  const feed = useInfiniteTransactions(commonFilters, paging === "feed");
+
+  // Дальше страница работает с одной парой «строки и общее число», не
+  // разбираясь, откуда они пришли.
+  const items = paging === "pages" ? (paged.data?.items ?? []) : (feed.data?.pages.flatMap((p) => p.items) ?? []);
+  const total = paging === "pages" ? (paged.data?.total ?? 0) : (feed.data?.pages[0]?.total ?? 0);
+  const isLoading = paging === "pages" ? paged.isLoading : feed.isLoading;
+  const isError = paging === "pages" ? paged.isError : feed.isError;
+
   const deleteTransaction = useDeleteTransaction();
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // Grouped by kind and hierarchical within each group (a subcategory right
   // under its own parent, indented) — a bare "Sweets" option next to
   // top-level categories reads as if it were one itself.
@@ -148,7 +207,16 @@ export function TransactionsPage() {
             />
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {/* Перенос истории из таблицы — операция разовая, поэтому
+              кнопка неброская и уходит в самый край. Обычный CSV-импорт
+              банковской выписки рядом и остаётся основным. */}
+          <Link to="/transactions/import-spreadsheet" className="flex-1 sm:flex-none">
+            <Button variant="ghost" className="w-full sm:w-auto">
+              <FileUp size={16} />
+              {t("spreadsheet.buttonShort")}
+            </Button>
+          </Link>
           <Link to="/transactions/import" className="flex-1 sm:flex-none">
             <Button variant="secondary" className="w-full sm:w-auto">
               <FileUp size={16} />
@@ -263,24 +331,79 @@ export function TransactionsPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{t("nav.transactions")}</CardTitle>
-          {data && <span className="text-xs text-text-muted">{t("common.totalCount", { count: data.total })}</span>}
+        {/* На узком экране заголовок и панель управления встают в две
+            строки, а сами кнопки переносятся: в один ряд они не помещаются
+            и вылезают за край карточки. */}
+        <CardHeader className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+          <span className="flex items-baseline gap-2">
+            <CardTitle>{t("nav.transactions")}</CardTitle>
+            {total > 0 && (
+              <span className="whitespace-nowrap text-xs text-text-muted">
+                {t("common.totalCount", { count: total })}
+              </span>
+            )}
+          </span>
+          <span className="flex flex-wrap items-center gap-2 sm:justify-end">
+            {!isSearching && (
+              <>
+                <Button variant="secondary" onClick={() => setView(view === "table" ? "list" : "table")}>
+                  {view === "table" ? t("transactions.viewList") : t("transactions.viewTable")}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    // Возврат к страницам всегда начинается с первой: номер,
+                    // на котором остановилась лента, ей не соответствует.
+                    setPage(1);
+                    setPaging(paging === "pages" ? "feed" : "pages");
+                  }}
+                >
+                  {paging === "pages" ? t("transactions.pagingFeed") : t("transactions.pagingPages")}
+                </Button>
+                {view === "table" && (
+                  <>
+                    <Button
+                      variant={groupRepeats ? "primary" : "secondary"}
+                      onClick={() => setGroupRepeats(!groupRepeats)}
+                      title={t("transactions.groupRepeatsHint")}
+                      className="whitespace-nowrap"
+                    >
+                      {t("transactions.groupRepeats")}
+                    </Button>
+                    <ColumnPicker layout={layout} onChange={setStoredLayout} />
+                  </>
+                )}
+              </>
+            )}
+          </span>
         </CardHeader>
         <CardContent>
           {isError && <p className="py-6 text-center text-sm text-danger">{t("transactions.failedToLoad")}</p>}
           {isLoading ? (
             <p className="py-12 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
-            <TransactionsTable
-              items={data?.items ?? []}
-              onEdit={openEditModal}
-              onDelete={handleDelete}
-              onJumpToMonth={isSearching ? handleJumpToMonth : undefined}
-            />
+            view === "table" && !isSearching ? (
+              <TransactionsGrid
+                items={items}
+                layout={layout}
+                onEdit={openEditModal}
+                onDelete={handleDelete}
+                onReorder={handleReorder}
+                groupRepeats={groupRepeats}
+              />
+            ) : (
+              // При поиске остаётся список: результаты приходят из разных
+              // месяцев, и колонка баланса в такой выборке смысла не имеет.
+              <TransactionsTable
+                items={items}
+                onEdit={openEditModal}
+                onDelete={handleDelete}
+                onJumpToMonth={isSearching ? handleJumpToMonth : undefined}
+              />
+            )
           )}
 
-          {totalPages > 1 && (
+          {paging === "pages" && totalPages > 1 && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
               <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                 {t("common.back")}
@@ -289,6 +412,25 @@ export function TransactionsPage() {
               <Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
                 {t("common.next")}
               </Button>
+            </div>
+          )}
+
+          {paging === "feed" && (
+            <div className="mt-4 flex flex-col items-center gap-2 text-sm">
+              {feed.hasNextPage ? (
+                <Button
+                  variant="secondary"
+                  disabled={feed.isFetchingNextPage}
+                  onClick={() => void feed.fetchNextPage()}
+                >
+                  {feed.isFetchingNextPage ? t("common.loading") : t("transactions.loadMore")}
+                </Button>
+              ) : (
+                items.length > 0 && <span className="text-text-muted">{t("transactions.allLoaded")}</span>
+              )}
+              <span className="text-xs text-text-muted">
+                {t("transactions.loadedCount", { loaded: items.length, total })}
+              </span>
             </div>
           )}
         </CardContent>

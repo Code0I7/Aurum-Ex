@@ -30,7 +30,7 @@ async def test_explicit_range_excludes_transactions_outside_it(client: AsyncClie
 
 
 async def test_transfers_are_excluded_from_totals(client: AsyncClient, account_id):
-    other = await client.post("/accounts", json={"name": "Savings", "type": "savings", "currency": "USD"})
+    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "USD"})
     other_id = other.json()["id"]
     await client.post(
         "/transactions",

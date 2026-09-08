@@ -12,6 +12,11 @@ export interface TransactionFilters {
   category_id?: number;
   tag_id?: number;
   type?: string;
+  // Новые измерения Aurum-Ex.
+  participant_id?: number;
+  store_id?: number;
+  counterparty_id?: number;
+  include_excluded?: boolean;
   search?: string;
   sort?: TransactionSort;
   page?: number;

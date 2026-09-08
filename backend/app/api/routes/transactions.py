@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_session
+from app.models.account import Account
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
@@ -18,11 +19,14 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionPage,
     TransactionRead,
+    TransactionReorder,
     TransactionSplitInput,
     TransactionUpdate,
     split_rule_violation,
     transfer_rule_violation,
 )
+from app.services.currency_service import get_base_currency, to_base
+from app.services.transaction_service import next_day_order, running_balances
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -109,6 +113,15 @@ async def list_transactions(
     category_id: int | None = None,
     tag_id: int | None = None,
     type: TransactionType | None = None,
+    # Новые измерения Aurum-Ex. Все необязательные — фильтр по ним имеет
+    # смысл, только когда поля заполняют.
+    participant_id: int | None = None,
+    store_id: int | None = None,
+    counterparty_id: int | None = None,
+    # Записи, помеченные "не учитывать", по умолчанию видны наравне с
+    # остальными: они и заведены ради того, чтобы о покупке помнить.
+    # Скрыть их — отдельное решение пользователя.
+    include_excluded: bool = True,
     search: str | None = Query(default=None, min_length=1, max_length=255),
     sort: Literal["date_desc", "amount_desc", "amount_asc"] = Query(default="date_desc"),
     page: int = Query(default=1, ge=1),
@@ -149,6 +162,18 @@ async def list_transactions(
     if type is not None:
         stmt = stmt.where(Transaction.type == type)
         count_stmt = count_stmt.where(Transaction.type == type)
+    if participant_id is not None:
+        stmt = stmt.where(Transaction.participant_id == participant_id)
+        count_stmt = count_stmt.where(Transaction.participant_id == participant_id)
+    if store_id is not None:
+        stmt = stmt.where(Transaction.store_id == store_id)
+        count_stmt = count_stmt.where(Transaction.store_id == store_id)
+    if counterparty_id is not None:
+        stmt = stmt.where(Transaction.counterparty_id == counterparty_id)
+        count_stmt = count_stmt.where(Transaction.counterparty_id == counterparty_id)
+    if not include_excluded:
+        stmt = stmt.where(Transaction.is_excluded.is_(False))
+        count_stmt = count_stmt.where(Transaction.is_excluded.is_(False))
     if search is not None:
         # Lets the user find a transaction from any period by keyword (e.g. an
         # item bought months ago) without knowing which month to look in first —
@@ -170,13 +195,27 @@ async def list_transactions(
     elif sort == "amount_asc":
         stmt = stmt.order_by(Transaction.amount.asc(), Transaction.id.desc())
     else:
-        stmt = stmt.order_by(Transaction.date.desc(), Transaction.id.desc())
+        # Новое сверху. day_order участвует в сортировке наравне с датой —
+        # иначе баланс в строке перестанет соответствовать её месту на
+        # экране, ведь считается он ровно в этом порядке.
+        stmt = stmt.order_by(Transaction.date.desc(), Transaction.day_order.desc(), Transaction.id.desc())
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
     result = await session.execute(stmt)
     items = list(result.scalars().all())
 
-    return TransactionPage(items=items, total=total, page=page, page_size=page_size)
+    # Баланс счёта после каждой операции считается по всей его истории, а не
+    # по этой странице: иначе он менялся бы от включённого фильтра и
+    # перестал бы быть балансом (см. services/transaction_service.py).
+    balances = await running_balances(session, [item.id for item in items])
+    rows = [
+        TransactionRead.model_validate(item, from_attributes=True).model_copy(
+            update={"balance_after": balances.get(item.id)}
+        )
+        for item in items
+    ]
+
+    return TransactionPage(items=rows, total=total, page=page, page_size=page_size)
 
 
 @router.get("/years", response_model=list[int])
@@ -192,11 +231,38 @@ async def list_transaction_years(session: AsyncSession = Depends(get_session)) -
     return list(range(min_date.year, max(max_date.year, current_year) + 1))
 
 
+async def _apply_currency(session: AsyncSession, transaction: Transaction, explicit_currency: str | None) -> None:
+    """Заполняет валюту, курс и сумму в базовой валюте перед сохранением.
+
+    Одна точка на все места создания и изменения транзакции: сумма в базовой
+    валюте — не то, что вводит человек, а производное от суммы, валюты и
+    даты, и считаться она должна одинаково везде (см.
+    services/currency_service.py).
+
+    Валюта не указана — берётся со счёта: операция по долларовой карте по
+    умолчанию в долларах, и заставлять выбирать это в каждой форме незачем."""
+    if explicit_currency:
+        transaction.currency = explicit_currency.upper()
+    else:
+        account = await session.get(Account, transaction.account_id)
+        transaction.currency = account.currency if account is not None else await get_base_currency(session)
+
+    rate, amount_base = await to_base(session, transaction.amount, transaction.currency, transaction.date)
+    transaction.exchange_rate = rate
+    transaction.amount_base = amount_base
+
+
 @router.post("", response_model=TransactionRead, status_code=201)
 async def create_transaction(payload: TransactionCreate, session: AsyncSession = Depends(get_session)) -> Transaction:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    fields = payload.model_dump(exclude={"tag_ids", "splits"})
+    fields = payload.model_dump(exclude={"tag_ids", "splits", "currency"})
     transaction = Transaction(**fields)
+    # Порядок внутри дня проставляется сам, по времени ввода: человеку не за
+    # чем его набирать, а без него операции одного дня раскладываются
+    # произвольно и баланс на графике проваливается ниже нуля там, где
+    # этого не было (см. services/transaction_service.py).
+    transaction.day_order = await next_day_order(session, transaction.account_id, transaction.date)
+    await _apply_currency(session, transaction, payload.currency)
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits:
         transaction.splits = await _build_splits(session, payload.splits, payload.type)
@@ -220,7 +286,9 @@ async def bulk_create_transactions(
 
     transactions = []
     for item in payload.items:
-        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits"}))
+        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits", "currency"}))
+        transaction.day_order = await next_day_order(session, transaction.account_id, transaction.date)
+        await _apply_currency(session, transaction, item.currency)
         transaction.tags = await _resolve_tags(session, item.tag_ids)
         if item.splits:
             transaction.splits = await _build_splits(session, item.splits, item.type)
@@ -244,7 +312,7 @@ async def update_transaction(
     )
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits", "currency"})
     # Checks run against the row as it would look after the patch, not just
     # the fields sent: switching type alone can invalidate fields left
     # untouched.
@@ -288,6 +356,10 @@ async def update_transaction(
 
     for field, value in updates.items():
         setattr(transaction, field, value)
+    # Пересчёт нужен, если поменялось хоть что-то из тройки "сумма, валюта,
+    # дата": курс берётся на дату операции, поэтому сдвиг даты меняет и его.
+    if {"amount", "date", "account_id"} & updates.keys() or payload.currency is not None:
+        await _apply_currency(session, transaction, payload.currency)
     if payload.tag_ids is not None:
         transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits is not None:
@@ -296,6 +368,51 @@ async def update_transaction(
     refreshed = await session.execute(
         select(Transaction).options(*_EAGER).where(Transaction.id == transaction_id)
     )
+    return refreshed.scalar_one()
+
+
+@router.post("/{transaction_id}/reorder", response_model=TransactionRead)
+async def reorder_transaction(
+    transaction_id: int, payload: TransactionReorder, session: AsyncSession = Depends(get_session)
+) -> Transaction:
+    """Переставляет операцию внутри её дня.
+
+    Между днями запись не переносится намеренно: дату меняют
+    редактированием даты, а не движением мыши — случайное перетаскивание
+    строки не должно менять день операции.
+
+    Порядок пересчитывается сплошным рядом 0, 1, 2… у всех операций этого
+    счёта за этот день. Это дороже точечной правки, но избавляет от дыр и
+    дубликатов в нумерации, которые иначе накапливаются и однажды ломают
+    сортировку.
+    """
+    transaction = await session.get(Transaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    siblings = list(
+        (
+            await session.execute(
+                select(Transaction)
+                .where(
+                    Transaction.account_id == transaction.account_id,
+                    Transaction.date == transaction.date,
+                )
+                .order_by(Transaction.day_order, Transaction.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    siblings = [row for row in siblings if row.id != transaction_id]
+    position = max(0, min(payload.position, len(siblings)))
+    siblings.insert(position, transaction)
+    for index, row in enumerate(siblings):
+        row.day_order = index
+
+    await session.commit()
+    refreshed = await session.execute(select(Transaction).options(*_EAGER).where(Transaction.id == transaction_id))
     return refreshed.scalar_one()
 
 

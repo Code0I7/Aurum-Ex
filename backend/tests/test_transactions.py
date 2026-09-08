@@ -113,7 +113,7 @@ async def test_transfer_rejects_same_source_and_destination(client: AsyncClient,
 
 
 async def test_transfer_rejects_a_category(client: AsyncClient, account_id, categories):
-    other = await client.post("/accounts", json={"name": "Savings", "type": "savings", "currency": "USD"})
+    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "USD"})
     other_id = other.json()["id"]
     resp = await client.post(
         "/transactions",
@@ -129,7 +129,7 @@ async def test_transfer_rejects_a_category(client: AsyncClient, account_id, cate
 
 
 async def test_valid_transfer_between_two_accounts_succeeds(client: AsyncClient, account_id):
-    other = await client.post("/accounts", json={"name": "Savings", "type": "savings", "currency": "USD"})
+    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "USD"})
     other_id = other.json()["id"]
     resp = await client.post(
         "/transactions", json=_txn(account_id, type="transfer", amount="50.00", transfer_account_id=other_id)
@@ -337,7 +337,7 @@ async def test_update_cannot_turn_a_transaction_into_a_transfer_without_a_destin
 async def test_update_rejects_a_transfer_pointing_at_its_own_account(client: AsyncClient, account_id):
     """Same rule as on create: a transfer to itself is a no-op row that still
     shows up in the ledger as a transfer."""
-    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    other = (await client.post("/accounts", json={"name": "Savings", "kind": "savings"})).json()
     created = await client.post(
         "/transactions", json=_txn(account_id, type="transfer", transfer_account_id=other["id"], category_id=None)
     )
@@ -353,7 +353,7 @@ async def test_update_rejects_a_transfer_destination_on_a_non_transfer(
 ):
     """transfer_account_id on an expense is meaningless — balances only read
     it for TRANSFER rows — and create already refuses it."""
-    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    other = (await client.post("/accounts", json={"name": "Savings", "kind": "savings"})).json()
     created = await client.post(
         "/transactions", json=_txn(account_id, category_id=categories["Groceries"]["id"])
     )
@@ -368,7 +368,7 @@ async def test_update_rejects_a_transfer_destination_on_a_non_transfer(
 async def test_update_rejects_a_category_on_a_transfer(client: AsyncClient, account_id, categories):
     """A categorized transfer would be counted as spending by the reports that
     join on category — create rejects it, update must as well."""
-    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    other = (await client.post("/accounts", json={"name": "Savings", "kind": "savings"})).json()
     created = await client.post(
         "/transactions", json=_txn(account_id, type="transfer", transfer_account_id=other["id"], category_id=None)
     )
@@ -389,7 +389,7 @@ async def test_a_transfer_whose_destination_account_was_deleted_can_still_be_lis
     transactions list down with a 500 — and with the list gone there is no
     way left in the UI to delete the row and recover. Reading has to stay
     possible; only writing is guarded."""
-    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    other = (await client.post("/accounts", json={"name": "Savings", "kind": "savings"})).json()
     created = await client.post(
         "/transactions", json=_txn(account_id, type="transfer", transfer_account_id=other["id"], category_id=None)
     )
@@ -528,7 +528,7 @@ async def test_create_split_rejects_amounts_not_summing_to_total(client: AsyncCl
 
 
 async def test_create_split_rejects_on_transfer(client: AsyncClient, account_id, categories):
-    other = (await client.post("/accounts", json={"name": "Savings", "type": "savings"})).json()
+    other = (await client.post("/accounts", json={"name": "Savings", "kind": "savings"})).json()
     groceries = categories["Groceries"]["id"]
     sweets = await _subcategory(client, groceries, "Sweets")
     resp = await client.post(

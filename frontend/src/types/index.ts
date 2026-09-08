@@ -1,13 +1,41 @@
-export type AccountType = "checking" | "savings" | "credit_card" | "cash" | "investment" | "other";
+// Вид счёта. Переименовано из AccountType вместе с бэкендом; добавлен loan
+// — рассрочка или кредит без пластика.
+export type AccountKind = "checking" | "savings" | "credit_card" | "cash" | "investment" | "loan" | "other";
+// Актив или обязательство — отдельная ось от вида счёта.
+export type AccountNature = "asset" | "liability";
+export type ParticipantKind = "person" | "pet";
+// Возвратность расчёта с внешним человеком: подарок долга не создаёт, заём
+// создаёт. Ставится на операции, а не на контрагенте.
+export type SettlementKind = "gift" | "loan_out" | "loan_in" | "repayment";
 export type CategoryKind = "income" | "expense";
-export type TransactionType = "income" | "expense" | "transfer";
+// external_in / external_out — деньги от другого человека и ему же: меняют
+// баланс, но заработком не считаются.
+export type TransactionType = "income" | "expense" | "transfer" | "external_in" | "external_out";
 export type RecurringFrequency = "weekly" | "monthly" | "yearly";
+
+export interface Bank {
+  id: number;
+  name: string;
+  color: string | null;
+  sort_order: number;
+}
 
 export interface Account {
   id: number;
   name: string;
-  type: AccountType;
+  // Переименовано из type вместе с бэкендом: "тип" читался как "тип
+  // записи" и путался с учётной записью.
+  kind: AccountKind;
+  // Актив или обязательство — отдельная ось от вида счёта: рассрочка ведёт
+  // себя как кредитная карта, хотя по названию об этом ничего не сказано.
+  nature: AccountNature;
+  bank_id: number | null;
+  bank: Bank | null;
   currency: string;
+  // Деньги, лежавшие на счёте до первой записи. Часть баланса, но не доход.
+  opening_balance: string;
+  opening_date: string | null;
+  allow_negative: boolean;
   color: string | null;
   is_archived: boolean;
 }
@@ -23,7 +51,7 @@ export interface AccountWithBalance extends Account {
 
 export interface AccountInput {
   name: string;
-  type: AccountType;
+  kind: AccountKind;
 }
 
 export interface Category {
@@ -81,21 +109,61 @@ export interface TransactionSplitInput {
   note?: string | null;
 }
 
+export interface Participant {
+  id: number;
+  name: string;
+  kind: ParticipantKind;
+  color: string | null;
+  is_archived: boolean;
+}
+
+export interface Store {
+  id: number;
+  name: string;
+  location: string | null;
+  notes: string | null;
+  is_archived: boolean;
+}
+
+export interface Counterparty {
+  id: number;
+  name: string;
+  notes: string | null;
+  is_archived: boolean;
+}
+
 export interface Transaction {
   id: number;
+  uuid: string;
   account_id: number;
   category_id: number | null;
   transfer_account_id: number | null;
   type: TransactionType;
   amount: string;
+  // Валюта операции и её сумма в базовой валюте по курсу на дату операции.
+  // Курс заморожен в записи: пересчёт по сегодняшнему курсу переписывал бы
+  // прошлое.
+  currency: string;
   description: string;
   merchant: string | null;
   notes: string | null;
   date: string;
+  // Порядок внутри дня. Без него операции одного дня раскладываются
+  // произвольно и баланс проваливается там, где этого не было.
+  day_order: number;
+  // Запись видна в истории, но в суммы и графики не входит.
+  is_excluded: boolean;
+  participant_id: number | null;
+  store_id: number | null;
+  counterparty_id: number | null;
+  settlement_kind: SettlementKind | null;
   account: Account;
   category: Category | null;
   tags: Tag[];
   splits: TransactionSplit[];
+  // Баланс счёта после этой операции. Приходит только в списке — у ответа
+  // на создание или правку остаётся null.
+  balance_after: string | null;
 }
 
 export interface TransactionPage {

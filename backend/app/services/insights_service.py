@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
-from app.models.enums import AccountType, TransactionType
+from app.models.enums import AccountKind, TransactionType
 from app.models.transaction import Transaction
 from app.schemas.insights import AlertsResponse, FinancialAlert
 from app.schemas.net_worth import NetWorthSummary
@@ -33,7 +33,7 @@ MAX_LOOKBACK_MONTHS = 24
 # Accounts where a big, untouched balance means money isn't working — a
 # credit card balance isn't "your cash", an investment account is already
 # invested, and OTHER is too ambiguous to guess at.
-_IDLE_CASH_ACCOUNT_TYPES = (AccountType.CHECKING, AccountType.SAVINGS, AccountType.CASH)
+_IDLE_CASH_ACCOUNT_TYPES = (AccountKind.CHECKING, AccountKind.SAVINGS, AccountKind.CASH)
 
 
 def _previous_month(year: int, month: int) -> tuple[int, int]:
@@ -84,7 +84,7 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
         (
             await session.execute(
                 select(Account.id).where(
-                    Account.is_archived.is_(False), Account.type.in_(_IDLE_CASH_ACCOUNT_TYPES)
+                    Account.is_archived.is_(False), Account.kind.in_(_IDLE_CASH_ACCOUNT_TYPES)
                 )
             )
         )

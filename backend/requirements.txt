@@ -7,3 +7,5 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 python-dotenv==1.2.2
 httpx==0.28.1
+# Нужен FastAPI для приёма загружаемых файлов (импорт истории из таблицы).
+python-multipart==0.0.20

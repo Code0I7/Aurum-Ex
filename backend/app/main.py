@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.deps import require_user
 from app.api.routes import (
     accounts,
+    auth,
     advice,
     assets,
     backup,
@@ -13,6 +15,7 @@ from app.api.routes import (
     categories,
     crypto,
     dashboard,
+    directories,
     goals,
     insights,
     net_worth,
@@ -21,10 +24,18 @@ from app.api.routes import (
     settings as settings_routes,
     tags,
     transactions,
+    spreadsheet_import,
 )
 from app.core.config import APP_VERSION, get_settings
-from app.db.seed import seed_default_account, seed_default_app_settings, seed_default_categories
+from app.db.seed import (
+    seed_default_account,
+    seed_default_app_settings,
+    seed_default_categories,
+    seed_default_currencies,
+    seed_default_units,
+)
 from app.db.session import AsyncSessionLocal
+from app.services.auth_service import seed_admin_from_env
 
 settings = get_settings()
 
@@ -33,13 +44,20 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as session:
         await seed_default_categories(session)
+        # Валюты и единицы засеваются до счёта: у счёта есть валюта, а у
+        # позиции чека — единица, и ссылаться им должно быть на что.
+        await seed_default_currencies(session)
+        await seed_default_units(session)
         await seed_default_account(session)
         await seed_default_app_settings(session)
+        # Учётная запись из .env, если она там задана. Пароль не задан —
+        # приложение поднимается в режиме первичной настройки.
+        await seed_admin_from_env(session)
     yield
 
 
 app = FastAPI(
-    title="Aurum API",
+    title="Aurum-Ex API",
     version=APP_VERSION,
     lifespan=lifespan,
     # Docs live under /api/* because nginx only proxies that prefix to the
@@ -67,23 +85,34 @@ if cors_origins:
         allow_headers=["*"],
     )
 
-app.include_router(dashboard.router, prefix="/api")
-app.include_router(accounts.router, prefix="/api")
-app.include_router(categories.router, prefix="/api")
-app.include_router(transactions.router, prefix="/api")
-app.include_router(assets.router, prefix="/api")
-app.include_router(net_worth.router, prefix="/api")
-app.include_router(backup.router, prefix="/api")
-app.include_router(reports.router, prefix="/api")
-app.include_router(insights.router, prefix="/api")
-app.include_router(settings_routes.router, prefix="/api")
-app.include_router(budgets.router, prefix="/api")
-app.include_router(advice.router, prefix="/api")
-app.include_router(goals.router, prefix="/api")
-app.include_router(recurring.router, prefix="/api")
-app.include_router(cash_flow.router, prefix="/api")
-app.include_router(tags.router, prefix="/api")
-app.include_router(crypto.router, prefix="/api")
+# Единственный незащищённый роутер: войти, не войдя, иначе нельзя. Каждый
+# его метод защищает себя сам — см. routes/auth.py.
+app.include_router(auth.router, prefix="/api")
+
+# Всё остальное закрыто одной зависимостью на include_router, а не по
+# эндпоинтам: забытая проверка на одном роуте открыла бы доступ ко всем
+# финансам, и заметить такое можно слишком поздно.
+_protected = [Depends(require_user)]
+
+app.include_router(dashboard.router, prefix="/api", dependencies=_protected)
+app.include_router(directories.router, prefix="/api", dependencies=_protected)
+app.include_router(accounts.router, prefix="/api", dependencies=_protected)
+app.include_router(categories.router, prefix="/api", dependencies=_protected)
+app.include_router(transactions.router, prefix="/api", dependencies=_protected)
+app.include_router(assets.router, prefix="/api", dependencies=_protected)
+app.include_router(net_worth.router, prefix="/api", dependencies=_protected)
+app.include_router(backup.router, prefix="/api", dependencies=_protected)
+app.include_router(reports.router, prefix="/api", dependencies=_protected)
+app.include_router(insights.router, prefix="/api", dependencies=_protected)
+app.include_router(settings_routes.router, prefix="/api", dependencies=_protected)
+app.include_router(budgets.router, prefix="/api", dependencies=_protected)
+app.include_router(advice.router, prefix="/api", dependencies=_protected)
+app.include_router(goals.router, prefix="/api", dependencies=_protected)
+app.include_router(recurring.router, prefix="/api", dependencies=_protected)
+app.include_router(cash_flow.router, prefix="/api", dependencies=_protected)
+app.include_router(tags.router, prefix="/api", dependencies=_protected)
+app.include_router(spreadsheet_import.router, prefix="/api", dependencies=_protected)
+app.include_router(crypto.router, prefix="/api", dependencies=_protected)
 
 
 @app.get("/api/health")

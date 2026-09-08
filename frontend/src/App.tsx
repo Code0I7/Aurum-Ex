@@ -20,6 +20,7 @@ import { ReportsPage } from "@/pages/ReportsPage";
 import { RoiPage } from "@/pages/RoiPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { TransactionsPage } from "@/pages/TransactionsPage";
+import { SpreadsheetImportPage } from "@/pages/SpreadsheetImportPage";
 
 export default function App() {
   const [collapsed, setCollapsed] = useLocalStorageState("aurum:sidebar-collapsed", false);
@@ -43,7 +44,12 @@ export default function App() {
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
-        <main className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        {/* Без ограничения по ширине: раньше стоял max-w-6xl, и на широком
+            мониторе четверть экрана слева и справа простаивала, а таблице
+            транзакций ширина нужна вся. min-w-0 обязателен — без него
+            дочерний блок с горизонтальной прокруткой растягивает страницу
+            вместо того, чтобы прокручиваться внутри себя. */}
+        <main className="w-full min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/net-worth" element={<NetWorthPage />} />
@@ -54,6 +60,7 @@ export default function App() {
             <Route path="/cash-flow" element={<CashFlowPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/transactions/import" element={<CsvImportPage />} />
+            <Route path="/transactions/import-spreadsheet" element={<SpreadsheetImportPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/budget" element={<BudgetPage />} />
             <Route path="/advice" element={<AdvicePage />} />

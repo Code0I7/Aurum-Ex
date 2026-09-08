@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
-from app.models.enums import AccountType, AssetClass, CapitalRole, RiskLevel, TransactionType
+from app.models.enums import AccountKind, AssetClass, CapitalRole, RiskLevel, TransactionType
 from app.models.transaction import Transaction
 from app.schemas.net_worth import (
     CapitalRoleSummary,
@@ -36,7 +36,7 @@ from app.schemas.net_worth import (
     RiskLevelSummary,
 )
 
-CASH_ACCOUNT_TYPES = {AccountType.CHECKING, AccountType.SAVINGS, AccountType.CASH, AccountType.INVESTMENT}
+CASH_ACCOUNT_TYPES = {AccountKind.CHECKING, AccountKind.SAVINGS, AccountKind.CASH, AccountKind.INVESTMENT}
 
 RANGE_DAYS = {"30d": 30, "90d": 90, "1y": 365, "5y": 365 * 5}
 
@@ -92,7 +92,7 @@ def _daily_series(events: list[tuple[date_, Decimal]], start: date_, end: date_)
 
 
 async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, Decimal]]:
-    accounts_result = await session.execute(select(Account.id, Account.type))
+    accounts_result = await session.execute(select(Account.id, Account.kind))
     cash_account_ids = {acc_id for acc_id, acc_type in accounts_result.all() if acc_type in CASH_ACCOUNT_TYPES}
 
     txns_result = await session.execute(

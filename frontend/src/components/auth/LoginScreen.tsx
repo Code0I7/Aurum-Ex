@@ -72,7 +72,7 @@ export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mo
         <CardContent className="flex flex-col items-center gap-6 p-6 pt-8 sm:p-8">
           <div className="flex flex-col items-center gap-1.5 text-center">
             <Logo size={40} />
-            <span className="text-lg font-semibold tracking-tight text-text-primary">Aurum</span>
+            <span className="text-lg font-semibold tracking-tight text-text-primary">Aurum-Ex</span>
             <span className="text-xs text-text-muted">
               {isSetup ? t("auth.setupSubtitle") : isRecover ? t("auth.recoverSubtitle") : t("auth.subtitle")}
             </span>

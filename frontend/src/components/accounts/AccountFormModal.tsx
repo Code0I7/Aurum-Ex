@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import type { Account, AccountType } from "@/types";
+import type { Account, AccountKind } from "@/types";
 
 interface AccountFormModalProps {
   open: boolean;
@@ -12,9 +12,9 @@ interface AccountFormModalProps {
   account?: Account | null;
 }
 
-const ACCOUNT_TYPES: AccountType[] = ["checking", "savings", "credit_card", "cash", "investment", "other"];
+const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "loan", "other"];
 
-const EMPTY_FORM = { name: "", type: "checking" as AccountType };
+const EMPTY_FORM = { name: "", kind: "checking" as AccountKind };
 
 export function AccountFormModal({ open, onClose, account }: AccountFormModalProps) {
   const { t } = useTranslation();
@@ -26,7 +26,7 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
 
   useEffect(() => {
     if (!open) return;
-    setForm(account ? { name: account.name, type: account.type } : EMPTY_FORM);
+    setForm(account ? { name: account.name, kind: account.kind } : EMPTY_FORM);
     setError(null);
   }, [open, account]);
 
@@ -66,12 +66,12 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
           <Label htmlFor="account-type">{t("account.form.typeLabel")}</Label>
           <Select
             id="account-type"
-            value={form.type}
-            onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value as AccountType }))}
+            value={form.kind}
+            onChange={(event) => setForm((prev) => ({ ...prev, kind: event.target.value as AccountKind }))}
           >
-            {ACCOUNT_TYPES.map((type) => (
+            {ACCOUNT_KINDS.map((type) => (
               <option key={type} value={type}>
-                {t(`account.type.${type}` as TranslationKey)}
+                {t(`account.kind.${type}` as TranslationKey)}
               </option>
             ))}
           </Select>

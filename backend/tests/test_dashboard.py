@@ -44,7 +44,7 @@ async def test_income_expense_and_net_only_count_the_selected_month(client: Asyn
 
 
 async def test_transfers_are_excluded_from_income_and_spent(client: AsyncClient, account_id, categories):
-    other = await client.post("/accounts", json={"name": "Savings", "type": "savings", "currency": "USD"})
+    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "USD"})
     other_id = other.json()["id"]
     await client.post(
         "/transactions",

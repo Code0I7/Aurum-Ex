@@ -1,7 +1,7 @@
-import { Archive, ArchiveRestore, Banknote, CreditCard, Package, Pencil, PiggyBank, TrendingUp, Trash2, Wallet, type LucideIcon } from "lucide-react";
+import { Archive, ArchiveRestore, Banknote, CreditCard, Landmark, Package, Pencil, PiggyBank, TrendingUp, Trash2, Wallet, type LucideIcon } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import type { Account, AccountType, AccountWithBalance } from "@/types";
+import type { Account, AccountKind, AccountWithBalance } from "@/types";
 
 interface AccountListProps {
   items: AccountWithBalance[];
@@ -10,12 +10,15 @@ interface AccountListProps {
   onDelete: (account: AccountWithBalance) => void;
 }
 
-const TYPE_ICONS: Record<AccountType, LucideIcon> = {
+const KIND_ICONS: Record<AccountKind, LucideIcon> = {
   checking: Wallet,
   savings: PiggyBank,
   credit_card: CreditCard,
   cash: Banknote,
   investment: TrendingUp,
+  // Кредит или рассрочка без пластика — тот же долг банку, что и по карте,
+  // но выглядеть как карта не должен.
+  loan: Landmark,
   other: Package,
 };
 
@@ -29,7 +32,7 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
   return (
     <ul className="divide-y divide-gridline">
       {items.map((account) => {
-        const Icon = TYPE_ICONS[account.type];
+        const Icon = KIND_ICONS[account.kind];
         const balance = Number(account.balance);
 
         return (
@@ -47,7 +50,7 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
                 )}
               </span>
               <span className="block truncate text-xs text-text-muted">
-                {t(`account.type.${account.type}` as TranslationKey)}
+                {t(`account.kind.${account.kind}` as TranslationKey)}
               </span>
             </span>
             <span

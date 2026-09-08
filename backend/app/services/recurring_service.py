@@ -13,11 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.account import Account
 from app.models.category import Category
 from app.models.enums import CategoryKind, RecurringFrequency, TransactionType
 from app.models.recurring import RecurringTransaction
 from app.models.transaction import Transaction
 from app.schemas.recurring import RecurringTransactionCreate, RecurringTransactionRead, RecurringTransactionUpdate
+from app.services.currency_service import get_base_currency, to_base
 
 _EAGER = (
     selectinload(RecurringTransaction.account),
@@ -149,6 +151,12 @@ async def post_recurring(session: AsyncSession, recurring_id: int) -> RecurringT
     recurring = await _get_or_404(session, recurring_id)
     today = date_.today()
 
+    # Регулярный платёж проводится сегодняшним днём, значит и курс берётся
+    # сегодняшний — шаблон хранит сумму, но не её рублёвый эквивалент.
+    account = await session.get(Account, recurring.account_id)
+    currency = account.currency if account is not None else await get_base_currency(session)
+    rate, amount_base = await to_base(session, recurring.amount, currency, today)
+
     session.add(
         Transaction(
             account_id=recurring.account_id,
@@ -156,6 +164,9 @@ async def post_recurring(session: AsyncSession, recurring_id: int) -> RecurringT
             transfer_account_id=recurring.transfer_account_id,
             type=recurring.type,
             amount=recurring.amount,
+            currency=currency,
+            exchange_rate=rate,
+            amount_base=amount_base,
             description=recurring.description,
             merchant=recurring.merchant,
             notes=recurring.notes,
