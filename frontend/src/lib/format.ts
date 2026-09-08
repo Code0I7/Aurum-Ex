@@ -1,4 +1,4 @@
-import { getCurrency, getLanguage, t, type Language } from "@/lib/i18n";
+import { getCurrency, getLanguage, getShowCents, t, type Language } from "@/lib/i18n";
 
 /** Maps our app language to the Intl locale used for number/date formatting. */
 export function getIntlLocale(language: Language = getLanguage()): string {
@@ -10,10 +10,17 @@ export function getIntlLocale(language: Language = getLanguage()): string {
 // to be in a *different* currency than that setting.
 export function formatCurrency(amount: number | string, currency: string = getCurrency()): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
+  // Копейки — настройка (Настройки → Точное отображение). В самой операции
+  // они и есть данные: 36,99, показанные как 37, — уже не то, что
+  // записано, и столбец из таких строк не сходится в сумму, а человек ищет
+  // ошибку там, где её нет. В годовых итогах они, наоборот, только
+  // удлиняют число, поэтому выбор оставлен человеку.
+  const cents = getShowCents() ? 2 : 0;
   return new Intl.NumberFormat(getIntlLocale(), {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: cents,
+    maximumFractionDigits: cents,
   }).format(value);
 }
 

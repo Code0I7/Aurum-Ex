@@ -803,6 +803,9 @@ export interface AppSettings {
   // Счёт, подставляемый в новую операцию. Основная карта одна, и
   // выбирать её каждый раз — лишний шаг на самом частом действии.
   default_account_id: number | null;
+  // Показывать ли копейки. В операции они и есть данные; в годовом
+  // итоге только удлиняют число.
+  show_cents: boolean;
   default_page_size: number;
   group_repeats_by_default: boolean;
   day_dividers_by_default: boolean;

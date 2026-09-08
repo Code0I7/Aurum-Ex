@@ -72,6 +72,12 @@ class AppSettings(Base):
     default_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
     )
+    # Показывать ли копейки. В самой операции они и есть данные: 36,99,
+    # показанные как 37, — уже не то, что записано, и список из таких строк
+    # не сходится в сумму. В итогах за год копейки, наоборот, только
+    # удлиняют число. Правильного ответа на оба случая нет, поэтому
+    # переключатель.
+    show_cents: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_page_size: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     # Склеивать ли одинаковые траты дня и рисовать ли разделители дней.
     group_repeats_by_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

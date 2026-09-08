@@ -94,6 +94,19 @@ export function ViewDefaultsCard() {
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
+            checked={settings.show_cents}
+            onChange={(event) => update.mutate({ show_cents: event.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+          />
+          <span>
+            {t("settings.showCents")}
+            <span className="block text-xs text-text-muted">{t("settings.showCentsHint")}</span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
             checked={settings.group_repeats_by_default}
             onChange={(event) => update.mutate({ group_repeats_by_default: event.target.checked })}
             className="mt-0.5 h-3.5 w-3.5 accent-text-primary"

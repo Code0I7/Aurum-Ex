@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useAppSettings } from "@/hooks/useSettings";
-import { setCurrency } from "@/lib/i18n";
+import { setCurrency, setShowCents } from "@/lib/i18n";
 import { AccountsPage } from "@/pages/AccountsPage";
 import { AdvicePage } from "@/pages/AdvicePage";
 import { BudgetPage } from "@/pages/BudgetPage";
@@ -36,7 +36,9 @@ export default function App() {
   // once the setting loads, so it's not stuck on the "USD" fallback default.
   const { data: settings } = useAppSettings();
   useEffect(() => {
-    if (settings) setCurrency(settings.currency);
+    if (!settings) return;
+    setCurrency(settings.currency);
+    setShowCents(settings.show_cents);
   }, [settings]);
 
   return (

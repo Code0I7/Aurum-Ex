@@ -291,6 +291,7 @@ class AppSettingsBackup(BaseModel):
     group_repeats_by_default: bool = True
     day_dividers_by_default: bool = True
     default_account_id: int | None = None
+    show_cents: bool = True
 
 
 # --- Справочники и разделы Aurum-Ex ---

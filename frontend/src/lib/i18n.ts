@@ -272,6 +272,8 @@ const ru = {
   "settings.defaultAccountHint": "Подставляется в новую операцию. Основная карта одна, и выбирать её каждый раз — лишний шаг на самом частом действии.",
   "settings.defaultPageSize": "Операций за раз",
   "settings.defaultPageSizeHint": "От 10 до 500. Список и так ограничен выбранным месяцем, но месяцы разной плотности: полсотни операций в месяц на двадцати строках разваливаются на три страницы. В поиске по всей истории — тем более.",
+  "settings.showCents": "Точное отображение",
+  "settings.showCentsHint": "Показывать копейки. В самой операции они и есть данные: 36,99, показанные как 37, — уже не то, что записано, и столбец из таких строк не сходится в сумму. В годовых итогах копейки, наоборот, только удлиняют число.",
   "settings.groupRepeats": "Склеивать одинаковые траты дня",
   "settings.groupRepeatsHint": "Четыре поездки на автобусе показываются одной строкой «Автобус ×4». Записи остаются отдельными.",
   "settings.dayDividers": "Разделять дни",
@@ -1225,6 +1227,8 @@ const en: Record<keyof typeof ru, string> = {
   "settings.defaultAccountHint": "Pre-filled on a new transaction. There is one main card, and picking it every time is a wasted step on the most frequent action.",
   "settings.defaultPageSize": "Rows at a time",
   "settings.defaultPageSizeHint": "Between 10 and 500. The list is already limited to the chosen month, but months differ in density: fifty transactions split into three pages at twenty rows. Search, which spans all history, more so.",
+  "settings.showCents": "Exact amounts",
+  "settings.showCentsHint": "Show cents. In a transaction they are the data: 36.99 shown as 37 is no longer what was recorded, and a column of such rows does not add up. In yearly totals they only make the number longer.",
   "settings.groupRepeats": "Collapse identical spends of a day",
   "settings.groupRepeatsHint": "Four bus rides show as one row, “Bus ×4”. The records stay separate.",
   "settings.dayDividers": "Separate days",
@@ -1915,6 +1919,10 @@ let currentLanguage: Language = readInitialLanguage();
 // with. App.tsx syncs this from the server once on boot via setCurrency();
 // until that resolves, formatCurrency() falls back to this default.
 let currentCurrency = "USD";
+// Показывать ли копейки. Хранится на сервере рядом с валютой и по той же
+// причине: это свойство установки, а не браузера. До ответа сервера
+// действует значение по умолчанию.
+let currentShowCents = true;
 const listeners = new Set<() => void>();
 
 export function getLanguage(): Language {
@@ -1930,6 +1938,18 @@ export function setLanguage(language: Language): void {
 
 export function getCurrency(): string {
   return currentCurrency;
+}
+
+export function getShowCents(): boolean {
+  return currentShowCents;
+}
+
+/** Обновляет только локальное зеркало — вызывается после успешного ответа
+ *  сервера, а не вместо него. */
+export function setShowCents(value: boolean): void {
+  if (value === currentShowCents) return;
+  currentShowCents = value;
+  listeners.forEach((listener) => listener());
 }
 
 /** Updates the reactive local mirror only — call this after the server

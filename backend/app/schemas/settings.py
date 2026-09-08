@@ -19,6 +19,12 @@ class AppSettingsRead(BaseModel):
     # Счёт, подставляемый в новую операцию. Пусто — подставлять нечего, и
     # человек выбирает счёт сам, как раньше.
     default_account_id: int | None = None
+    # Показывать ли копейки. В самой операции они и есть данные: 36,99,
+    # показанные как 37, — уже не то, что записано, и список из таких строк
+    # не сходится в сумму. В итогах за год копейки, наоборот, только
+    # удлиняют число. Правильного ответа на оба случая нет, поэтому
+    # переключатель.
+    show_cents: bool = True
     default_page_size: int = 50
     group_repeats_by_default: bool = True
     day_dividers_by_default: bool = True
@@ -48,6 +54,7 @@ class AppSettingsUpdate(BaseModel):
     # Период дашборда при открытии: month, year или all.
     default_dashboard_range: Literal["month", "year", "all"] | None = None
     default_account_id: int | None = None
+    show_cents: bool | None = None
     # Сколько операций подгружать за раз. Верхняя граница есть: страница на
     # тысячу строк грузится дольше, чем прокручиваются пятьдесят.
     default_page_size: int | None = Field(default=None, ge=10, le=500)
