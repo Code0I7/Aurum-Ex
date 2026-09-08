@@ -33,6 +33,7 @@ from app.schemas.dashboard import (
 from app.services.account_service import get_balances_by_account
 from app.services.cash_flow_service import get_cash_flow
 from app.services.currency_service import quantize_money
+from app.services.hourly_service import elapsed_hours
 from app.services.category_rollup import rollup_spending_by_top_level_category
 from app.services.settlement_service import get_reserved_by_account
 from app.services.transaction_service import counted_only
@@ -130,7 +131,7 @@ async def _hourly_block(
     None, когда за период не введено ни часа: делить на ноль нечестнее, чем
     не показывать.
     """
-    stmt = select(func.coalesce(func.sum(WorkPeriod.hours), 0))
+    stmt = select(WorkPeriod.year, WorkPeriod.month, WorkPeriod.hours)
     if start is not None:
         # Месяц считается попавшим в период, если его номер не раньше
         # начального: часы вводятся помесячно, дробить их нечем.
@@ -142,7 +143,17 @@ async def _hourly_block(
         stmt = stmt.where(
             (WorkPeriod.year < end.year) | ((WorkPeriod.year == end.year) & (WorkPeriod.month <= end.month))
         )
-    hours = Decimal((await session.execute(stmt)).scalar_one())
+    # У текущего месяца засчитывается только прошедшая доля введённых
+    # часов: иначе первого числа доход за один день делится на месячный
+    # план, и заработок за час выходит в рублях.
+    hours = sum(
+        (
+            elapsed_hours(int(year), int(month), Decimal(total))
+            for year, month, total in (await session.execute(stmt)).all()
+            if total
+        ),
+        Decimal("0"),
+    )
     if hours <= 0:
         return None, None
     # Округление до копейки: деление Decimal даёт хвост в двадцать знаков, и

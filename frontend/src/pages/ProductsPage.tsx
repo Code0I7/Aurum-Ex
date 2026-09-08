@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { PillSelector } from "@/components/layout/PillSelector";
+import { useSessionState } from "@/hooks/useSessionState";
 import { Button } from "@/components/ui/Button";
 import { ProductList } from "@/components/products/ProductList";
 import { ProductFormModal } from "@/components/products/ProductFormModal";
@@ -21,7 +23,15 @@ import type { Product } from "@/types";
 export function ProductsPage() {
   const { t } = useTranslation();
   const [showArchived, setShowArchived] = useState(false);
+  // По тратам, а не по алфавиту: список на пару сотен строк, и вопрос
+  // к нему обычно «на что уходит больше всего», а не «где тут хлеб».
+  const [sort, setSort] = useSessionState<"spend" | "name">("aurum:products-sort", "spend");
   const { data: products, isLoading } = useProducts(showArchived);
+  const sorted = [...(products ?? [])].sort((a, b) =>
+    sort === "spend"
+      ? Number(b.spent_year) - Number(a.spent_year) || a.name.localeCompare(b.name)
+      : a.name.localeCompare(b.name)
+  );
   const deleteProduct = useDeleteProduct();
   const updateProduct = useUpdateProduct();
   const confirm = useConfirm();
@@ -49,7 +59,15 @@ export function ProductsPage() {
       {/* Переключатель стоит над карточкой, а не внутри неё: он относится
           ко всему списку, а не к какой-то его части, и в справочниках
           «Люди и места» он стоит там же. */}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <PillSelector
+          options={[
+            { value: "spend" as const, label: t("product.sortBySpend") },
+            { value: "name" as const, label: t("product.sortByName") },
+          ]}
+          value={sort}
+          onChange={setSort}
+        />
         <label className="flex cursor-pointer items-center gap-2 text-sm text-text-secondary">
           <input
             type="checkbox"
@@ -77,7 +95,7 @@ export function ProductsPage() {
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
             <ProductList
-              items={products ?? []}
+              items={sorted}
               onEdit={(product) => {
                 setEditing(product);
                 setFormOpen(true);

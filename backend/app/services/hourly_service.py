@@ -23,6 +23,8 @@
 вовсе, стоимость в часах не показывается — выдумывать ставку хуже, чем
 промолчать.
 """
+import calendar
+from datetime import date as date_
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -35,6 +37,30 @@ from app.services.currency_service import quantize_money
 from app.services.transaction_service import counted_only
 
 
+def elapsed_hours(year: int, month: int, hours: Decimal, today: date_ | None = None) -> Decimal:
+    """Сколько из введённых на месяц часов уже отработано.
+
+    Часы вводятся на месяц целиком — это план, а не журнал смен. Пока
+    месяц идёт, делить доход на весь его план нечестно: первого числа
+    получается, что человек заработал за час два рубля, потому что доход у
+    него за один день, а часы за тридцать.
+
+    Поэтому у текущего месяца берётся доля по прошедшим дням. Закончившийся
+    месяц идёт целиком, ещё не начавшийся — нулём: заработка в нём тоже
+    пока нет, и пара «доход и часы» должна описывать один и тот же срок.
+
+    Сегодняшний день считается прошедшим: смену отрабатывают в тот же день,
+    когда её записывают.
+    """
+    today = today or date_.today()
+    if (year, month) < (today.year, today.month):
+        return hours
+    if (year, month) > (today.year, today.month):
+        return Decimal("0")
+    days_in_month = calendar.monthrange(year, month)[1]
+    return hours * Decimal(today.day) / Decimal(days_in_month)
+
+
 async def get_hourly_rates(session: AsyncSession) -> dict:
     """Ставка за час по годам плюс средняя за всё время.
 
@@ -42,12 +68,18 @@ async def get_hourly_rates(session: AsyncSession) -> dict:
     Ключ строкой: интерфейс отрезает его от даты операции напрямую, без
     разбора и без часовых поясов.
     """
+    # По месяцам, а не суммой по году: у текущего месяца берётся только
+    # прошедшая доля, и свернуть это в один SUM на стороне базы нечем.
     hours_rows = (
-        await session.execute(
-            select(WorkPeriod.year, func.sum(WorkPeriod.hours)).group_by(WorkPeriod.year)
-        )
+        await session.execute(select(WorkPeriod.year, WorkPeriod.month, WorkPeriod.hours))
     ).all()
-    hours_by_year = {int(year): Decimal(total) for year, total in hours_rows if total}
+    hours_by_year: dict[int, Decimal] = {}
+    for year, month, total in hours_rows:
+        if not total:
+            continue
+        counted = elapsed_hours(int(year), int(month), Decimal(total))
+        if counted > 0:
+            hours_by_year[int(year)] = hours_by_year.get(int(year), Decimal("0")) + counted
 
     if not hours_by_year:
         return {"years": {}, "overall": None}

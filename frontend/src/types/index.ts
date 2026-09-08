@@ -971,6 +971,10 @@ export interface Product {
   purchases: number;
   last_bought: string | null;
   last_price_per_base_unit: string | null;
+  // Сколько денег ушло на товар. Кривая цены отвечает «дорожает ли»,
+  // это — «сколько мне это стоит». Год скользящий, не календарный.
+  spent_total: string;
+  spent_year: string;
 }
 
 export interface ProductInput {

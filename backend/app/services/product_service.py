@@ -21,6 +21,8 @@
 арифметики.
 """
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date as date_, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -61,8 +63,19 @@ def price_per_base_unit(
     return amount / (quantity * factor)
 
 
-async def _product_stats(session: AsyncSession) -> dict[int, tuple[int, object, Decimal | None]]:
-    """Сколько раз товар покупали, когда в последний раз и почём.
+@dataclass
+class ProductStats:
+    """Что известно о товаре из чеков."""
+
+    purchases: int = 0
+    last_bought: object = None
+    last_price: Decimal | None = None
+    spent_total: Decimal = Decimal("0")
+    spent_year: Decimal = Decimal("0")
+
+
+async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
+    """Сколько раз товар покупали, когда в последний раз, почём и на сколько.
 
     Одним запросом на весь список: в справочнике на пару сотен строк
     отдельный запрос на каждую превратил бы открытие страницы в минуту
@@ -84,25 +97,32 @@ async def _product_stats(session: AsyncSession) -> dict[int, tuple[int, object, 
         )
     ).all()
 
-    counts: dict[int, int] = defaultdict(int)
-    last_date: dict[int, object] = {}
-    last_price: dict[int, Decimal | None] = {}
+    # Скользящий год, а не календарный: в январе календарный показывал бы
+    # траты за две недели и выглядел бы падением там, где его нет.
+    year_ago = date_.today() - timedelta(days=365)
+
+    stats: dict[int, ProductStats] = defaultdict(ProductStats)
     for product_id, tx_date, amount, quantity, factor in rows:
-        counts[product_id] += 1
+        item = stats[product_id]
+        item.purchases += 1
         # Запрос отсортирован по дате, поэтому последняя строка и есть
         # последняя покупка — отдельного max() не нужно.
-        last_date[product_id] = tx_date
+        item.last_bought = tx_date
         price = price_per_base_unit(amount, quantity, factor)
         if price is not None:
-            last_price[product_id] = price
-    return {
-        product_id: (counts[product_id], last_date.get(product_id), last_price.get(product_id))
-        for product_id in counts
-    }
+            item.last_price = price
+        # Сумма позиции бывает не заполнена: в чеке её могли не разносить
+        # по строкам вовсе. Такая покупка считается фактом покупки, но
+        # деньгами не считается — придумывать их за человека нельзя.
+        if amount is not None:
+            item.spent_total += amount
+            if tx_date >= year_ago:
+                item.spent_year += amount
+    return dict(stats)
 
 
-def _to_read(product: Product, stats: tuple[int, object, Decimal | None] | None) -> ProductRead:
-    purchases, last_bought, last_price = stats or (0, None, None)
+def _to_read(product: Product, stats: ProductStats | None) -> ProductRead:
+    stats = stats or ProductStats()
     return ProductRead(
         id=product.id,
         name=product.name,
@@ -113,9 +133,11 @@ def _to_read(product: Product, stats: tuple[int, object, Decimal | None] | None)
         barcode=product.barcode,
         notes=product.notes,
         is_archived=product.is_archived,
-        purchases=purchases,
-        last_bought=last_bought,
-        last_price_per_base_unit=last_price,
+        purchases=stats.purchases,
+        last_bought=stats.last_bought,
+        last_price_per_base_unit=stats.last_price,
+        spent_total=stats.spent_total,
+        spent_year=stats.spent_year,
     )
 
 

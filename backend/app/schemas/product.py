@@ -55,6 +55,14 @@ class ProductRead(ProductBase):
     purchases: int = 0
     last_bought: date_ | None = None
     last_price_per_base_unit: Decimal | None = None
+    # Сколько денег ушло на этот товар. Кривая цены отвечает на вопрос
+    # «дорожает ли», а это — на «сколько мне это стоит»: полтинник за
+    # батон незаметен, три тысячи за год на хлеб — уже разговор.
+    #
+    # Год скользящий, а не календарный: в январе календарный показывал бы
+    # траты за две недели и выглядел бы падением там, где его нет.
+    spent_total: Decimal = Decimal("0")
+    spent_year: Decimal = Decimal("0")
 
 
 class PricePoint(BaseModel):

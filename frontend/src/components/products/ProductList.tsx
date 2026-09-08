@@ -38,13 +38,26 @@ export function ProductList({ items, onEdit, onPrices, onDelete, onArchive }: Pr
             </span>
           </span>
 
-          {/* Последняя цена за базовую единицу — то, ради чего справочник и
-              нужен: в списке сразу видно, что почём, без открытия графика. */}
-          {product.last_price_per_base_unit && (
-            <span className="shrink-0 text-right text-xs tabular-nums text-text-muted">
-              {formatCurrency(product.last_price_per_base_unit)}
-            </span>
-          )}
+          {/* Две разные цифры, и обе нужны. Цена за базовую единицу
+              отвечает «дорожает ли», сумма за год — «сколько мне это
+              стоит»: полтинник за батон незаметен, три тысячи за год на
+              хлеб — уже разговор. */}
+          <span className="shrink-0 text-right">
+            {Number(product.spent_year) > 0 && (
+              <span className="block text-sm tabular-nums text-text-primary">
+                {formatCurrency(product.spent_year)}
+                <span className="ml-1 text-xs font-normal text-text-muted">
+                  {t("product.perYear")}
+                </span>
+              </span>
+            )}
+            {product.last_price_per_base_unit && (
+              <span className="block text-xs tabular-nums text-text-muted">
+                {formatCurrency(product.last_price_per_base_unit)}
+                {product.unit_name && ` / ${t("product.baseUnitShort")}`}
+              </span>
+            )}
+          </span>
 
           <span className="flex shrink-0 gap-1">
             {/* График цены предлагается только когда точек хватает: кнопка,
