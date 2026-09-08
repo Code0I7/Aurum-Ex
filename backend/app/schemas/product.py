@@ -112,6 +112,9 @@ class TransactionItemInput(BaseModel):
     category_id: int | None = None
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
     unit_id: int | None = None
+    # Цена за БАЗОВУЮ меру своего вида — за килограмм, за литр, за штуку.
+    # Так написано на ценнике; цена за введённую единицу давала бы «0,074»
+    # у пол-литра воды. Сумма считается как quantity × factor × price.
     price: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=4)
     amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
     note: str | None = Field(default=None, max_length=200)

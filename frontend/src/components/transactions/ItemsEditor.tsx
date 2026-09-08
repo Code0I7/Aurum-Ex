@@ -6,7 +6,7 @@ import { suggestProducts } from "@/api/products";
 import { useUnits } from "@/hooks/useProducts";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
-import type { Product, TransactionItemInput } from "@/types";
+import type { Product, TransactionItemInput, Unit } from "@/types";
 
 interface ItemsEditorProps {
   items: TransactionItemInput[];
@@ -26,6 +26,17 @@ interface ItemsEditorProps {
  * Чек без позиций тоже нормален. Редактор свёрнут по умолчанию, чтобы
  * быстрый ввод оставался одним действием.
  */
+/** Имя базовой меры для вида выбранной единицы: «л» для миллилитров,
+ *  «кг» для граммов. Пусто, когда единица не выбрана или базовой у её
+ *  вида нет. */
+function baseUnitName(units: Unit[] | undefined, unitId: number | null | undefined): string | null {
+  if (!units || !unitId) return null;
+  const unit = units.find((item) => item.id === unitId);
+  if (!unit) return null;
+  const base = units.find((item) => item.kind === unit.kind && item.is_base);
+  return base ? `₽ / ${base.name}` : null;
+}
+
 export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
   const { t } = useTranslation();
   const { data: units } = useUnits();
@@ -39,17 +50,20 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
     // заставлять человека перемножать два числа, которые он только что
     // ввёл, незачем. Введённую вручную сумму не трогаем.
     const item = next[index];
-    // Пересчёт в обе стороны. Раньше он шёл только от цены к сумме, и
-    // человек, вписавший сумму из чека, терял её при следующей правке
-    // количества. Хуже того, «цена» молча означала цену за единицу: пол-литра
-    // воды, введённые как «500» и «36», давали 18 000 — количество в
-    // миллилитрах, цена за бутылку.
-    if (("price" in patch || "quantity" in patch) && item.price && item.quantity) {
-      item.amount = (Number(item.price) * Number(item.quantity)).toFixed(2);
+    // Цена считается за БАЗОВУЮ меру — за литр, за килограмм, — а не за
+    // введённую единицу. Пол-литра воды за 36,99 давали «0,074 за
+    // миллилитр»: число верное и бесполезное, и человек решал, что
+    // бутылку воды в чек просто не занести. Теперь там 73,98 за литр —
+    // ровно то, что написано на ценнике.
+    //
+    // Отсюда коэффициент в обеих формулах: сумма = количество × коэффициент
+    // × цена. Для 500 мл по 73,98 это 500 × 0,001 × 73,98 = 36,99.
+    const factor = Number(units?.find((unit) => unit.id === item.unit_id)?.factor ?? 1) || 1;
+    if (("price" in patch || "quantity" in patch || "unit_id" in patch) && item.price && item.quantity) {
+      item.amount = (Number(item.price) * Number(item.quantity) * factor).toFixed(2);
     } else if ("amount" in patch && item.amount && item.quantity && Number(item.quantity) !== 0) {
-      // Вписали сумму — цена за единицу выводится из неё. Четыре знака, а
-      // не два: цена за миллилитр или за грамм иначе округляется в ноль.
-      item.price = (Number(item.amount) / Number(item.quantity)).toFixed(4);
+      // Вписали сумму — цена за базовую меру выводится из неё.
+      item.price = (Number(item.amount) / (Number(item.quantity) * factor)).toFixed(4);
     }
     onChange(next);
   }
@@ -140,7 +154,12 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder={t("items.price")}
+                  placeholder={
+                    // Подпись называет базовую меру: «Цена за л» вместо
+                    // безликого «Цена за ед.», за которое приходилось
+                    // догадываться.
+                    baseUnitName(units, item.unit_id) ?? t("items.price")
+                  }
                   value={item.price ?? ""}
                   onChange={(event) => update(index, { price: event.target.value || null })}
                 />

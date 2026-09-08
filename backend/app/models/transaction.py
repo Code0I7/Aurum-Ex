@@ -177,8 +177,19 @@ class TransactionItem(Base):
 
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"), nullable=True)
-    # Цена за единицу и итог по позиции. Оба необязательны; когда заданы оба,
-    # сходимость не проверяется — в чеках встречается округление до копейки.
+    # Цена за БАЗОВУЮ меру своего вида — за килограмм, за литр, за штуку, —
+    # а не за введённую единицу.
+    #
+    # Так написано на ценнике и так сравнивают в магазине. Цена за
+    # введённую единицу выглядела бы «0,074» у пол-литра воды: число
+    # арифметически верное, но бесполезное, и человек решает, что
+    # приложение сломалось.
+    #
+    # Отсюда и связь с суммой: amount = quantity × factor × price. Для
+    # 500 мл по 73,98 за литр это 500 × 0,001 × 73,98 = 36,99.
+    #
+    # Оба поля необязательны; когда заданы оба, сходимость не проверяется —
+    # в чеках встречается округление до копейки.
     price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 

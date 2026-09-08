@@ -13,6 +13,7 @@ from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
 from app.models.transaction import Transaction, TransactionItem, TransactionSplit
+from app.models.unit import Unit
 from app.schemas.transaction import (
     TransactionBulkCreate,
     TransactionBulkCreateResult,
@@ -93,6 +94,22 @@ async def _ensure_category_matches_type(
     return category
 
 
+async def _item_amount(session: AsyncSession, item: TransactionItemInput) -> Decimal | None:
+    """Сумма позиции из цены за базовую меру и количества.
+
+    None, когда считать не из чего: половина позиций в чеках заполняется
+    без цены вовсе — «купили хлеб и молоко» помнят и без неё.
+    """
+    if item.price is None or item.quantity is None:
+        return None
+    factor = Decimal("1")
+    if item.unit_id is not None:
+        unit = await session.get(Unit, item.unit_id)
+        if unit is not None and unit.factor and unit.factor > 0:
+            factor = unit.factor
+    return item.price * item.quantity * factor
+
+
 async def _build_items(
     session: AsyncSession, items: list[TransactionItemInput]
 ) -> list[TransactionItem]:
@@ -122,10 +139,14 @@ async def _build_items(
                 price=item.price,
                 # Сумма позиции: если не задана, но известны цена и
                 # количество, считается сама — заставлять человека
-                # перемножать два числа, которые он уже ввёл, незачем.
+                # перемножать числа, которые он уже ввёл, незачем.
+                #
+                # Через коэффициент единицы, потому что цена хранится за
+                # базовую меру: 500 мл по 73,98 за литр — это 500 × 0,001
+                # × 73,98, а не 500 × 73,98.
                 amount=item.amount
                 if item.amount is not None
-                else (item.price * item.quantity if item.price is not None and item.quantity is not None else None),
+                else await _item_amount(session, item),
                 note=item.note,
                 position=position,
             )

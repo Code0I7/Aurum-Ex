@@ -319,3 +319,40 @@ async def test_an_unknown_product_on_an_item_is_rejected(client: AsyncClient, ac
         },
     )
     assert resp.status_code == 400
+
+
+async def test_bottle_of_water_by_price_per_litre(client: AsyncClient, account_id, categories):
+    """Случай, на котором споткнулись: пол-литра воды за 36,99.
+
+    Цена вводится за базовую меру — за литр, как на ценнике, — и сумма
+    считается через коэффициент: 500 × 0,001 × 73,98 = 36,99. До этого
+    поле означало цену за введённую единицу и показывало «0,074 за
+    миллилитр»: число верное и бесполезное, из-за которого казалось, что
+    бутылку воды в чек не занести вовсе.
+    """
+    units = await _units(client)
+    water = await _product(client, "Вода питьевая", unit_id=units["л"]["id"])
+
+    receipt = await _receipt(
+        client,
+        account_id,
+        categories,
+        [
+            {
+                "name": "Вода 0,5",
+                "product_id": water["id"],
+                "quantity": "500",
+                "unit_id": units["мл"]["id"],
+                # Сумма не задана: считается из цены за литр.
+                "price": "73.98",
+            }
+        ],
+        amount="36.99",
+        date="2026-05-01",
+    )
+    item = receipt["items"][0]
+    assert Decimal(item["amount"]).quantize(Decimal("0.01")) == Decimal("36.99")
+
+    history = (await client.get(f"/products/{water['id']}/prices")).json()
+    assert history["base_unit_name"] == "л"
+    assert Decimal(history["points"][0]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("73.98")
