@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   capital_role: "neutral" as CapitalRole,
   monthly_cash_flow: "",
   risk_level: "medium" as RiskLevel,
+  is_personal_use: false,
 };
 
 export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
@@ -52,6 +53,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
         capital_role: asset.capital_role,
         monthly_cash_flow: asset.monthly_cash_flow ?? "",
         risk_level: asset.risk_level,
+        is_personal_use: asset.is_personal_use,
       });
     } else {
       setForm(EMPTY_FORM);
@@ -76,6 +78,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
             capital_role: form.capital_role,
             monthly_cash_flow: form.monthly_cash_flow || null,
             risk_level: form.risk_level,
+            is_personal_use: form.is_personal_use,
           },
         });
         if (form.value !== asset.current_value) {
@@ -91,6 +94,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
           capital_role: form.capital_role,
           monthly_cash_flow: form.monthly_cash_flow || null,
           risk_level: form.risk_level,
+          is_personal_use: form.is_personal_use,
         });
       }
       onClose();
@@ -212,6 +216,30 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
             onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
           />
         </div>
+
+        <label className="flex cursor-pointer items-start gap-2 text-sm">
+
+          <input
+
+            type="checkbox"
+
+            checked={form.is_personal_use}
+
+            onChange={(event) => setForm((prev) => ({ ...prev, is_personal_use: event.target.checked }))}
+
+            className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+
+          />
+
+          <span>
+
+            {t("netWorth.personalUse")}
+
+            <span className="block text-xs text-text-muted">{t("netWorth.personalUseHint")}</span>
+
+          </span>
+
+        </label>
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

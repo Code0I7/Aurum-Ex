@@ -6,7 +6,7 @@ through the Transactions feature. See services/net_worth_service.py.
 """
 from datetime import date as date_
 
-from sqlalchemy import Date, Enum, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, Enum, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,6 +24,19 @@ class Asset(Base, TimestampMixin):
     )
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Квартира, в которой живут, и машина, на которой ездят.
+    #
+    # Заводить их стоит: без них продажа выглядит доходом из ниоткуда, а
+    # страховая стоимость берётся из воздуха. Но в главную цифру капитала
+    # они по умолчанию не входят: «капитал шесть миллионов», из которых
+    # 5,8 — жильё, которое человек не продаст, — это число, на которое
+    # нельзя опереться ни в одном решении, и видеть его каждый день
+    # скорее вредно, чем полезно.
+    #
+    # Не выводится из класса актива: недвижимость бывает и сдаваемой, а
+    # вторая машина — на продажу. Решает человек.
+    is_personal_use: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # User-assigned, not inferred (see CapitalRole docstring).
     capital_role: Mapped[CapitalRole] = mapped_column(

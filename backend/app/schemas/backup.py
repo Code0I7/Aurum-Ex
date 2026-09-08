@@ -84,9 +84,8 @@ class TransactionBackup(BaseModel):
     transfer_account_id: int | None
     type: TransactionType
     amount: Decimal
-    description: str
+    description: str | None = None
     merchant: str | None
-    notes: str | None
     date: date_
 
     # Поля Aurum-Ex. У всех есть значение по умолчанию, поэтому бэкап,
@@ -144,7 +143,10 @@ class AssetBackup(BaseModel):
     # Defaulted so a backup exported before risk_level existed still
     # imports cleanly under the same format version.
     risk_level: RiskLevel = RiskLevel.MEDIUM
-
+    # Квартира, в которой живут, и машина, на которой ездят. По умолчанию
+    # не входят в главную цифру капитала: шесть миллионов, из которых 5,8
+    # — жильё, которое не продадут, — число, на которое нельзя опереться.
+    is_personal_use: bool = False
 
 class AssetValuationBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)

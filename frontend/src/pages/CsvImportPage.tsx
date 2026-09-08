@@ -23,7 +23,6 @@ interface Mapping {
   amount: string;
   description: string;
   merchant: string;
-  notes: string;
   category: string;
 }
 
@@ -45,7 +44,7 @@ export function CsvImportPage() {
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
   const [dataRows, setDataRows] = useState<string[][]>([]);
-  const [mapping, setMapping] = useState<Mapping>({ date: "", amount: "", description: "", merchant: "", notes: "", category: "" });
+  const [mapping, setMapping] = useState<Mapping>({ date: "", amount: "", description: "", merchant: "", category: "" });
   const [dateFormat, setDateFormat] = useState<DateFormat>("YYYY-MM-DD");
   const [parseError, setParseError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -71,7 +70,6 @@ export function CsvImportPage() {
     const amountIdx = headers.indexOf(mapping.amount);
     const descIdx = headers.indexOf(mapping.description);
     const merchantIdx = mapping.merchant ? headers.indexOf(mapping.merchant) : -1;
-    const notesIdx = mapping.notes ? headers.indexOf(mapping.notes) : -1;
     const categoryIdx = mapping.category ? headers.indexOf(mapping.category) : -1;
 
     const validRows: TransactionInput[] = [];
@@ -83,7 +81,6 @@ export function CsvImportPage() {
       const rawAmount = cells[amountIdx] ?? "";
       const rawDescription = (cells[descIdx] ?? "").trim();
       const rawMerchant = merchantIdx >= 0 ? (cells[merchantIdx] ?? "").trim() : "";
-      const rawNotes = notesIdx >= 0 ? (cells[notesIdx] ?? "").trim() : "";
       const rawCategory = categoryIdx >= 0 ? (cells[categoryIdx] ?? "").trim() : "";
 
       const isoDate = parseDateWithFormat(rawDate, dateFormat);
@@ -113,7 +110,6 @@ export function CsvImportPage() {
         amount: Math.abs(amount).toFixed(2),
         description,
         merchant: rawMerchant || null,
-        notes: rawNotes || null,
         date: isoDate,
       });
     });
@@ -149,7 +145,6 @@ export function CsvImportPage() {
         amount: guess("amount", "сумма"),
         description: guess("description", "описание", "назначение платежа"),
         merchant: guess("merchant", "payee", "получатель"),
-        notes: guess("notes", "заметка", "примечание"),
         category: guess("category", "категория"),
       });
       setStep("map");
@@ -293,17 +288,6 @@ export function CsvImportPage() {
               <div>
                 <Label htmlFor="map-merchant">{t("transactions.form.merchantLabel")}</Label>
                 <Select id="map-merchant" value={mapping.merchant} onChange={(event) => setMapping((prev) => ({ ...prev, merchant: event.target.value }))}>
-                  <option value={NONE}>{t("transactions.import.notMapped")}</option>
-                  {headers.map((header) => (
-                    <option key={header} value={header}>
-                      {header}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="map-notes">{t("transactions.form.notesLabel")}</Label>
-                <Select id="map-notes" value={mapping.notes} onChange={(event) => setMapping((prev) => ({ ...prev, notes: event.target.value }))}>
                   <option value={NONE}>{t("transactions.import.notMapped")}</option>
                   {headers.map((header) => (
                     <option key={header} value={header}>

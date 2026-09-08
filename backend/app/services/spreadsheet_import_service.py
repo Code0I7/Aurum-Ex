@@ -902,11 +902,19 @@ async def apply_plan(
             (row.amount for row in plan.reserves if row.goal == name),
             Decimal("0"),
         )
+        # Дата закрытия — последний возврат по этой цели: именно тогда
+        # накопленное потратили. Без неё завершённая цель выглядит
+        # закрытой сегодня, хотя закрыли её два года назад.
+        closed = max(
+            (row.date for row in plan.releases if row.goal == name),
+            default=None,
+        )
         goal = Goal(
             name=name,
             target_amount=reserved or Decimal("0"),
             status=GoalStatus.ACHIEVED,
             account_id=envelope_home.id if envelope_home is not None else None,
+            closed_at=closed,
         )
         session.add(goal)
         goals[name] = goal
@@ -971,16 +979,35 @@ async def apply_plan(
     # становятся записями журнала цели. Сам фиктивный счёт остаётся в
     # списке счетов — на нём висят операции, и удалять его значило бы
     # потерять историю.
+    # Счёт у каждого взноса, а не только у цели: резерв ведётся по счетам,
+    # и без него отложенное не привязано ни к одному остатку.
+    envelope_account_id = envelope_home.id if envelope_home is not None else None
     for row in plan.reserves:
         goal = goals.get(row.goal or "")
         if goal is None:
             continue
-        session.add(GoalContribution(goal_id=goal.id, amount=row.amount, date=row.date, note=row.description))
+        session.add(
+            GoalContribution(
+                goal_id=goal.id,
+                amount=row.amount,
+                date=row.date,
+                note=row.description,
+                account_id=envelope_account_id,
+            )
+        )
     for row in plan.releases:
         goal = goals.get(row.goal or "")
         if goal is None:
             continue
-        session.add(GoalContribution(goal_id=goal.id, amount=-row.amount, date=row.date, note=row.description))
+        session.add(
+            GoalContribution(
+                goal_id=goal.id,
+                amount=-row.amount,
+                date=row.date,
+                note=row.description,
+                account_id=envelope_account_id,
+            )
+        )
     result.goal_contributions = len(plan.reserves) + len(plan.releases)
 
     # Рабочие часы. В таблице они годовые, а нужны помесячные — раскладываем

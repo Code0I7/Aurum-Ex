@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { ArrowLeftRight, CalendarSearch, Pencil, SquareDivide, StickyNote, Trash2 } from "lucide-react";
-import { Dialog } from "@/components/ui/Dialog";
+import { ArrowLeftRight, CalendarSearch, Pencil, SquareDivide, Trash2 } from "lucide-react";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
@@ -21,7 +19,6 @@ interface TransactionsTableProps {
 export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: TransactionsTableProps) {
   const { t } = useTranslation();
   const { data: categories } = useCategories();
-  const [noteTransaction, setNoteTransaction] = useState<Transaction | null>(null);
 
   if (items.length === 0) {
     return (
@@ -85,16 +82,6 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                     <CalendarSearch size={15} />
                   </button>
                 )}
-                {tx.notes && (
-                  <button
-                    type="button"
-                    aria-label={t("transactions.viewNote")}
-                    onClick={() => setNoteTransaction(tx)}
-                    className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
-                  >
-                    <StickyNote size={15} />
-                  </button>
-                )}
                 <button
                   type="button"
                   aria-label={t("common.edit")}
@@ -116,14 +103,6 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
           );
         })}
       </ul>
-
-      <Dialog
-        open={noteTransaction !== null}
-        onClose={() => setNoteTransaction(null)}
-        title={t("transactions.noteDialogTitle")}
-      >
-        <p className="whitespace-pre-wrap text-sm text-text-primary">{noteTransaction?.notes}</p>
-      </Dialog>
     </>
   );
 }

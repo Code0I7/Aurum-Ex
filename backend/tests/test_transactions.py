@@ -192,7 +192,7 @@ async def test_search_matches_description_across_any_period_ignoring_month_filte
     assert body["items"][0]["description"] == "PlayStation 5 console"
 
 
-async def test_search_matches_merchant_and_notes(client: AsyncClient, account_id, categories):
+async def test_search_matches_merchant(client: AsyncClient, account_id, categories):
     category_id = categories["Groceries"]["id"]
     await client.post(
         "/transactions",
@@ -200,14 +200,14 @@ async def test_search_matches_merchant_and_notes(client: AsyncClient, account_id
     )
     await client.post(
         "/transactions",
-        json=_txn(account_id, category_id=category_id, description="misc", notes="bought for a birthday gift"),
+        json=_txn(account_id, category_id=category_id, description="misc", merchant="Birthday shop"),
     )
 
     merchant_resp = await client.get("/transactions", params={"search": "best buy"})
     assert merchant_resp.json()["total"] == 1
 
-    notes_resp = await client.get("/transactions", params={"search": "birthday"})
-    assert notes_resp.json()["total"] == 1
+    merchant_resp = await client.get("/transactions", params={"search": "birthday"})
+    assert merchant_resp.json()["total"] == 1
 
 
 async def test_search_with_no_matches_returns_empty(client: AsyncClient, account_id, categories):

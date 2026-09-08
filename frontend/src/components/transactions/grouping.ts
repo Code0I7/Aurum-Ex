@@ -59,7 +59,7 @@ function groupKey(tx: Transaction): string {
     // Исключённые из расчётов не склеиваются с обычными: у них другой смысл
     // и другое поведение в суммах.
     `excl:${tx.is_excluded}`,
-    `desc:${normalize(tx.description)}`,
+    `desc:${normalize(tx.description ?? "")}`,
   ].join("|");
 }
 

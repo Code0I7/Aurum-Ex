@@ -29,7 +29,6 @@ export type ColumnId =
   | "store"
   | "counterparty"
   | "tags"
-  | "note"
   | "currency"
   | "uuid";
 
@@ -61,7 +60,6 @@ export const COLUMNS: ColumnSpec[] = [
   { id: "store", labelKey: "transactions.columnStore", align: "left", width: 140 },
   { id: "counterparty", labelKey: "transactions.columnCounterparty", align: "left", width: 140 },
   { id: "tags", labelKey: "transactions.columnTags", align: "left", width: 160 },
-  { id: "note", labelKey: "transactions.columnNote", align: "left", width: 200 },
   { id: "currency", labelKey: "transactions.columnCurrency", align: "left", width: 80 },
   { id: "uuid", labelKey: "transactions.columnUuid", align: "left", width: 260 },
 ];
@@ -116,8 +114,6 @@ export function plainCellValue(column: ColumnId, tx: Transaction): string | null
       return tx.store_id ? String(tx.store_id) : null;
     case "counterparty":
       return tx.counterparty_id ? String(tx.counterparty_id) : null;
-    case "note":
-      return tx.notes;
     case "currency":
       return tx.currency;
     case "uuid":

@@ -30,7 +30,10 @@ class ParticipantRead(ParticipantBase):
 
     id: int
     is_archived: bool
-
+    # Сколько операций ссылается на запись. Нужно, чтобы удаление не было
+    # вслепую: две почти одинаковые строки в списке выглядят одинаково,
+    # а стоят за ними триста покупок и ноль.
+    usage: int = 0
 
 class StoreBase(BaseModel):
     name: str = Field(min_length=1, max_length=150)
@@ -54,7 +57,10 @@ class StoreRead(StoreBase):
 
     id: int
     is_archived: bool
-
+    # Сколько операций ссылается на запись. Нужно, чтобы удаление не было
+    # вслепую: две почти одинаковые строки в списке выглядят одинаково,
+    # а стоят за ними триста покупок и ноль.
+    usage: int = 0
 
 class CounterpartyBase(BaseModel):
     name: str = Field(min_length=1, max_length=150)
@@ -76,3 +82,7 @@ class CounterpartyRead(CounterpartyBase):
 
     id: int
     is_archived: bool
+    # Сколько операций ссылается на запись. Нужно, чтобы удаление не было
+    # вслепую: две почти одинаковые строки в списке выглядят одинаково,
+    # а стоят за ними триста покупок и ноль.
+    usage: int = 0

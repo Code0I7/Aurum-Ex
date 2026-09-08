@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import type { Bank, Counterparty, Participant, Store } from "@/types";
+import type { Bank, Counterparty, Participant, Store, Unit, UnitInput } from "@/types";
 
 /**
  * Справочники, на которые ссылается транзакция.
@@ -113,5 +113,53 @@ export function useUpdateCounterparty() {
     mutationFn: ({ id, input }: { id: number; input: Partial<Counterparty> }) =>
       api.patch<Counterparty>(`/counterparties/${id}`, input),
     onSuccess: () => invalidatePeople(queryClient),
+  });
+}
+
+/** Удаление записи справочника. Ссылки на неё обнуляются базой: операции
+ *  остаются, у них пустеет соответствующее поле. */
+function useDeleteDirectory(path: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<void>(`/${path}/${id}`),
+    onSuccess: () => invalidatePeople(queryClient),
+  });
+}
+
+export const useDeleteParticipant = () => useDeleteDirectory("participants");
+export const useDeleteStore = () => useDeleteDirectory("stores");
+export const useDeleteCounterparty = () => useDeleteDirectory("counterparties");
+
+
+function invalidateUnits(queryClient: ReturnType<typeof useQueryClient>) {
+  // Единица подставлена в позиции чеков и участвует в приведении к базовой
+  // мере, поэтому вместе с ней перечитываются товары и их история цен.
+  for (const key of ["units", "products", "transactions"]) {
+    queryClient.invalidateQueries({ queryKey: [key] });
+  }
+}
+
+export function useCreateUnit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UnitInput) => api.post<Unit>("/units", payload),
+    onSuccess: () => invalidateUnits(queryClient),
+  });
+}
+
+export function useUpdateUnit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: Partial<UnitInput> }) =>
+      api.patch<Unit>(`/units/${id}`, input),
+    onSuccess: () => invalidateUnits(queryClient),
+  });
+}
+
+export function useDeleteUnit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<void>(`/units/${id}`),
+    onSuccess: () => invalidateUnits(queryClient),
   });
 }

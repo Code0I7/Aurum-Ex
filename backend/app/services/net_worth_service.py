@@ -383,6 +383,23 @@ async def get_net_worth_summary(
 
     total = cash_today + sum(class_totals.values(), Decimal("0"))
 
+    # Быстрые деньги — это денежный итог: он уже считается по счетам,
+    # природа которых учтена (карта с долгом уменьшает его). Вложения и
+    # крипта сюда не входят: продать их можно, но не завтра и не по
+    # известной цене.
+    liquid = cash_today
+
+    # Имущество личного пользования. Отдельным запросом по текущим оценкам:
+    # class_totals разложены по классам, а личное пользование — другая ось,
+    # и недвижимость бывает как жилой, так и сдаваемой.
+    personal_rows = (
+        await session.execute(select(Asset.id).where(Asset.is_personal_use.is_(True)))
+    ).scalars().all()
+    personal_use = sum(
+        (current_by_asset.get(asset_id, Decimal("0")) for asset_id in personal_rows),
+        Decimal("0"),
+    )
+
     def _percent(amount: Decimal) -> float:
         return float(amount / total * 100) if total else 0.0
 
@@ -408,6 +425,8 @@ async def get_net_worth_summary(
     return NetWorthSummary(
         range=range_key,
         current=current,
+        liquid=liquid,
+        personal_use=personal_use,
         change_amount=change_amount,
         change_percent=change_percent,
         series=series,

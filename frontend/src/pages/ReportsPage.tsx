@@ -99,7 +99,7 @@ export function ReportsPage() {
 
   async function handleDelete(transaction: Transaction) {
     const ok = await confirm({
-      message: t("transactions.confirmDelete", { description: transaction.description }),
+      message: t("transactions.confirmDelete", { description: transaction.description ?? "—" }),
       confirmLabel: t("common.delete"),
       tone: "danger",
     });

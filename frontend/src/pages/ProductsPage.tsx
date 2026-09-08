@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { ProductList } from "@/components/products/ProductList";
 import { ProductFormModal } from "@/components/products/ProductFormModal";
 import { PriceHistoryModal } from "@/components/products/PriceHistoryModal";
-import { useDeleteProduct, useProducts } from "@/hooks/useProducts";
+import { useDeleteProduct,
+  useUpdateProduct, useProducts } from "@/hooks/useProducts";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import type { Product } from "@/types";
@@ -22,6 +23,7 @@ export function ProductsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data: products, isLoading } = useProducts(showArchived);
   const deleteProduct = useDeleteProduct();
+  const updateProduct = useUpdateProduct();
   const confirm = useConfirm();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -44,6 +46,21 @@ export function ProductsPage() {
 
   return (
     <div className="space-y-5">
+      {/* Переключатель стоит над карточкой, а не внутри неё: он относится
+          ко всему списку, а не к какой-то его части, и в справочниках
+          «Люди и места» он стоит там же. */}
+      <div className="flex justify-end">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+            className="h-3.5 w-3.5 accent-text-primary"
+          />
+          {t("product.showArchived")}
+        </label>
+      </div>
+
       <Card>
         <CardHeader className="items-start">
           <div>
@@ -56,16 +73,6 @@ export function ProductsPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          <label className="mb-3 flex items-center gap-2 text-xs text-text-muted">
-            <input
-              type="checkbox"
-              checked={showArchived}
-              onChange={(event) => setShowArchived(event.target.checked)}
-              className="h-3.5 w-3.5 accent-text-primary"
-            />
-            {t("product.showArchived")}
-          </label>
-
           {isLoading ? (
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
@@ -77,6 +84,12 @@ export function ProductsPage() {
               }}
               onPrices={setPricesFor}
               onDelete={handleDelete}
+              onArchive={(product) =>
+                updateProduct.mutate({
+                  id: product.id,
+                  input: { is_archived: !product.is_archived },
+                })
+              }
             />
           )}
         </CardContent>

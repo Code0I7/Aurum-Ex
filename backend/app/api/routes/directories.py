@@ -12,16 +12,22 @@
 на чём сгорела исходная таблица, где 43 подкатегории из 166 не
 использовались ни разу.
 
-Удаления нет — только архивирование. Удалить магазин, на который ссылаются
-сто покупок, значит потерять смысл этих ста строк; заархивированный
-перестаёт предлагаться в новых операциях, но старые продолжают его
-показывать.
+Есть и архивирование, и удаление, и это разные действия. Архив убирает
+запись из выпадающих списков, оставляя её в прошлых операциях, — так
+поступают с магазином, куда перестали ходить. Удаление стирает запись
+совсем, а ссылки на неё обнуляются: операции остаются, поле у них пустеет.
+Так поступают с записью, заведённой по ошибке.
+
+Чтобы выбор был осознанным, каждая запись отдаёт `usage` — сколько
+операций на неё ссылается. Без этого числа удаление вслепую: «Магазин у дома»
+и «Магазин у дома ` (опечатка) в списке выглядят одинаково, а стоят за ними
+триста покупок и ноль.
 """
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
@@ -30,6 +36,7 @@ from app.models.counterparty import Counterparty
 from app.models.enums import UnitKind
 from app.models.participant import Participant
 from app.models.store import Store
+from app.models.transaction import Transaction
 from app.models.unit import Unit
 from app.schemas.account import BankCreate, BankRead, BankUpdate
 from app.schemas.directories import (
@@ -71,6 +78,39 @@ async def _update(session: AsyncSession, model, item_id: int, payload):
     return item
 
 
+async def _delete(session: AsyncSession, model, item_id: int) -> None:
+    """Удаляет запись. Ссылки на неё обнуляются самой базой (SET NULL на
+    внешнем ключе), поэтому операции остаются на месте — у них лишь
+    пустеет соответствующее поле."""
+    item = await _get_or_404(session, model, item_id)
+    await session.delete(item)
+    await session.commit()
+
+
+async def _usage_counts(session: AsyncSession, column) -> dict[int, int]:
+    """Сколько операций ссылается на каждую запись справочника.
+
+    Одним запросом на весь список: пятьдесят магазинов — это пятьдесят
+    лишних обращений к базе ради числа в скобках.
+    """
+    rows = (
+        await session.execute(
+            select(column, func.count()).where(column.is_not(None)).group_by(column)
+        )
+    ).all()
+    return {item_id: count for item_id, count in rows}
+
+
+def _with_usage(items, usage: dict[int, int], schema):
+    # model_validate, а не распаковка __dict__: у объекта модели там лежит
+    # ещё и служебное состояние SQLAlchemy, на котором конструктор схемы
+    # спотыкается.
+    return [
+        schema.model_validate(item).model_copy(update={"usage": usage.get(item.id, 0)})
+        for item in items
+    ]
+
+
 # --- Банки ---
 
 
@@ -100,7 +140,8 @@ async def list_participants(
     stmt = select(Participant).order_by(Participant.kind, Participant.name)
     if not include_archived:
         stmt = stmt.where(Participant.is_archived.is_(False))
-    return list((await session.execute(stmt)).scalars().all())
+    items = list((await session.execute(stmt)).scalars().all())
+    return _with_usage(items, await _usage_counts(session, Transaction.participant_id), ParticipantRead)
 
 
 @router.post("/participants", response_model=ParticipantRead, status_code=201)
@@ -117,6 +158,11 @@ async def update_participant(
     return await _update(session, Participant, participant_id, payload)
 
 
+@router.delete("/participants/{participant_id}", status_code=204)
+async def delete_participant(participant_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    await _delete(session, Participant, participant_id)
+
+
 # --- Магазины ---
 
 
@@ -125,7 +171,8 @@ async def list_stores(include_archived: bool = False, session: AsyncSession = De
     stmt = select(Store).order_by(Store.name)
     if not include_archived:
         stmt = stmt.where(Store.is_archived.is_(False))
-    return list((await session.execute(stmt)).scalars().all())
+    items = list((await session.execute(stmt)).scalars().all())
+    return _with_usage(items, await _usage_counts(session, Transaction.store_id), StoreRead)
 
 
 @router.post("/stores", response_model=StoreRead, status_code=201)
@@ -138,6 +185,11 @@ async def update_store(store_id: int, payload: StoreUpdate, session: AsyncSessio
     return await _update(session, Store, store_id, payload)
 
 
+@router.delete("/stores/{store_id}", status_code=204)
+async def delete_store(store_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    await _delete(session, Store, store_id)
+
+
 # --- Контрагенты ---
 
 
@@ -148,7 +200,8 @@ async def list_counterparties(
     stmt = select(Counterparty).order_by(Counterparty.name)
     if not include_archived:
         stmt = stmt.where(Counterparty.is_archived.is_(False))
-    return list((await session.execute(stmt)).scalars().all())
+    items = list((await session.execute(stmt)).scalars().all())
+    return _with_usage(items, await _usage_counts(session, Transaction.counterparty_id), CounterpartyRead)
 
 
 @router.post("/counterparties", response_model=CounterpartyRead, status_code=201)
@@ -163,6 +216,11 @@ async def update_counterparty(
     counterparty_id: int, payload: CounterpartyUpdate, session: AsyncSession = Depends(get_session)
 ) -> Counterparty:
     return await _update(session, Counterparty, counterparty_id, payload)
+
+
+@router.delete("/counterparties/{counterparty_id}", status_code=204)
+async def delete_counterparty(counterparty_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    await _delete(session, Counterparty, counterparty_id)
 
 
 # --- Единицы измерения ---
@@ -186,10 +244,55 @@ class UnitRead(BaseModel):
     sort_order: int
 
 
+class UnitCreate(BaseModel):
+    """Своя единица измерения.
+
+    Коэффициент придумать нельзя — его надо знать: «банка» сама по себе не
+    сравнима ни с чем, а «банка = 400 г» встаёт в один ряд с килограммами
+    и пачками. Поэтому он обязателен и должен быть больше нуля: ноль
+    превратил бы цену за базовую единицу в деление на ноль.
+    """
+
+    name: str = Field(min_length=1, max_length=20)
+    kind: UnitKind
+    factor: Decimal = Field(gt=0, max_digits=18, decimal_places=6)
+    sort_order: int = 0
+
+
+class UnitUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=20)
+    kind: UnitKind | None = None
+    factor: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=6)
+    sort_order: int | None = None
+
+
 @router.get("/units", response_model=list[UnitRead])
 async def list_units(session: AsyncSession = Depends(get_session)) -> list[Unit]:
-    """Единицы измерения. Только чтение: набор засевается при установке, и
-    добавлять свои пока незачем — коэффициент к базовой мере придумать
-    нельзя, его надо знать."""
+    """Единицы измерения с коэффициентом к базовой мере своего вида."""
     stmt = select(Unit).order_by(Unit.kind, Unit.sort_order, Unit.name)
     return list((await session.execute(stmt)).scalars().all())
+
+
+@router.post("/units", response_model=UnitRead, status_code=201)
+async def create_unit(payload: UnitCreate, session: AsyncSession = Depends(get_session)) -> Unit:
+    """Своя единица. Базовой она стать не может: базовая у каждого вида
+    ровно одна, и вторая сделала бы приведение неоднозначным."""
+    return await _create(session, Unit, payload)
+
+
+@router.patch("/units/{unit_id}", response_model=UnitRead)
+async def update_unit(unit_id: int, payload: UnitUpdate, session: AsyncSession = Depends(get_session)) -> Unit:
+    return await _update(session, Unit, unit_id, payload)
+
+
+@router.delete("/units/{unit_id}", status_code=204)
+async def delete_unit(unit_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    """Базовую единицу удалить нельзя: без неё не к чему приводить
+    остальные единицы того же вида, и вся история цен по ним рассыпается."""
+    unit = await _get_or_404(session, Unit, unit_id)
+    if unit.is_base:
+        raise HTTPException(
+            status_code=400,
+            detail="Базовая единица удаляется только вместе со своим видом измерения.",
+        )
+    await _delete(session, Unit, unit_id)

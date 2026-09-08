@@ -245,13 +245,14 @@ async def list_transactions(
         count_stmt = count_stmt.where(Transaction.is_excluded.is_(False))
     if search is not None:
         # Lets the user find a transaction from any period by keyword (e.g. an
-        # item bought months ago) without knowing which month to look in first —
-        # matches description, merchant, and notes so any of those fields can surface it.
+        # item bought months ago) without knowing which month to look in first.
+        # Ищет по описанию и по продавцу. Поля «заметка» больше нет: оно
+        # описывало ровно то же, что описание, вторым способом, и не было
+        # заполнено ни в одной операции.
         pattern = f"%{search.strip()}%"
         search_clause = or_(
             Transaction.description.ilike(pattern),
             Transaction.merchant.ilike(pattern),
-            Transaction.notes.ilike(pattern),
         )
         stmt = stmt.where(search_clause)
         count_stmt = count_stmt.where(search_clause)

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import { useReservations } from "@/hooks/useGoals";
+import { useNetWorthSummary } from "@/hooks/useNetWorth";
 import type { AccountReservation, DashboardAccountBalance } from "@/types";
 
 /**
@@ -14,6 +15,11 @@ import type { AccountReservation, DashboardAccountBalance } from "@/types";
 export function AccountBalancesCard({ accounts }: { accounts: DashboardAccountBalance[] }) {
   const { t } = useTranslation();
   const { data: reservations } = useReservations();
+  // Быстрые деньги показываются здесь, а не только на вкладке капитала:
+  // обзор открывают первым, и вопрос «сколько я могу потратить» задают
+  // раньше, чем «сколько я стою». Период короткий — само число от него
+  // не зависит, берётся текущее состояние.
+  const { data: netWorth } = useNetWorthSummary("30d");
 
   if (accounts.length === 0) return null;
 
@@ -35,7 +41,15 @@ export function AccountBalancesCard({ accounts }: { accounts: DashboardAccountBa
           <CardTitle>{t("dashboard.accountsTitle")}</CardTitle>
           <p className="mt-1 text-xs text-text-muted">{t("dashboard.accountsHint")}</p>
         </div>
-        <span className="shrink-0 text-lg font-semibold tabular-nums">{formatCurrency(total)}</span>
+        <span className="shrink-0 text-right">
+          <span className="block text-lg font-semibold tabular-nums">{formatCurrency(total)}</span>
+          {netWorth && (
+            <span className="block text-xs text-text-muted">
+              {t("netWorth.liquid")}:{" "}
+              <span className="tabular-nums">{formatCurrency(netWorth.liquid)}</span>
+            </span>
+          )}
+        </span>
       </CardHeader>
       <CardContent>
         <ul className="divide-y divide-gridline">

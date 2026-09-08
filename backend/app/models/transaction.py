@@ -89,7 +89,6 @@ class Transaction(Base, TimestampMixin):
     # совместимости с CSV-импортом банков, где магазин приходит строкой и
     # ещё не сопоставлен со справочником; смысловая связь живёт в store_id.
     merchant: Mapped[str | None] = mapped_column(String(150), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     date: Mapped[date_] = mapped_column(Date, nullable=False)
     # Порядок внутри дня. Заполняется автоматически по времени создания и
     # правится перетаскиванием строки; между днями строка не переносится.

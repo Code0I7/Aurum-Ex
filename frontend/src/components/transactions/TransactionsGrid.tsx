@@ -220,8 +220,6 @@ export function TransactionsGrid({
 
       case "tags":
         return tx.tags.length ? tx.tags.map((tag) => tag.name).join(", ") : "—";
-      case "note":
-        return tx.notes ?? "—";
       case "currency":
         return tx.currency;
       case "uuid":
@@ -401,6 +399,11 @@ export function TransactionsGrid({
                       {/* Ручка перетаскивания. touch-action: none — иначе
                           палец, ведущий строку вверх, вместо этого
                           прокручивает страницу. */}
+                      {/* Ручка появляется, только когда есть что переставлять.
+                          Единственная операция дня никуда не двигается, и
+                          ручка над ней — обещание, которого приложение не
+                          выполняет: нажал, потянул, ничего не произошло. */}
+                      {(siblingsByRow.get(tx.id)?.siblings.length ?? 0) > 1 && (
                       <button
                         type="button"
                         aria-label={t("transactions.dragHandle")}
@@ -421,6 +424,7 @@ export function TransactionsGrid({
                       >
                         <GripVertical size={13} />
                       </button>
+                      )}
                       {renderCell(column.id, tx)}
                     </span>
                   ) : (

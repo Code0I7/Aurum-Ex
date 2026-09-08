@@ -127,6 +127,9 @@ export interface TransactionSplitInput {
 }
 
 export interface Participant {
+  // Сколько операций ссылается на запись: удаление не должно быть
+  // вслепую.
+  usage: number;
   id: number;
   name: string;
   kind: ParticipantKind;
@@ -135,6 +138,9 @@ export interface Participant {
 }
 
 export interface Store {
+  // Сколько операций ссылается на запись: удаление не должно быть
+  // вслепую.
+  usage: number;
   id: number;
   name: string;
   location: string | null;
@@ -143,6 +149,9 @@ export interface Store {
 }
 
 export interface Counterparty {
+  // Сколько операций ссылается на запись: удаление не должно быть
+  // вслепую.
+  usage: number;
   id: number;
   name: string;
   notes: string | null;
@@ -161,9 +170,9 @@ export interface Transaction {
   // Курс заморожен в записи: пересчёт по сегодняшнему курсу переписывал бы
   // прошлое.
   currency: string;
-  description: string;
+  // Необязательно: у большинства покупок сказать сверх категории нечего.
+  description: string | null;
   merchant: string | null;
-  notes: string | null;
   date: string;
   // Порядок внутри дня. Без него операции одного дня раскладываются
   // произвольно и баланс проваливается там, где этого не было.
@@ -199,9 +208,8 @@ export interface TransactionInput {
   transfer_account_id: number | null;
   type: TransactionType;
   amount: string;
-  description: string;
+  description?: string | null;
   merchant?: string | null;
-  notes?: string | null;
   date: string;
   // Omitted -> tags untouched on update; sent (even as []) -> replaces the
   // full tag set. Always sent on create (defaults to []).
@@ -341,6 +349,9 @@ export type CapitalRole = "income" | "neutral" | "drain";
 export type RiskLevel = "low" | "medium" | "high";
 
 export interface Asset {
+  // Квартира, в которой живут, и машина, на которой ездят: часть
+  // капитала, но не та, на которую можно опереться в решении.
+  is_personal_use: boolean;
   id: number;
   name: string;
   asset_class: AssetClass;
@@ -354,6 +365,7 @@ export interface Asset {
 }
 
 export interface AssetInput {
+  is_personal_use?: boolean;
   name: string;
   asset_class: AssetClass;
   currency?: string;
@@ -366,6 +378,7 @@ export interface AssetInput {
 }
 
 export interface AssetUpdateInput {
+  is_personal_use?: boolean;
   name?: string;
   asset_class?: AssetClass;
   notes?: string | null;
@@ -419,6 +432,10 @@ export interface RiskLevelSummary {
 }
 
 export interface NetWorthSummary {
+  // Быстрые деньги: счета и наличные минус долг по картам.
+  liquid: string;
+  // Имущество личного пользования — входит в current, но отдельной строкой.
+  personal_use: string;
   range: NetWorthRange;
   current: string;
   change_amount: string;
@@ -920,6 +937,14 @@ export interface WorkPeriodInput {
 // Единица измерения с коэффициентом к базовой. Коэффициент нужен на клиенте:
 // цена за базовую единицу показывается прямо в поле ввода.
 export type UnitKind = "weight" | "volume" | "count" | "length" | "service";
+
+export interface UnitInput {
+  name: string;
+  kind: UnitKind;
+  // Сколько базовых единиц своего вида: кг → 1000 г.
+  factor: string;
+  sort_order?: number;
+}
 
 export interface Unit {
   id: number;

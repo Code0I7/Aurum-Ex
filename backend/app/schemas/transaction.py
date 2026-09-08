@@ -86,9 +86,13 @@ class TransactionFields(BaseModel):
     transfer_account_id: int | None = None
     type: TransactionType
     amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
-    description: str = Field(min_length=1, max_length=255)
+    # Необязательно. В исходной таблице это была вторая строка записи, а
+    # не заметка к ней: у большинства покупок сказать сверх категории
+    # нечего, и требовать текст значит заставлять его придумывать —
+    # «Продукты», «Покупка», «Расход». Такие описания хуже пустых: они
+    # выглядят содержательными и не содержат ничего.
+    description: str | None = Field(default=None, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
-    notes: str | None = None
     date: date_
 
     # Валюта операции. None означает "не указана" — тогда берётся валюта
@@ -115,7 +119,12 @@ class TransactionFields(BaseModel):
     # casing from quick manual entry doesn't need fixing by hand later.
     @field_validator("description")
     @classmethod
-    def _capitalize_description(cls, value: str) -> str:
+    def _capitalize_description(cls, value: str | None) -> str | None:
+        # Пустая строка приходит из формы, где поле просто не заполнили, и
+        # хранить её отдельно от «не задано» незачем: в списке они
+        # выглядят одинаково, а в проверках расходятся.
+        if value is None or not value.strip():
+            return None
         return capitalize_first_letter(value)
 
 
@@ -177,9 +186,8 @@ class TransactionUpdate(BaseModel):
     transfer_account_id: int | None = None
     type: TransactionType | None = None
     amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
-    description: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=255)
     merchant: str | None = Field(default=None, max_length=150)
-    notes: str | None = None
     date: date_ | None = None
     # Пропущена -> валюта не меняется; передана -> курс и сумма в базовой
     # валюте пересчитываются (см. routes/transactions.py, _apply_currency).
@@ -238,7 +246,7 @@ class TransactionRead(TransactionFields):
     model_config = ConfigDict(from_attributes=True)
 
     amount: Decimal
-    description: str
+    description: str | None
 
     id: int
     # Публичный идентификатор записи. В таблице колонка скрыта по

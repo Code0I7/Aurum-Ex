@@ -120,6 +120,27 @@ export function NetWorthChart({
           >
             {isLoading ? "…" : formatCurrency(summary?.current ?? 0)}
           </p>
+          {/* Быстрые деньги и личное имущество — отдельными строками.
+              Одно число на всё удобно ровно до первого решения, которое на
+              него опирают: шесть миллионов, из которых 5,8 — квартира, не
+              отвечают ни на «могу ли я это купить», ни на «хватит ли до
+              зарплаты». */}
+          {summary && (
+            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-muted">
+              <span>
+                {t("netWorth.liquid")}:{" "}
+                <span className="tabular-nums text-text-secondary">{formatCurrency(summary.liquid)}</span>
+              </span>
+              {Number(summary.personal_use) > 0 && (
+                <span>
+                  {t("netWorth.personalUseShort")}:{" "}
+                  <span className="tabular-nums text-text-secondary">
+                    {formatCurrency(summary.personal_use)}
+                  </span>
+                </span>
+              )}
+            </p>
+          )}
           {asOfPast && lastDate && (
             <p className="mt-0.5 text-xs text-text-muted">
               {t("netWorth.asOf", { date: formatAxisDate(lastDate) })}

@@ -1,4 +1,4 @@
-import { LineChart, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, LineChart, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import type { Product } from "@/types";
@@ -8,9 +8,11 @@ interface ProductListProps {
   onEdit: (product: Product) => void;
   onPrices: (product: Product) => void;
   onDelete: (product: Product) => void;
+  /** Убрать из подсказок при вводе, не теряя историю цен. */
+  onArchive: (product: Product) => void;
 }
 
-export function ProductList({ items, onEdit, onPrices, onDelete }: ProductListProps) {
+export function ProductList({ items, onEdit, onPrices, onDelete, onArchive }: ProductListProps) {
   const { t } = useTranslation();
 
   if (items.length === 0) {
@@ -64,6 +66,18 @@ export function ProductList({ items, onEdit, onPrices, onDelete }: ProductListPr
               className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
             >
               <Pencil size={15} />
+            </button>
+            {/* Архив, а не удаление: у товара есть история цен, привязанная
+                к позициям чеков. Убрать его из подсказок при вводе почти
+                всегда и есть то, чего человек хочет. */}
+            <button
+              type="button"
+              aria-label={product.is_archived ? t("product.restore") : t("product.archive")}
+              title={product.is_archived ? t("product.restore") : t("product.archive")}
+              onClick={() => onArchive(product)}
+              className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+            >
+              {product.is_archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
             </button>
             <button
               type="button"

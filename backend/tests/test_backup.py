@@ -53,7 +53,6 @@ async def test_backup_import_rejects_transaction_with_unknown_tag_id(client: Asy
             "amount": t["amount"],
             "description": t["description"],
             "merchant": t["merchant"],
-            "notes": t["notes"],
             "date": t["date"],
             "tag_ids": [999999] if t["id"] == created.json()["id"] else [],
         }

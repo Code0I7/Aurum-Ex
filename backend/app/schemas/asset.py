@@ -29,6 +29,10 @@ class AssetBase(BaseModel):
     # transactions (see Asset.monthly_cash_flow).
     monthly_cash_flow: Decimal | None = Field(default=None, max_digits=14, decimal_places=2)
     risk_level: RiskLevel = RiskLevel.MEDIUM
+    # Квартира, в которой живут, и машина, на которой ездят. По умолчанию
+    # не входят в главную цифру капитала: шесть миллионов, из которых 5,8
+    # — жильё, которое не продадут, — число, на которое нельзя опереться.
+    is_personal_use: bool = False
 
 
 class AssetCreate(AssetBase):
@@ -44,6 +48,7 @@ class AssetUpdate(BaseModel):
     capital_role: CapitalRole | None = None
     monthly_cash_flow: Decimal | None = Field(default=None, max_digits=14, decimal_places=2)
     risk_level: RiskLevel | None = None
+    is_personal_use: bool | None = None
 
 
 class AssetRead(AssetBase):

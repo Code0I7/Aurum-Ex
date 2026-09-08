@@ -32,11 +32,17 @@ export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange
         const target = Number(goal.target_amount);
         const remaining = Number(goal.remaining);
         const isClosed = goal.status !== "active";
+        // У завершённой цели считается ВНЕСЁННОЕ, а не остаток. Остаток
+        // там ноль: накопленное потрачено, и перенос старой таблицы
+        // записывал эту трату возвратом. Полоса из-за этого показывала
+        // «0 из 1790» и пустой прогресс у цели, на которую копили полгода.
+        const shown = isClosed ? Number(goal.deposited) : current;
+        const percent = target ? (shown / target) * 100 : 0;
         // Полоса делится на «до цели» и «сверх». Рисовать 140% одной
         // заливкой нельзя — она упрётся в край и будет неотличима от ровно
         // достигнутой; отдельный кусок показывает, что накоплено больше.
-        const fillPercent = Math.min(100, goal.percent);
-        const overPercent = goal.percent > 100 ? Math.min(60, goal.percent - 100) : 0;
+        const fillPercent = Math.min(100, percent);
+        const overPercent = percent > 100 ? Math.min(60, percent - 100) : 0;
 
         return (
           <li key={goal.id} className="py-3">
@@ -55,7 +61,7 @@ export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange
                 )}
               </span>
               <span className="shrink-0 text-sm tabular-nums text-text-primary">
-                {formatCurrency(current)} <span className="text-text-muted">/ {formatCurrency(target)}</span>
+                {formatCurrency(shown)} <span className="text-text-muted">/ {formatCurrency(target)}</span>
               </span>
               <span className="flex shrink-0 gap-1">
                 {isClosed ? (
@@ -131,13 +137,13 @@ export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange
                     className="block h-full bg-accent"
                     style={{ width: `${overPercent}%` }}
                     title={t("goal.overTarget", {
-                      amount: formatCurrency(current - target),
+                      amount: formatCurrency(shown - target),
                     })}
                   />
                 )}
               </span>
               <span className="w-10 shrink-0 text-right text-xs tabular-nums text-text-muted">
-                {goal.percent.toFixed(0)}%
+                {percent.toFixed(0)}%
               </span>
             </div>
             <p
@@ -150,7 +156,7 @@ export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange
                     // У завершённой цели показывается внесённое, а не
                     // остаток: остаток там ноль, потому что накопленное
                     // потрачено, и «накоплено 0 ₽» — не ответ.
-                    amount: formatCurrency(goal.deposited),
+                    amount: formatCurrency(shown),
                   })
                 : goal.is_reached
                 ? t("goal.reached")

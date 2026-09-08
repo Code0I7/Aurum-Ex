@@ -56,7 +56,6 @@ const EMPTY_FORM = {
   amount: "",
   description: "",
   merchant: "",
-  notes: "",
   date: todayIso(),
   // Кто, где и с кем. Все три необязательны: быстрый ввод не должен требовать
   // заполнять справочники, а поля, которые никто не заполняет, — это те же
@@ -136,9 +135,8 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             : "",
         transfer_account_id: transaction.transfer_account_id ? String(transaction.transfer_account_id) : "",
         amount: transaction.amount,
-        description: transaction.description,
+        description: transaction.description ?? "",
         merchant: transaction.merchant ?? "",
-        notes: transaction.notes ?? "",
         date: transaction.date,
         participant_id: transaction.participant_id ? String(transaction.participant_id) : "",
         store_id: transaction.store_id ? String(transaction.store_id) : "",
@@ -315,7 +313,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       amount: form.amount,
       description: form.description,
       merchant: form.merchant || null,
-      notes: form.notes || null,
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
       participant_id: form.participant_id ? Number(form.participant_id) : null,
@@ -364,7 +361,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         date: payload.date,
         type: payload.type,
         amount: payload.amount,
-        description: payload.description,
+        description: payload.description ?? "",
         category_id: payload.category_id,
       });
     } catch {
@@ -666,15 +663,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             id="merchant"
             value={form.merchant}
             onChange={(event) => setForm((prev) => ({ ...prev, merchant: event.target.value }))}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="notes">{t("transactions.form.notesLabel")}</Label>
-          <Input
-            id="notes"
-            value={form.notes}
-            onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
           />
         </div>
 

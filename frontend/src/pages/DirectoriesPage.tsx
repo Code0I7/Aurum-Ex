@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, ArchiveRestore, Check, Pencil, Plus, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -9,18 +9,25 @@ import {
   useCreateCounterparty,
   useCreateParticipant,
   useCreateStore,
+  useDeleteCounterparty,
+  useDeleteParticipant,
+  useDeleteStore,
   useParticipants,
   useStores,
   useUpdateCounterparty,
   useUpdateParticipant,
   useUpdateStore,
 } from "@/hooks/useDirectories";
+import { UnitsCard } from "@/components/directories/UnitsCard";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 interface Entry {
   id: number;
   name: string;
   is_archived: boolean;
+  /** Сколько операций ссылается на запись. */
+  usage: number;
 }
 
 /**
@@ -32,11 +39,15 @@ interface Entry {
  * месте исправляет её везде разом; без этой страницы такой правки не
  * существовало вовсе.
  *
- * Удаления нет намеренно, только архив. Запись, на которую ссылаются
- * операции, нельзя убрать, не переписав историю: удалив «Ольгу», мы
- * получим полсотни операций, про которые больше нельзя сказать, на кого
- * они пришлись. Архив убирает имя из выпадающих списков и оставляет его в
- * прошлом.
+ * Архив и удаление — разные действия, и оба нужны. Архив убирает запись
+ * из выпадающих списков, оставляя её в прошлых операциях: так поступают с
+ * магазином, куда перестали ходить. Удаление стирает запись совсем, а
+ * ссылки на неё обнуляются — операции остаются, поле у них пустеет; так
+ * поступают с записью, заведённой по ошибке.
+ *
+ * Рядом с именем стоит число операций, которые на него ссылаются. Без
+ * него удаление вслепую: «Магазин у дома» и «Магазин у дома ` с опечаткой выглядят
+ * в списке одинаково, а стоят за ними триста покупок и ноль.
  */
 export function DirectoriesPage() {
   const { t } = useTranslation();
@@ -52,6 +63,9 @@ export function DirectoriesPage() {
   const updateParticipant = useUpdateParticipant();
   const updateCounterparty = useUpdateCounterparty();
   const updateStore = useUpdateStore();
+  const deleteParticipant = useDeleteParticipant();
+  const deleteCounterparty = useDeleteCounterparty();
+  const deleteStore = useDeleteStore();
 
   return (
     <div className="space-y-5">
@@ -77,6 +91,7 @@ export function DirectoriesPage() {
         onArchive={async (id, archived) =>
           void (await updateParticipant.mutateAsync({ id, input: { is_archived: archived } }))
         }
+        onDelete={async (id) => void (await deleteParticipant.mutateAsync(id))}
       />
 
       <DirectorySection
@@ -89,6 +104,7 @@ export function DirectoriesPage() {
         onArchive={async (id, archived) =>
           void (await updateCounterparty.mutateAsync({ id, input: { is_archived: archived } }))
         }
+        onDelete={async (id) => void (await deleteCounterparty.mutateAsync(id))}
       />
 
       <DirectorySection
@@ -101,7 +117,10 @@ export function DirectoriesPage() {
         onArchive={async (id, archived) =>
           void (await updateStore.mutateAsync({ id, input: { is_archived: archived } }))
         }
+        onDelete={async (id) => void (await deleteStore.mutateAsync(id))}
       />
+
+      <UnitsCard />
     </div>
   );
 }
@@ -114,6 +133,7 @@ interface DirectorySectionProps {
   onCreate: (name: string) => Promise<void>;
   onRename: (id: number, name: string) => Promise<void>;
   onArchive: (id: number, archived: boolean) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
 }
 
 /** Три справочника устроены одинаково — одна карточка на все три, а не
@@ -126,8 +146,10 @@ function DirectorySection({
   onCreate,
   onRename,
   onArchive,
+  onDelete,
 }: DirectorySectionProps) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
@@ -241,6 +263,11 @@ function DirectorySection({
                       }`}
                     >
                       {entry.name}
+                      {entry.usage > 0 && (
+                        <span className="ml-2 text-xs text-text-muted">
+                          {t("directories.usage", { count: entry.usage })}
+                        </span>
+                      )}
                     </span>
                     <button
                       type="button"
@@ -262,6 +289,32 @@ function DirectorySection({
                       className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
                     >
                       {entry.is_archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        // Число операций показывается до удаления, а не
+                        // после: «Магазин у дома» и «Магазин у дома ` с опечаткой в
+                        // списке выглядят одинаково, а стоят за ними
+                        // триста покупок и ноль.
+                        const ok = await confirm({
+                          message:
+                            entry.usage > 0
+                              ? t("directories.confirmDeleteUsed", {
+                                  name: entry.name,
+                                  count: entry.usage,
+                                })
+                              : t("directories.confirmDelete", { name: entry.name }),
+                          confirmLabel: t("common.delete"),
+                          tone: "danger",
+                        });
+                        if (ok) await onDelete(entry.id);
+                      }}
+                      aria-label={t("common.delete")}
+                      title={t("common.delete")}
+                      className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                    >
+                      <Trash2 size={15} />
                     </button>
                   </>
                 )}
