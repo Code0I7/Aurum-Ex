@@ -678,3 +678,33 @@ async def test_empty_archived_portfolio_can_be_deleted(client: AsyncClient):
 
     assert resp.status_code == 204
     assert (await client.get("/crypto/portfolios")).json() == []
+
+
+async def test_positions_are_priced_fifo_not_by_weighted_average(client: AsyncClient, monkeypatch):
+    """Крипта считалась средневзвешенной, а инвестиции — по FIFO, и две
+    соседние вкладки расходились в оценке одинаковых операций. Теперь метод
+    один, общим движком (services/fifo.py).
+
+    Куплено 1 по 500 и 5 по 100, продано 2 по 150. FIFO списывает самые
+    старые (500 + 100 = 600) и оставляет четыре штуки по 100. Средневзвешенная
+    оставила бы их по 166,67 — расхождение в две трети.
+    """
+    monkeypatch.setattr(crypto_service, "_fetch_market_data", _fake_fetch({"bitcoin": _point("100")}))
+    holding = await _add_bitcoin(client, "1", "500")
+    asset_id = holding["asset_id"]
+
+    await client.post(
+        f"/crypto/holdings/{asset_id}/transactions",
+        json={"type": "buy", "quantity": "5", "price_per_unit": "100", "date": "2026-02-01"},
+    )
+    resp = await client.post(
+        f"/crypto/holdings/{asset_id}/transactions",
+        json={"type": "sell", "quantity": "2", "price_per_unit": "150", "date": "2026-03-01"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    position = resp.json()
+    assert Decimal(position["quantity"]) == Decimal("4")
+    # По FIFO осталась вторая партия целиком — по 100 за штуку.
+    assert Decimal(position["avg_buy_price"]) == Decimal("100")
+    assert Decimal(position["cost_basis"]) == Decimal("400")

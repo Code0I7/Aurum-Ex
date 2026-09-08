@@ -1,0 +1,237 @@
+import { useEffect, useRef, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { Input, Label } from "@/components/ui/Input";
+import { suggestProducts } from "@/api/products";
+import { useUnits } from "@/hooks/useProducts";
+import { useTranslation } from "@/lib/i18n";
+import { formatCurrency } from "@/lib/format";
+import type { Product, TransactionItemInput } from "@/types";
+
+interface ItemsEditorProps {
+  items: TransactionItemInput[];
+  onChange: (items: TransactionItemInput[]) => void;
+  /** Сумма операции — чтобы показать нераспределённый остаток. */
+  total: string;
+}
+
+/**
+ * Состав чека.
+ *
+ * Позиции намеренно не обязаны сходиться с суммой операции. Помнить, что
+ * купили хлеб и молоко, не помня цен, — обычное дело, и отказ такое хранить
+ * потерял бы память целиком. Остаток показывается, а не подгоняется: сумма
+ * операции остаётся источником истины.
+ *
+ * Чек без позиций тоже нормален. Редактор свёрнут по умолчанию, чтобы
+ * быстрый ввод оставался одним действием.
+ */
+export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
+  const { t } = useTranslation();
+  const { data: units } = useUnits();
+
+  const allocated = items.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+  const remainder = Number(total || 0) - allocated;
+
+  function update(index: number, patch: Partial<TransactionItemInput>) {
+    const next = items.map((item, position) => (position === index ? { ...item, ...patch } : item));
+    // Сумма позиции считается сама, когда известны цена и количество:
+    // заставлять человека перемножать два числа, которые он только что
+    // ввёл, незачем. Введённую вручную сумму не трогаем.
+    const item = next[index];
+    if (("price" in patch || "quantity" in patch) && item.price && item.quantity) {
+      item.amount = (Number(item.price) * Number(item.quantity)).toFixed(2);
+    }
+    onChange(next);
+  }
+
+  function addRow() {
+    onChange([...items, { name: "", quantity: null, price: null, amount: null }]);
+  }
+
+  function removeRow(index: number) {
+    onChange(items.filter((_, position) => position !== index));
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label>{t("items.title")}</Label>
+        <button
+          type="button"
+          onClick={addRow}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted hover:bg-surface-2 hover:text-text-primary"
+        >
+          <Plus size={14} />
+          {t("items.add")}
+        </button>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-xs text-text-muted">{t("items.emptyHint")}</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((item, index) => (
+            <li key={index} className="rounded-lg border border-border p-2.5">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <ProductNameField
+                    value={item.name}
+                    onChange={(name) => update(index, { name })}
+                    onPick={(product) =>
+                      update(index, {
+                        name: product.name,
+                        product_id: product.id,
+                        // Категория и единица — подсказки из справочника. В
+                        // позиции их можно поменять, справочник от этого не
+                        // меняется.
+                        category_id: product.category_id,
+                        unit_id: product.unit_id,
+                      })
+                    }
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  aria-label={t("common.delete")}
+                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder={t("items.quantity")}
+                  value={item.quantity ?? ""}
+                  onChange={(event) => update(index, { quantity: event.target.value || null })}
+                />
+                <select
+                  value={item.unit_id ?? ""}
+                  onChange={(event) =>
+                    update(index, { unit_id: event.target.value ? Number(event.target.value) : null })
+                  }
+                  className="rounded-md border border-border bg-surface-1 px-2 py-2 text-sm"
+                >
+                  <option value="">{t("items.unit")}</option>
+                  {(units ?? []).map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={t("items.price")}
+                  value={item.price ?? ""}
+                  onChange={(event) => update(index, { price: event.target.value || null })}
+                />
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={t("items.amount")}
+                  value={item.amount ?? ""}
+                  onChange={(event) => update(index, { amount: event.target.value || null })}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Остаток. Показывается только когда позиции есть и они не покрывают
+          сумму целиком — иначе строка была бы шумом на каждом чеке. */}
+      {items.length > 0 && Math.abs(remainder) >= 0.01 && (
+        <p className="text-xs text-text-muted">
+          {remainder > 0
+            ? t("items.remainder", { amount: formatCurrency(remainder) })
+            : t("items.overAllocated", { amount: formatCurrency(Math.abs(remainder)) })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Поле названия с подсказкой из справочника товаров.
+ *
+ * Выбор товара подставляет категорию и единицу — ради этого справочник и
+ * заведён: человек перестаёт выбирать из списка в полторы сотни
+ * подкатегорий, который всё равно не помнит наизусть.
+ */
+function ProductNameField({
+  value,
+  onChange,
+  onPick,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onPick: (product: Product) => void;
+}) {
+  const { t } = useTranslation();
+  const [suggestions, setSuggestions] = useState<Product[]>([]);
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (value.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    // Задержка: подсказка на каждое нажатие клавиши — это запрос на букву,
+    // а список товаров меняется куда медленнее, чем человек печатает.
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      suggestProducts(value)
+        .then(setSuggestions)
+        .catch(() => setSuggestions([]));
+    }, 250);
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <Input
+        placeholder={t("items.namePlaceholder")}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        // Закрытие с задержкой: без неё клик по подсказке не успевает
+        // сработать — blur снимает список раньше.
+        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+      />
+      {open && suggestions.length > 0 && (
+        <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-surface-1 shadow-md">
+          {suggestions.map((product) => (
+            <li key={product.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onPick(product);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2"
+              >
+                <span className="truncate">{product.name}</span>
+                {product.category_name && (
+                  <span className="shrink-0 text-xs text-text-muted">{product.category_name}</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

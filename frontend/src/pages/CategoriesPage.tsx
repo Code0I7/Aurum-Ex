@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { CategoryFormModal } from "@/components/categories/CategoryFormModal";
 import { CategoryList } from "@/components/categories/CategoryList";
-import { useCategories, useDeleteCategory } from "@/hooks/useCategories";
+import { useCategoryTotals, useCategories, useDeleteCategory } from "@/hooks/useCategories";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import { useTranslation } from "@/lib/i18n";
 import type { Category, CategoryKind } from "@/types";
@@ -18,6 +18,13 @@ function byName(language: string) {
 }
 
 export function CategoriesPage() {
+  // Суммы за всё время: список категорий открывают, чтобы разобраться в
+  // накопившемся, а не посмотреть текущий месяц.
+  const { data: totals } = useCategoryTotals();
+  const totalsById = useMemo(
+    () => new Map((totals ?? []).map((row) => [row.category_id, row])),
+    [totals],
+  );
   const { t, language } = useTranslation();
   const { data: categories, isLoading } = useCategories();
   const deleteCategory = useDeleteCategory();
@@ -67,7 +74,12 @@ export function CategoriesPage() {
           {isLoading ? (
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
-            <CategoryList items={incomeCategories} onEdit={openEditModal} onDelete={handleDelete} />
+            <CategoryList
+              items={incomeCategories}
+              totals={totalsById}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+            />
           )}
         </CardContent>
       </Card>
@@ -84,7 +96,12 @@ export function CategoriesPage() {
           {isLoading ? (
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
-            <CategoryList items={expenseCategories} onEdit={openEditModal} onDelete={handleDelete} />
+            <CategoryList
+              items={expenseCategories}
+              totals={totalsById}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+            />
           )}
         </CardContent>
       </Card>

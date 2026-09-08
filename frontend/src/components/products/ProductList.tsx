@@ -1,0 +1,81 @@
+import { LineChart, Pencil, Trash2 } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
+import { formatCurrency, formatTransactionDate } from "@/lib/format";
+import type { Product } from "@/types";
+
+interface ProductListProps {
+  items: Product[];
+  onEdit: (product: Product) => void;
+  onPrices: (product: Product) => void;
+  onDelete: (product: Product) => void;
+}
+
+export function ProductList({ items, onEdit, onPrices, onDelete }: ProductListProps) {
+  const { t } = useTranslation();
+
+  if (items.length === 0) {
+    return <p className="py-10 text-center text-sm text-text-muted">{t("product.empty")}</p>;
+  }
+
+  return (
+    <ul className="divide-y divide-gridline">
+      {items.map((product) => (
+        <li key={product.id} className={`flex items-center gap-3 py-2.5 ${product.is_archived ? "opacity-50" : ""}`}>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-text-primary">{product.name}</span>
+            <span className="block truncate text-xs text-text-muted">
+              {product.category_name ?? t("product.noCategory")}
+              {product.unit_name && ` · ${product.unit_name}`}
+              {/* Сколько раз покупали и когда в последний раз: без этого
+                  список товаров — просто список слов, и непонятно, что живое,
+                  а что заведено однажды по ошибке. */}
+              {product.purchases > 0
+                ? ` · ${t("product.purchases", { count: product.purchases })}`
+                : ` · ${t("product.neverBought")}`}
+              {product.last_bought && ` · ${formatTransactionDate(product.last_bought, true)}`}
+            </span>
+          </span>
+
+          {/* Последняя цена за базовую единицу — то, ради чего справочник и
+              нужен: в списке сразу видно, что почём, без открытия графика. */}
+          {product.last_price_per_base_unit && (
+            <span className="shrink-0 text-right text-xs tabular-nums text-text-muted">
+              {formatCurrency(product.last_price_per_base_unit)}
+            </span>
+          )}
+
+          <span className="flex shrink-0 gap-1">
+            {/* График цены предлагается только когда точек хватает: кнопка,
+                открывающая пустое окно, обещает то, чего нет. */}
+            {product.purchases > 0 && (
+              <button
+                type="button"
+                aria-label={t("product.priceHistory")}
+                onClick={() => onPrices(product)}
+                className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+              >
+                <LineChart size={15} />
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label={t("common.edit")}
+              onClick={() => onEdit(product)}
+              className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label={t("common.delete")}
+              onClick={() => onDelete(product)}
+              className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+            >
+              <Trash2 size={15} />
+            </button>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}

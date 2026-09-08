@@ -20,8 +20,10 @@ from app.api.routes import (
     directories,
     goals,
     insights,
+    investments,
     net_worth,
     plans,
+    products,
     recurring,
     reports,
     settings as settings_routes,
@@ -114,6 +116,8 @@ app.include_router(settings_routes.router, prefix="/api", dependencies=_protecte
 app.include_router(settlements.router, prefix="/api", dependencies=_protected)
 app.include_router(credits.router, prefix="/api", dependencies=_protected)
 app.include_router(plans.router, prefix="/api", dependencies=_protected)
+app.include_router(products.router, prefix="/api", dependencies=_protected)
+app.include_router(investments.router, prefix="/api", dependencies=_protected)
 app.include_router(work_periods.router, prefix="/api", dependencies=_protected)
 app.include_router(budgets.router, prefix="/api", dependencies=_protected)
 app.include_router(advice.router, prefix="/api", dependencies=_protected)

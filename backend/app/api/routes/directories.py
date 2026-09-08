@@ -17,15 +17,20 @@
 перестаёт предлагаться в новых операциях, но старые продолжают его
 показывать.
 """
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.models.account import Bank
 from app.models.counterparty import Counterparty
+from app.models.enums import UnitKind
 from app.models.participant import Participant
 from app.models.store import Store
+from app.models.unit import Unit
 from app.schemas.account import BankCreate, BankRead, BankUpdate
 from app.schemas.directories import (
     CounterpartyCreate,
@@ -158,3 +163,33 @@ async def update_counterparty(
     counterparty_id: int, payload: CounterpartyUpdate, session: AsyncSession = Depends(get_session)
 ) -> Counterparty:
     return await _update(session, Counterparty, counterparty_id, payload)
+
+
+# --- Единицы измерения ---
+
+
+class UnitRead(BaseModel):
+    """Единица с её коэффициентом к базовой.
+
+    Коэффициент отдаётся наружу не для красоты: интерфейс показывает цену за
+    базовую единицу рядом с введённой ценой, и без него пришлось бы ходить
+    на сервер за каждым пересчётом в поле ввода.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    kind: UnitKind
+    factor: Decimal
+    is_base: bool
+    sort_order: int
+
+
+@router.get("/units", response_model=list[UnitRead])
+async def list_units(session: AsyncSession = Depends(get_session)) -> list[Unit]:
+    """Единицы измерения. Только чтение: набор засевается при установке, и
+    добавлять свои пока незачем — коэффициент к базовой мере придумать
+    нельзя, его надо знать."""
+    stmt = select(Unit).order_by(Unit.kind, Unit.sort_order, Unit.name)
+    return list((await session.execute(stmt)).scalars().all())

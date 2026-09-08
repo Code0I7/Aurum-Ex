@@ -1,5 +1,5 @@
 import { api } from "@/api/client";
-import type { Category, CategoryInput, CategoryUpdateInput } from "@/types";
+import type { Category, CategoryInput, CategoryUpdateInput, CategoryTotal } from "@/types";
 
 export function fetchCategories() {
   return api.get<Category[]>("/categories");
@@ -15,4 +15,12 @@ export function updateCategory(id: number, input: CategoryUpdateInput) {
 
 export function deleteCategory(id: number) {
   return api.delete<void>(`/categories/${id}`);
+}
+
+export function fetchCategoryTotals(startDate?: string, endDate?: string) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+  const query = params.toString();
+  return api.get<CategoryTotal[]>(`/categories/totals${query ? `?${query}` : ""}`);
 }

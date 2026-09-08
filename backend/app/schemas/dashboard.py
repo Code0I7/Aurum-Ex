@@ -1,3 +1,4 @@
+from datetime import date as date_
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -28,11 +29,60 @@ class CategoryBreakdownItem(BaseModel):
     children: list[CategoryBreakdownChildItem] = Field(default_factory=list)
 
 
+class AccountBalanceItem(BaseModel):
+    """Остаток на счёте — всегда текущий, а не на конец периода.
+
+    Вопрос «сколько у меня сейчас» не зависит от того, какой период выбран
+    сверху, и подменять ответ остатком на конец марта значило бы врать
+    ровно тому, кто смотрит на дашборд, чтобы понять, сколько у него денег.
+    """
+
+    account_id: int
+    name: str
+    balance: Decimal
+    reserved: Decimal
+    available: Decimal
+    nature: str
+
+
+class LargestTransactionItem(BaseModel):
+    id: int
+    date: date_
+    description: str
+    amount: Decimal
+    category_name: str | None
+    account_name: str
+
+
+class MonthPoint(BaseModel):
+    year: int
+    month: int
+    income: Decimal
+    expense: Decimal
+    net: Decimal
+
+
 class DashboardSummary(BaseModel):
     year: int
     month: int
+    # Границы периода, за который посчитаны суммы. Отдаются наружу, потому
+    # что при выборе «за всё время» интерфейс сам их не знает.
+    start_date: date_ | None = None
+    end_date: date_ | None = None
     real_income: Decimal
     spent: Decimal
     net: Decimal
     transferred_out: Decimal
     spending_by_category: list[CategoryBreakdownItem]
+
+    # Остатки по счетам: «сколько у меня сейчас и где».
+    accounts: list[AccountBalanceItem] = []
+    # Заработок за час работы. None, когда за период не введено ни часа:
+    # делить на ноль нечестнее, чем не показывать.
+    hours_worked: Decimal | None = None
+    earned_per_hour: Decimal | None = None
+    # Самые крупные траты периода — то, что обычно и объясняет, куда ушли
+    # деньги, лучше любой диаграммы.
+    largest_expenses: list[LargestTransactionItem] = []
+    # Помесячная картина внутри периода.
+    monthly: list[MonthPoint] = []

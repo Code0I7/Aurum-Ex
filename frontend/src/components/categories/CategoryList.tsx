@@ -1,19 +1,26 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { translateCategoryName } from "@/lib/categoryLabels";
+import { formatCurrency } from "@/lib/format";
 import { getCategoryIcon } from "@/lib/icons";
 import { useTranslation } from "@/lib/i18n";
-import type { Category } from "@/types";
+import type { Category, CategoryTotal } from "@/types";
 
 interface CategoryListProps {
   items: Category[];
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
+  /** Суммы по категориям за всё время, по идентификатору категории. */
+  totals?: Map<number, CategoryTotal>;
 }
 
 interface RowProps {
   category: Category;
   /** Глубина в дереве: 0 — корень. Задаёт отступ. */
   depth: number;
+  total?: CategoryTotal;
+  /** Есть ли под категорией ветка: у листа own и total совпадают, и второе
+   *  число было бы повтором. */
+  hasChildren: boolean;
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
 }
@@ -22,7 +29,7 @@ interface RowProps {
 // такой отступ съел бы половину ширины на телефоне.
 const INDENT_STEP = 18;
 
-function CategoryRow({ category, depth, onEdit, onDelete }: RowProps) {
+function CategoryRow({ category, depth, total, hasChildren, onEdit, onDelete }: RowProps) {
   const { t } = useTranslation();
   const Icon = getCategoryIcon(category.icon);
 
@@ -42,6 +49,23 @@ function CategoryRow({ category, depth, onEdit, onDelete }: RowProps) {
           </span>
         )}
       </span>
+      {/* Сумма по категории. Ветка показывает два числа — своё и вместе с
+          потомками, — и разница отвечает на вопрос «сколько тут
+          неразобранного»: крупное собственное число у ветки означает, что
+          траты сваливают в корень, не выбирая подкатегорию. */}
+      {total && Number(total.total) > 0 && (
+        <span className="shrink-0 text-right">
+          <span className="block text-sm tabular-nums text-text-secondary">
+            {formatCurrency(total.total)}
+          </span>
+          {hasChildren && Number(total.own) > 0 && (
+            <span className="block text-xs tabular-nums text-text-muted">
+              {t("category.ownAmount", { amount: formatCurrency(total.own) })}
+            </span>
+          )}
+        </span>
+      )}
+
       <span className="flex shrink-0 gap-1">
         <button
           type="button"
@@ -64,7 +88,7 @@ function CategoryRow({ category, depth, onEdit, onDelete }: RowProps) {
   );
 }
 
-export function CategoryList({ items, onEdit, onDelete }: CategoryListProps) {
+export function CategoryList({ items, onEdit, onDelete, totals }: CategoryListProps) {
   const { t } = useTranslation();
 
   if (items.length === 0) {
@@ -102,7 +126,15 @@ export function CategoryList({ items, onEdit, onDelete }: CategoryListProps) {
   return (
     <ul className="divide-y divide-gridline">
       {rows.map(({ category, depth }) => (
-        <CategoryRow key={category.id} category={category} depth={depth} onEdit={onEdit} onDelete={onDelete} />
+        <CategoryRow
+          key={category.id}
+          category={category}
+          depth={depth}
+          total={totals?.get(category.id)}
+          hasChildren={(childrenOf.get(category.id) ?? []).length > 0}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
       ))}
     </ul>
   );

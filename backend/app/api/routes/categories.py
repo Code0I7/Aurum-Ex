@@ -1,12 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException
+from collections import defaultdict
+from datetime import date as date_
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.models.category import Category
-from app.models.enums import CategoryKind
+from app.models.enums import CategoryKind, TransactionType
 from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
+from app.services.category_rollup import monthly_amounts_by_category
 from app.services.category_tree import MAX_DEPTH, load_category_tree
 
 router = APIRouter(prefix="/categories", tags=["categories"])
@@ -123,3 +129,60 @@ async def delete_category(category_id: int, session: AsyncSession = Depends(get_
             )
     await session.delete(category)
     await session.commit()
+
+
+class CategoryTotal(BaseModel):
+    """Сколько прошло через категорию за период.
+
+    Два числа, а не одно. `own` — то, что записано прямо в эту категорию;
+    `total` — она вместе со всей веткой под ней. У листа они совпадают, у
+    ветки различаются, и именно разница отвечает на вопрос «сколько тут
+    неразобранного»: крупный own у категории с подкатегориями означает, что
+    траты сваливают в корень, не выбирая подкатегорию.
+    """
+
+    category_id: int
+    own: Decimal
+    total: Decimal
+    transactions: int
+
+
+@router.get("/totals", response_model=list[CategoryTotal])
+async def read_category_totals(
+    start_date: date_ | None = Query(default=None),
+    end_date: date_ | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> list[CategoryTotal]:
+    """Суммы по каждой категории — чтобы дерево показывало не только имена.
+
+    Без периода считается за всё время: список категорий открывают, чтобы
+    разобраться в накопившемся, а не чтобы посмотреть текущий месяц.
+    """
+    own_amounts: dict[int, Decimal] = defaultdict(Decimal)
+    counts: dict[int, int] = defaultdict(int)
+    for transaction_type in (TransactionType.INCOME, TransactionType.EXPENSE):
+        monthly = await monthly_amounts_by_category(
+            session,
+            transaction_type=transaction_type,
+            start_date=start_date or date_.min,
+            end_date=end_date or date_.max,
+        )
+        for (_year, _month, category_id), amount in monthly.items():
+            own_amounts[category_id] += amount
+            counts[category_id] += 1
+
+    tree = await load_category_tree(session)
+    return [
+        CategoryTotal(
+            category_id=category_id,
+            own=own_amounts.get(category_id, Decimal("0")),
+            # Ветка целиком: план или бюджет ставят на ветку, и «Продукты»
+            # обязаны показывать сыр, лежащий двумя уровнями ниже.
+            total=sum(
+                (own_amounts.get(node, Decimal("0")) for node in tree.subtree_of(category_id)),
+                Decimal("0"),
+            ),
+            transactions=counts.get(category_id, 0),
+        )
+        for category_id in tree.parents
+    ]

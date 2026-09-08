@@ -12,7 +12,7 @@ from app.models.account import Account
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
-from app.models.transaction import Transaction, TransactionSplit
+from app.models.transaction import Transaction, TransactionItem, TransactionSplit
 from app.schemas.transaction import (
     TransactionBulkCreate,
     TransactionBulkCreateResult,
@@ -25,7 +25,11 @@ from app.schemas.transaction import (
     split_rule_violation,
     transfer_rule_violation,
 )
+from app.models.product import Product
+from app.schemas.product import TransactionItemInput
+from app.services.category_tree import load_category_tree
 from app.services.currency_service import get_base_currency, to_base
+from app.services.product_service import resolve_item_category
 from app.services.transaction_service import next_day_order, running_balances
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -35,6 +39,9 @@ _EAGER = (
     selectinload(Transaction.category),
     selectinload(Transaction.tags),
     selectinload(Transaction.splits).selectinload(TransactionSplit.category),
+    selectinload(Transaction.items).selectinload(TransactionItem.product),
+    selectinload(Transaction.items).selectinload(TransactionItem.category),
+    selectinload(Transaction.items).selectinload(TransactionItem.unit),
 )
 
 
@@ -77,6 +84,46 @@ async def _ensure_category_matches_type(
     return category
 
 
+async def _build_items(
+    session: AsyncSession, items: list[TransactionItemInput]
+) -> list[TransactionItem]:
+    """Позиции чека — «что лежало в пакете».
+
+    Сходиться с суммой транзакции они не обязаны и намеренно: помнить, что
+    купили хлеб и молоко, не помня цен, обычное дело, а сумма транзакции
+    остаётся источником истины. Нераспределённый остаток интерфейс
+    показывает, а не подгоняет.
+
+    Категория позиции проверяется на существование, но НЕ на совпадение с
+    видом операции: позиция расхода не может быть доходной по построению, а
+    лишняя проверка мешала бы разложить чек по подкатегориям свободно.
+    """
+    built: list[TransactionItem] = []
+    for position, item in enumerate(items):
+        await resolve_item_category(session, item.category_id)
+        if item.product_id is not None and await session.get(Product, item.product_id) is None:
+            raise HTTPException(status_code=400, detail="Product not found")
+        built.append(
+            TransactionItem(
+                product_id=item.product_id,
+                name=item.name,
+                category_id=item.category_id,
+                quantity=item.quantity,
+                unit_id=item.unit_id,
+                price=item.price,
+                # Сумма позиции: если не задана, но известны цена и
+                # количество, считается сама — заставлять человека
+                # перемножать два числа, которые он уже ввёл, незачем.
+                amount=item.amount
+                if item.amount is not None
+                else (item.price * item.quantity if item.price is not None and item.quantity is not None else None),
+                note=item.note,
+                position=position,
+            )
+        )
+    return built
+
+
 async def _build_splits(
     session: AsyncSession, splits: list[TransactionSplitInput], transaction_type: TransactionType
 ) -> list[TransactionSplit]:
@@ -90,11 +137,15 @@ async def _build_splits(
     enforced by requiring every split's own top-level ancestor
     (parent_id, or its own id if it has none) to agree.
     """
+    # Корень ветки, а не родитель на один шаг: с произвольной вложенностью
+    # у «Продукты → Молочное → Сыр» родитель — молочное, и разбивка чека
+    # между сыром и хлебом отклонялась бы как «разные ветки».
+    tree = await load_category_tree(session)
     top_level_ids: set[int] = set()
     for split in splits:
         category = await _ensure_category_matches_type(session, split.category_id, transaction_type)
         assert category is not None  # split.category_id is required (not Optional) on the schema
-        top_level_ids.add(category.parent_id if category.parent_id is not None else category.id)
+        top_level_ids.add(tree.top_level_of(category.id))
     if len(top_level_ids) > 1:
         raise HTTPException(
             status_code=400,
@@ -255,7 +306,7 @@ async def _apply_currency(session: AsyncSession, transaction: Transaction, expli
 @router.post("", response_model=TransactionRead, status_code=201)
 async def create_transaction(payload: TransactionCreate, session: AsyncSession = Depends(get_session)) -> Transaction:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    fields = payload.model_dump(exclude={"tag_ids", "splits", "currency"})
+    fields = payload.model_dump(exclude={"tag_ids", "splits", "items", "currency"})
     transaction = Transaction(**fields)
     # Порядок внутри дня проставляется сам, по времени ввода: человеку не за
     # чем его набирать, а без него операции одного дня раскладываются
@@ -266,6 +317,8 @@ async def create_transaction(payload: TransactionCreate, session: AsyncSession =
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits:
         transaction.splits = await _build_splits(session, payload.splits, payload.type)
+    if payload.items:
+        transaction.items = await _build_items(session, payload.items)
     session.add(transaction)
     await session.commit()
     refreshed = await session.execute(
@@ -286,7 +339,7 @@ async def bulk_create_transactions(
 
     transactions = []
     for item in payload.items:
-        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits", "currency"}))
+        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits", "items", "currency"}))
         transaction.day_order = await next_day_order(session, transaction.account_id, transaction.date)
         await _apply_currency(session, transaction, item.currency)
         transaction.tags = await _resolve_tags(session, item.tag_ids)
@@ -308,11 +361,17 @@ async def update_transaction(
     # against, which async SQLAlchemy can't do outside an explicit await
     # (MissingGreenlet).
     transaction = await session.get(
-        Transaction, transaction_id, options=[selectinload(Transaction.tags), selectinload(Transaction.splits)]
+        Transaction,
+        transaction_id,
+        options=[
+            selectinload(Transaction.tags),
+            selectinload(Transaction.splits),
+            selectinload(Transaction.items),
+        ],
     )
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits", "currency"})
+    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits", "items", "currency"})
     # Checks run against the row as it would look after the patch, not just
     # the fields sent: switching type alone can invalidate fields left
     # untouched.
@@ -364,6 +423,10 @@ async def update_transaction(
         transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits is not None:
         transaction.splits = await _build_splits(session, payload.splits, effective_type)
+    if payload.items is not None:
+        # Список заменяет состав чека целиком, включая пустой: правка чека —
+        # это переписывание того, что в нём было, а не дописывание строк.
+        transaction.items = await _build_items(session, payload.items)
     await session.commit()
     refreshed = await session.execute(
         select(Transaction).options(*_EAGER).where(Transaction.id == transaction_id)

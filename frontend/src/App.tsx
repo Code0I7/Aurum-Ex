@@ -15,6 +15,8 @@ import { CsvImportPage } from "@/pages/CsvImportPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { DebtsPage } from "@/pages/DebtsPage";
 import { PlanningPage } from "@/pages/PlanningPage";
+import { ProductsPage } from "@/pages/ProductsPage";
+import { InvestmentsPage } from "@/pages/InvestmentsPage";
 import { GoalsPage } from "@/pages/GoalsPage";
 import { NetWorthPage } from "@/pages/NetWorthPage";
 import { RecurringPage } from "@/pages/RecurringPage";
@@ -69,6 +71,8 @@ export default function App() {
             <Route path="/goals" element={<GoalsPage />} />
             <Route path="/debts" element={<DebtsPage />} />
             <Route path="/planning" element={<PlanningPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/investments" element={<InvestmentsPage />} />
             <Route path="/recurring" element={<RecurringPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

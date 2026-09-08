@@ -8,6 +8,7 @@ from app.core.text import capitalize_first_letter
 from app.models.enums import SettlementKind, TransactionType
 from app.schemas.account import AccountRead
 from app.schemas.category import CategoryRead
+from app.schemas.product import TransactionItemInput, TransactionItemRead
 from app.schemas.tag import TagRead
 
 
@@ -149,6 +150,11 @@ class TransactionCreate(TransactionBase):
     # split_rule_violation). A single entry isn't accepted: that's just
     # category_id with extra steps.
     splits: list[TransactionSplitInput] | None = None
+    # Позиции чека — «что лежало в пакете». Отдельно от splits и вместе с
+    # ними: разбивка делит деньги по категориям и обязана сойтись с суммой,
+    # позиция описывает покупку и сходиться не обязана ничему. Пустой список
+    # — совершенно нормальный чек: быстрый ввод остаётся одним действием.
+    items: list[TransactionItemInput] | None = None
 
     @model_validator(mode="after")
     def _validate_splits(self) -> "TransactionCreate":
@@ -190,6 +196,10 @@ class TransactionUpdate(BaseModel):
     # split set (send [] together with a category_id to turn a split
     # transaction back into a normal single-category one).
     splits: list[TransactionSplitInput] | None = None
+    # None — позиции не трогаем; список (в том числе пустой) заменяет их
+    # целиком. Правка чека — это переписывание его состава, а не дописывание
+    # строк в конец.
+    items: list[TransactionItemInput] | None = None
 
     @field_validator("description")
     @classmethod
@@ -219,6 +229,7 @@ class TransactionRead(TransactionFields):
     category: CategoryRead | None = None
     tags: list[TagRead] = Field(default_factory=list)
     splits: list[TransactionSplitRead] = Field(default_factory=list)
+    items: list[TransactionItemRead] = Field(default_factory=list)
 
     # Баланс счёта после этой операции — то самое «было 0, стало 500, потом
     # 350». Заполняется только в списке (см. routes/transactions.py); у

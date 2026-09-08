@@ -1,0 +1,84 @@
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { ProductList } from "@/components/products/ProductList";
+import { ProductFormModal } from "@/components/products/ProductFormModal";
+import { PriceHistoryModal } from "@/components/products/PriceHistoryModal";
+import { useDeleteProduct, useProducts } from "@/hooks/useProducts";
+import { useTranslation } from "@/lib/i18n";
+import type { Product } from "@/types";
+
+/**
+ * Справочник товаров.
+ *
+ * Нужен раньше, чем позиции чека становятся осмысленными: десять чеков со
+ * словом «хлеб» — десять несвязанных строк, а десять позиций, указывающих
+ * на одну строку справочника, — кривая цены.
+ */
+export function ProductsPage() {
+  const { t } = useTranslation();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: products, isLoading } = useProducts(showArchived);
+  const deleteProduct = useDeleteProduct();
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [pricesFor, setPricesFor] = useState<Product | null>(null);
+
+  function openCreate() {
+    setEditing(null);
+    setFormOpen(true);
+  }
+
+  function handleDelete(product: Product) {
+    if (window.confirm(t("product.confirmDelete", { name: product.name }))) {
+      deleteProduct.mutate(product.id);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="items-start">
+          <div>
+            <CardTitle>{t("nav.products")}</CardTitle>
+            <p className="mt-1 text-xs text-text-muted">{t("product.subtitle")}</p>
+          </div>
+          <Button onClick={openCreate}>
+            <Plus size={16} />
+            {t("common.add")}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <label className="mb-3 flex items-center gap-2 text-xs text-text-muted">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+              className="h-3.5 w-3.5 accent-text-primary"
+            />
+            {t("product.showArchived")}
+          </label>
+
+          {isLoading ? (
+            <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
+          ) : (
+            <ProductList
+              items={products ?? []}
+              onEdit={(product) => {
+                setEditing(product);
+                setFormOpen(true);
+              }}
+              onPrices={setPricesFor}
+              onDelete={handleDelete}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      <ProductFormModal open={formOpen} onClose={() => setFormOpen(false)} product={editing} />
+      <PriceHistoryModal product={pricesFor} onClose={() => setPricesFor(null)} />
+    </div>
+  );
+}

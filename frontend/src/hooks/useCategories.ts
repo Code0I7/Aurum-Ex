@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createCategory, deleteCategory, fetchCategories, updateCategory } from "@/api/categories";
+import {
+  createCategory,
+  deleteCategory,
+  fetchCategories,
+  fetchCategoryTotals,
+  updateCategory,
+} from "@/api/categories";
 import type { CategoryInput, CategoryUpdateInput } from "@/types";
 
 export function useCategories() {
@@ -42,5 +48,14 @@ export function useDeleteCategory() {
   return useMutation({
     mutationFn: (id: number) => deleteCategory(id),
     onSuccess: () => invalidateCategoryConsumers(queryClient),
+  });
+}
+
+// Суммы по категориям. Без периода — за всё время: список категорий
+// открывают, чтобы разобраться в накопившемся, а не посмотреть текущий месяц.
+export function useCategoryTotals(startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ["categories", "totals", startDate ?? null, endDate ?? null],
+    queryFn: () => fetchCategoryTotals(startDate, endDate),
   });
 }

@@ -9,6 +9,11 @@ Quantity and average buy price are never stored — they're derived from the
 CryptoTransaction log every time (see _compute_position), the same
 "you record it, we derive it" shape as Goal/GoalContribution.
 
+Списание — по FIFO, общим движком (services/fifo.py), тем же, которым
+считает раздел инвестиций. Прежняя средневзвешенная убрана не потому, что
+она хуже сама по себе, а потому, что два метода в одном приложении означают
+две вкладки, расходящиеся в оценке одинаковых операций.
+
 Refreshes are deliberately never automatic in the background — same
 reasoning as recurring transactions (see services/recurring_service.py):
 there's no scheduler/worker in this stack, and a rate-limited free API key
@@ -20,6 +25,7 @@ Editing quantity via a buy/sell transaction never calls CoinGecko — it
 reuses the last cached price.
 """
 import asyncio
+from dataclasses import dataclass
 from datetime import date as date_
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -52,6 +58,7 @@ from app.schemas.crypto import (
     CryptoTransactionCreate,
     CryptoTransactionUpdate,
 )
+from app.services.fifo import replay
 from app.services.settings_service import get_or_create_app_settings
 
 # Same 8-hue, colorblind-safe categorical set app/db/seed.py assigns default
@@ -180,26 +187,52 @@ async def search_coins(query: str) -> list[CryptoSearchResult]:
     ]
 
 
+@dataclass
+class _FifoTrade:
+    """Сделка в том виде, в каком её принимает движок FIFO."""
+
+    side: str
+    quantity: Decimal
+    price_per_unit: Decimal
+    fee: Decimal
+    trade_date: date_
+
+
 def _compute_position(transactions: list[CryptoTransaction]) -> tuple[Decimal, Decimal | None]:
-    """Weighted-average-cost method, replayed over the transaction log in
-    date order: a BUY blends into the running average cost; a SELL reduces
-    quantity but leaves the average cost of what's still held unchanged —
-    selling some coins doesn't retroactively change what you paid for the
-    ones you kept. Returns (quantity, avg_buy_price); avg_buy_price is None
-    once quantity hits zero (nothing left to have a cost basis)."""
-    quantity = Decimal("0")
-    avg_price: Decimal | None = None
-    for tx in sorted(transactions, key=lambda t: (t.date, t.id)):
-        if tx.type == CryptoTransactionType.BUY:
-            existing_cost = (avg_price or Decimal("0")) * quantity
-            quantity += tx.quantity
-            avg_price = (existing_cost + tx.price_per_unit * tx.quantity) / quantity if quantity else None
-        else:
-            quantity -= tx.quantity
-            if quantity <= 0:
-                quantity = Decimal("0")
-                avg_price = None
-    return quantity, avg_price
+    """Позиция по журналу сделок, списание по FIFO.
+
+    Раньше здесь была средневзвешенная. Заменена на общий движок
+    (services/fifo.py) — тот же, которым считает раздел инвестиций.
+    Причина не в том, что один метод точнее другого, а в том, что два метода
+    в одном приложении означают две соседние вкладки, расходящиеся в оценке
+    одинаковых операций. На одной и той же сделке расхождение доходит до
+    порядка:
+
+        Куплено 1 по 500 и 5 по 100, продано 2 по 150.
+        FIFO даёт убыток 300, средневзвешенная — убыток 33.
+
+    FIFO — то, чем считает отчёт брокера и чего требует налоговая.
+
+    Возвращает (количество, средняя цена остатка). Вторая величина — None
+    при нулевом остатке: у пустой позиции нет цены владения.
+    """
+    position = replay(
+        [
+            _FifoTrade(
+                side="buy" if tx.type == CryptoTransactionType.BUY else "sell",
+                quantity=tx.quantity,
+                price_per_unit=tx.price_per_unit,
+                # Комиссии в крипто-журнале нет отдельным полем: она уже
+                # заложена в цену, по которой человек записал сделку.
+                fee=Decimal("0"),
+                trade_date=tx.date,
+            )
+            # Тай-брейк по идентификатору: две сделки одной датой не должны
+            # меняться местами между загрузками страницы.
+            for tx in sorted(transactions, key=lambda t: (t.date, t.id))
+        ]
+    )
+    return position.quantity, position.average_cost
 
 
 def _to_read(holding: CryptoHolding) -> CryptoHoldingRead:

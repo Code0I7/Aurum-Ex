@@ -3,6 +3,7 @@ import { Plus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
+import { ItemsEditor } from "@/components/transactions/ItemsEditor";
 import { TagInput } from "@/components/transactions/TagInput";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
@@ -10,7 +11,14 @@ import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransacti
 import { useTranslation } from "@/lib/i18n";
 import { buildHierarchicalCategories, translateCategoryName } from "@/lib/categoryLabels";
 import { formatCurrency } from "@/lib/format";
-import type { Tag, Transaction, TransactionInput, TransactionSplitInput, TransactionType } from "@/types";
+import type {
+  Tag,
+  Transaction,
+  TransactionInput,
+  TransactionItemInput,
+  TransactionSplitInput,
+  TransactionType,
+} from "@/types";
 
 interface TransactionFormModalProps {
   open: boolean;
@@ -65,6 +73,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const [splitMode, setSplitMode] = useState(false);
   const [splitRows, setSplitRows] = useState<SplitRowState[]>([emptySplitRow(), emptySplitRow()]);
   const [error, setError] = useState<string | null>(null);
+  // Состав чека. Отдельно от разбивки по категориям и вместе с ней:
+  // разбивка делит деньги и обязана сойтись с суммой, позиции описывают
+  // покупку и сходиться не обязаны ничему.
+  const [items, setItems] = useState<TransactionItemInput[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,6 +106,18 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         date: transaction.date,
       });
       setTags(transaction.tags);
+      setItems(
+        transaction.items.map((item) => ({
+          product_id: item.product_id,
+          name: item.name,
+          category_id: item.category_id,
+          quantity: item.quantity,
+          unit_id: item.unit_id,
+          price: item.price,
+          amount: item.amount,
+          note: item.note,
+        })),
+      );
       setSplitMode(hasSplits);
       setSplitRows(
         hasSplits
@@ -108,6 +132,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     } else {
       setForm({ ...EMPTY_FORM, account_id: accounts?.[0] ? String(accounts[0].id) : "" });
       setTags([]);
+      setItems([]);
       setSplitMode(false);
       setSplitRows([emptySplitRow(), emptySplitRow()]);
     }
@@ -235,6 +260,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
       splits,
+      // Позиции без названия не отправляются: пустая строка, добавленная и
+      // не заполненная, — не позиция.
+      items: items.filter((item) => item.name.trim() !== ""),
     };
 
     try {
@@ -485,6 +513,12 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           <Label htmlFor="transaction-tags">{t("transactions.form.tagsLabel")}</Label>
           <TagInput value={tags} onChange={setTags} />
         </div>
+
+        {/* Состав чека — только у трат: у зарплаты нет позиций, а у перевода
+            между своими счетами тем более. */}
+        {form.type === "expense" && (
+          <ItemsEditor items={items} onChange={setItems} total={form.amount} />
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

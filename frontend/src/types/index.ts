@@ -173,6 +173,9 @@ export interface Transaction {
   category: Category | null;
   tags: Tag[];
   splits: TransactionSplit[];
+  // Состав чека. Пустой список — совершенно нормальная операция: быстрый
+  // ввод остаётся одним действием.
+  items: TransactionItem[];
   // Баланс счёта после этой операции. Приходит только в списке — у ответа
   // на создание или правку остаётся null.
   balance_after: string | null;
@@ -203,6 +206,9 @@ export interface TransactionInput {
   // above must then be null. On update, omitted leaves existing splits
   // untouched; sent (even as []) replaces the full split set.
   splits?: TransactionSplitInput[] | null;
+  // При правке: список (включая пустой) заменяет состав целиком, отсутствие
+  // поля оставляет как было.
+  items?: TransactionItemInput[] | null;
 }
 
 export interface RecurringTransaction {
@@ -263,14 +269,55 @@ export interface CategoryBreakdownItem {
   children: CategoryBreakdownChildItem[];
 }
 
+// Период дашборда. Значение по умолчанию выбирает интерфейс — «за всё
+// время»; API остаётся на месяце, чтобы не менять молча смысл ответа тому,
+// кто просто передал год и месяц.
+export type DashboardRange = "month" | "year" | "all";
+
+export interface DashboardAccountBalance {
+  account_id: number;
+  name: string;
+  balance: string;
+  reserved: string;
+  available: string;
+  nature: AccountNature;
+}
+
+export interface LargestExpense {
+  id: number;
+  date: string;
+  description: string;
+  amount: string;
+  category_name: string | null;
+  account_name: string;
+}
+
+export interface DashboardMonthPoint {
+  year: number;
+  month: number;
+  income: string;
+  expense: string;
+  net: string;
+}
+
 export interface DashboardSummary {
   year: number;
   month: number;
+  // Границы периода: при выборе «за всё время» интерфейс сам их не знает.
+  start_date: string | null;
+  end_date: string | null;
   real_income: string;
   spent: string;
   net: string;
   transferred_out: string;
   spending_by_category: CategoryBreakdownItem[];
+  // Остатки всегда текущие, независимо от периода.
+  accounts: DashboardAccountBalance[];
+  // null, когда за период не введено ни часа работы.
+  hours_worked: string | null;
+  earned_per_hour: string | null;
+  largest_expenses: LargestExpense[];
+  monthly: DashboardMonthPoint[];
 }
 
 export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals" | "other";
@@ -773,4 +820,211 @@ export interface WorkPeriodInput {
   month: number;
   hours: string;
   workdays: number | null;
+}
+
+// Единица измерения с коэффициентом к базовой. Коэффициент нужен на клиенте:
+// цена за базовую единицу показывается прямо в поле ввода.
+export type UnitKind = "weight" | "volume" | "count" | "length" | "service";
+
+export interface Unit {
+  id: number;
+  name: string;
+  kind: UnitKind;
+  factor: string;
+  is_base: boolean;
+  sort_order: number;
+}
+
+// Справочник товаров. Две задачи: подставлять категорию и единицу при вводе
+// и склеивать десять чеков в одну кривую цены.
+export interface Product {
+  id: number;
+  name: string;
+  category_id: number | null;
+  category_name: string | null;
+  unit_id: number | null;
+  unit_name: string | null;
+  barcode: string | null;
+  notes: string | null;
+  is_archived: boolean;
+  // Насколько строка живая: список товаров без этого — просто список слов.
+  purchases: number;
+  last_bought: string | null;
+  last_price_per_base_unit: string | null;
+}
+
+export interface ProductInput {
+  name: string;
+  category_id: number | null;
+  unit_id: number | null;
+  barcode: string | null;
+  notes: string | null;
+  is_archived?: boolean;
+}
+
+export interface PricePoint {
+  date: string;
+  // Цена за базовую единицу — то, что делает литры сравнимыми с миллилитрами.
+  price_per_base_unit: string;
+  quantity: string;
+  unit_name: string | null;
+  amount: string;
+  store_name: string | null;
+  transaction_id: number;
+}
+
+export interface ProductPriceHistory {
+  product_id: number;
+  product_name: string;
+  base_unit_name: string | null;
+  points: PricePoint[];
+  min_price: string | null;
+  max_price: string | null;
+  last_price: string | null;
+  change_percent: number | null;
+}
+
+// Позиция чека — «что лежало в пакете». Отдельно от разбивки по категориям:
+// разбивка обязана сойтись с суммой, позиция не обязана ничему.
+export interface TransactionItem {
+  id: number;
+  position: number;
+  product_id: number | null;
+  product_name: string | null;
+  name: string;
+  category_id: number | null;
+  category_name: string | null;
+  quantity: string | null;
+  unit_id: number | null;
+  unit_name: string | null;
+  price: string | null;
+  amount: string | null;
+  note: string | null;
+}
+
+export interface TransactionItemInput {
+  product_id?: number | null;
+  name: string;
+  category_id?: number | null;
+  quantity?: string | null;
+  unit_id?: number | null;
+  price?: string | null;
+  amount?: string | null;
+  note?: string | null;
+}
+
+// Суммы по категории за период. Два числа: own — записанное прямо в неё,
+// total — она вместе со всей веткой. Разница показывает, сколько трат
+// свалено в корень без выбора подкатегории.
+export interface CategoryTotal {
+  category_id: number;
+  own: string;
+  total: string;
+  transactions: number;
+}
+
+// Инвестиции. Один движок на все семейства активов: партии и списание по
+// FIFO одинаковы для акции и для монеты, вкладка — фильтр, а не система.
+export type InvestmentKind = "stock" | "bond" | "fund" | "crypto" | "metal" | "other";
+export type TradeSide = "buy" | "sell";
+
+export interface InvestmentPortfolio {
+  id: number;
+  name: string;
+  color: string | null;
+  is_archived: boolean;
+  holdings: number;
+  value: string;
+  cost_basis: string;
+}
+
+export interface InvestmentPortfolioInput {
+  name: string;
+  color?: string | null;
+  is_archived?: boolean;
+}
+
+export interface InvestmentHolding {
+  id: number;
+  portfolio_id: number;
+  name: string;
+  ticker: string | null;
+  kind: InvestmentKind;
+  currency: string;
+  external_id: string | null;
+  risk_level: RiskLevel;
+  notes: string | null;
+  is_archived: boolean;
+  last_price: string | null;
+  last_price_at: string | null;
+  quantity: string;
+  // Во сколько обошлось то, что ещё на руках. Не то же, что вложено: часть
+  // вложенного уже продана.
+  cost_basis: string;
+  invested: string;
+  average_cost: string | null;
+  // null, когда цена неизвестна: ноль означал бы, что актив обесценился.
+  value: string | null;
+  unrealised: string | null;
+  unrealised_percent: number | null;
+  realised: string;
+  // Продано больше, чем куплено: пропуск в данных, а не ошибка расчёта.
+  oversold: string;
+  trades: number;
+}
+
+export interface InvestmentHoldingInput {
+  portfolio_id: number;
+  name: string;
+  ticker?: string | null;
+  kind: InvestmentKind;
+  currency?: string;
+  risk_level?: RiskLevel;
+  notes?: string | null;
+  last_price?: string | null;
+  is_archived?: boolean;
+}
+
+export interface DisposalLot {
+  quantity: string;
+  cost_per_unit: string;
+  acquired_on: string | null;
+}
+
+export interface Disposal {
+  trade_id: number;
+  trade_date: string;
+  quantity: string;
+  proceeds: string;
+  cost: string;
+  realised: string;
+  lots: DisposalLot[];
+}
+
+export interface InvestmentHoldingDetail extends InvestmentHolding {
+  open_lots: DisposalLot[];
+  disposals: Disposal[];
+}
+
+export interface InvestmentTrade {
+  id: number;
+  holding_id: number;
+  side: TradeSide;
+  quantity: string;
+  price_per_unit: string;
+  fee: string;
+  trade_date: string;
+  day_order: number;
+  account_id: number | null;
+  note: string | null;
+}
+
+export interface InvestmentTradeInput {
+  side: TradeSide;
+  quantity: string;
+  price_per_unit: string;
+  fee?: string;
+  trade_date: string;
+  account_id?: number | null;
+  note?: string | null;
 }
