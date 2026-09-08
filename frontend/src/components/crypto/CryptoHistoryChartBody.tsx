@@ -2,6 +2,8 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { formatCurrency, getIntlLocale, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHistoryResponse } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
+import { LINE_CURSOR } from "@/components/charts/cursors";
 
 interface CryptoHistoryChartBodyProps {
   history: CryptoHistoryResponse | undefined;
@@ -25,10 +27,10 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
-    <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
+    <ChartTooltipBox>
       <p className="text-text-muted">{formatAxisDate(point.date)}</p>
       <p className="font-medium text-text-primary">{maskAmount(formatCurrency(point.value), hidden)}</p>
-    </div>
+    </ChartTooltipBox>
   );
 }
 
@@ -58,7 +60,7 @@ export function CryptoHistoryChartBody({ history, isLoading, hidden }: CryptoHis
                 </linearGradient>
               </defs>
               <YAxis hide domain={["auto", "auto"]} />
-              <Tooltip content={<ChartTooltip hidden={hidden} />} cursor={{ stroke: "var(--gridline)", strokeWidth: 1 }} />
+              <Tooltip isAnimationActive={false} content={<ChartTooltip hidden={hidden} />} cursor={LINE_CURSOR} />
               <Area
                 type="monotone"
                 dataKey="value"

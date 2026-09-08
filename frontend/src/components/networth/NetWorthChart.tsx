@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { RangeSelector } from "@/components/layout/RangeSelector";
 import { formatCurrency, formatSignedCurrency, getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import type { NetWorthRange, NetWorthSummary } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
+import { LINE_CURSOR } from "@/components/charts/cursors";
 
 interface NetWorthChartProps {
   summary: NetWorthSummary | undefined;
@@ -43,10 +46,10 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
-    <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
+    <ChartTooltipBox>
       <p className="text-text-muted">{formatAxisDate(point.date)}</p>
       <p className="font-medium text-text-primary">{formatCurrency(point.value)}</p>
-    </div>
+    </ChartTooltipBox>
   );
 }
 
@@ -54,6 +57,10 @@ export function NetWorthChart({ summary, isLoading, range, onRangeChange }: NetW
   const { t } = useTranslation();
   const isPositive = summary ? Number(summary.change_amount) >= 0 : true;
   const trendColor = isPositive ? "var(--success)" : "var(--danger)";
+  // Отрицательный капитал — это долгов больше, чем имущества, и число
+  // должно об этом сказать само. Знак минуса в общем ряду цифр теряется,
+  // а цвет виден раньше, чем прочитана сумма.
+  const isUnderwater = summary ? Number(summary.current) < 0 : false;
   const chartData = summary?.series.map((point) => ({ date: point.date, value: Number(point.value) })) ?? [];
   const yearTicks = computeYearTicks(chartData.map((point) => point.date));
 
@@ -62,7 +69,12 @@ export function NetWorthChart({ summary, isLoading, range, onRangeChange }: NetW
       <CardHeader className="items-start">
         <div>
           <CardTitle>{t("nav.netWorth")}</CardTitle>
-          <p className="mt-1.5 text-2xl font-semibold tabular-nums text-text-primary sm:text-[28px]">
+          <p
+            className={cn(
+              "mt-1.5 text-2xl font-semibold tabular-nums sm:text-[28px]",
+              isUnderwater ? "text-danger" : "text-text-primary"
+            )}
+          >
             {isLoading ? "…" : formatCurrency(summary?.current ?? 0)}
           </p>
           {summary && (
@@ -107,7 +119,7 @@ export function NetWorthChart({ summary, isLoading, range, onRangeChange }: NetW
                     interval="preserveStartEnd"
                   />
                 )}
-                <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--gridline)", strokeWidth: 1 }} />
+                <Tooltip isAnimationActive={false} content={<ChartTooltip />} cursor={LINE_CURSOR} />
                 <Area
                   type="monotone"
                   dataKey="value"

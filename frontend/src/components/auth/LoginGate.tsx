@@ -26,7 +26,7 @@ export function LoginGate({ children }: { children: ReactNode }) {
   if (auth === null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-0">
-        <Logo size={40} className="animate-pulse" />
+        <Logo variant="icon" size={44} className="animate-pulse" />
       </div>
     );
   }

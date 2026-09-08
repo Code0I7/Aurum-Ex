@@ -70,9 +70,10 @@ export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mo
     <div className="flex min-h-screen items-center justify-center bg-surface-0 px-4 py-8">
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col items-center gap-6 p-6 pt-8 sm:p-8">
-          <div className="flex flex-col items-center gap-1.5 text-center">
-            <Logo size={40} />
-            <span className="text-lg font-semibold tracking-tight text-text-primary">Aurum-Ex</span>
+          <div className="flex flex-col items-center gap-2.5 text-center">
+            {/* Плашка вместо связки «значок + название»: название уже
+                написано на ней, и повторять его строкой ниже незачем. */}
+            <Logo variant="plate" size={44} />
             <span className="text-xs text-text-muted">
               {isSetup ? t("auth.setupSubtitle") : isRecover ? t("auth.recoverSubtitle") : t("auth.subtitle")}
             </span>

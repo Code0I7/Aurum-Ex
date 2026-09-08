@@ -2,6 +2,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCryptoAmount, maskAmount } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CryptoHolding } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 
 interface CryptoAllocationBodyProps {
   holdings: CryptoHolding[];
@@ -62,12 +63,12 @@ function DonutTooltip({
   if (!active || !payload?.length) return null;
   const slice = payload[0].payload;
   return (
-    <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
+    <ChartTooltipBox>
       <p className="font-medium text-text-primary">{slice.key === "other" ? otherLabel : slice.name}</p>
       <p className="text-text-muted">
         {maskAmount(formatCryptoAmount(slice.amount), hidden)} · {slice.percent.toFixed(1)}%
       </p>
-    </div>
+    </ChartTooltipBox>
   );
 }
 
@@ -95,6 +96,7 @@ export function CryptoAllocationBody({ holdings, isLoading, hidden }: CryptoAllo
   return (
     <div className="flex flex-col items-center justify-center gap-6 sm:flex-row">
       <div className="h-48 w-48 shrink-0 sm:h-56 sm:w-56">
+        <div className="chart-palette h-full w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -112,9 +114,10 @@ export function CryptoAllocationBody({ holdings, isLoading, hidden }: CryptoAllo
                 <Cell key={slice.key} fill={slice.color} />
               ))}
             </Pie>
-            <Tooltip content={<DonutTooltip hidden={hidden} otherLabel={t("crypto.allocation.other")} />} />
+            <Tooltip isAnimationActive={false} content={<DonutTooltip hidden={hidden} otherLabel={t("crypto.allocation.other")} />} />
           </PieChart>
         </ResponsiveContainer>
+        </div>
       </div>
 
       <table className="text-sm">

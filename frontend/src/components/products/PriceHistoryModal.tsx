@@ -4,6 +4,7 @@ import { usePriceHistory } from "@/hooks/useProducts";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import type { Product } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 
 interface PriceHistoryModalProps {
   product: Product | null;
@@ -89,11 +90,12 @@ export function PriceHistoryModal({ product, onClose }: PriceHistoryModalProps) 
                     width={56}
                   />
                   <Tooltip
+                    isAnimationActive={false}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const point = payload[0].payload as (typeof chartData)[number];
                       return (
-                        <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-xs shadow-md">
+                        <ChartTooltipBox className="text-xs">
                           <p className="text-text-muted">{formatTransactionDate(point.date, true)}</p>
                           <p className="font-medium text-text-primary">
                             {formatCurrency(point.price)} {unitLabel}
@@ -102,7 +104,7 @@ export function PriceHistoryModal({ product, onClose }: PriceHistoryModalProps) 
                             {point.quantity} {point.unit ?? ""} · {formatCurrency(point.amount)}
                           </p>
                           {point.store && <p className="text-text-muted">{point.store}</p>}
-                        </div>
+                        </ChartTooltipBox>
                       );
                     }}
                   />

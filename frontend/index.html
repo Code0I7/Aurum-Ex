@@ -2,29 +2,50 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <!-- Значок вкладки. Одного SVG хватает всем нынешним браузерам;
-         PNG для домашнего экрана — необязательные, размеры в
-         docs/brand.md. -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Значок вкладки. PNG, а не SVG: знак растровый, и обводить его
+         вручную значило бы рисовать заново — он перестал бы совпадать с
+         плашкой в шапке. Размеры и назначение файлов — docs/brand.md. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/brand/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0b0b" />
+    <meta name="theme-color" content="#08080a" />
     <title>Aurum-Ex — Личные финансы</title>
     <script>
-      // Applies the saved theme (light/dark/system) to <html> before the
-      // first paint, so an explicit override never flashes the wrong theme
-      // for a frame while React/lib/theme.ts loads. "system" needs no
-      // attribute at all — index.css's prefers-color-scheme media query
-      // already handles that case with zero JS.
+      // Оформление и тема проставляются до первой отрисовки: иначе кадр
+      // показывался бы чужими цветами, пока грузится React.
+      //
+      // Здесь нельзя вычислить цвет полотна из стилей — они ещё не
+      // загружены, — поэтому пары «оформление → цвет» продублированы
+      // ниже вручную. Это единственное место, где они повторяются:
+      // дальше lib/theme.ts берёт значение из вычисленного стиля.
       (function () {
-        var stored = localStorage.getItem("aurum:theme");
-        if (stored === "light" || stored === "dark") {
-          document.documentElement.setAttribute("data-theme", stored);
+        var root = document.documentElement;
+
+        var designs = { gold: 1, modern: 1, legacy: 1 };
+        var design = localStorage.getItem("aurum:design");
+        if (!designs[design]) design = "gold";
+        root.setAttribute("data-design", design);
+
+        var theme = localStorage.getItem("aurum:theme");
+        if (theme === "light" || theme === "dark") {
+          root.setAttribute("data-theme", theme);
+        } else {
+          theme = "system";
         }
-        var isDark =
-          stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var dark =
+          theme === "dark" ||
+          (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        root.setAttribute("data-scheme", dark ? "dark" : "light");
+
+        // Держится в согласии с --surface-0 в index.css.
+        var surfaces = {
+          gold: { light: "#f6f2ea", dark: "#08080a" },
+          modern: { light: "#f7f6f3", dark: "#0a0b0e" },
+          legacy: { light: "#f9f9f7", dark: "#0d0d0d" },
+        };
         var meta = document.querySelector('meta[name="theme-color"]');
-        // Kept in sync by hand with index.css's --surface-0 light/dark values.
-        if (meta) meta.setAttribute("content", isDark ? "#0d0d0d" : "#f9f9f7");
+        if (meta) meta.setAttribute("content", surfaces[design][dark ? "dark" : "light"]);
       })();
     </script>
   </head>

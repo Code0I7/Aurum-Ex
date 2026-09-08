@@ -2,14 +2,19 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { PillSelector } from "@/components/layout/PillSelector";
 import { useTranslation, type Language } from "@/lib/i18n";
 import { useTheme, type Theme } from "@/lib/theme";
+import { DESIGNS, useDesign, type Design } from "@/lib/design";
 
-/** Language and theme side by side — both are pure client-side display
- * preferences (unlike currency, which is server-persisted), so pairing
- * them saves a whole card's worth of vertical space over listing each on
- * its own. Stacks back to one column on mobile. */
+/** Язык, тема и оформление рядом — всё это чисто клиентские настройки
+ * показа (в отличие от валюты, которая хранится на сервере), и вместе они
+ * занимают одну карточку вместо трёх. На телефоне складываются в столбик.
+ *
+ * Тема и оформление — две независимые оси, и разводить их по разным
+ * карточкам было бы честнее, но человек меняет их вместе: сначала выбирает
+ * характер, потом светло или темно. */
 export function PreferencesCard() {
   const { t, language, setLanguage } = useTranslation();
   const { theme, setTheme } = useTheme();
+  const { design, setDesign } = useDesign();
 
   const languageOptions: Array<{ value: Language; label: string }> = [
     { value: "ru", label: t("settings.languageRussian") },
@@ -20,6 +25,13 @@ export function PreferencesCard() {
     { value: "dark", label: t("settings.themeDark") },
     { value: "system", label: t("settings.themeSystem") },
   ];
+  // Порядок задаётся в lib/design.ts: legacy там последним намеренно.
+  const designLabels: Record<Design, string> = {
+    gold: t("settings.designGold"),
+    modern: t("settings.designModern"),
+    legacy: t("settings.designLegacy"),
+  };
+  const designOptions = DESIGNS.map((value) => ({ value, label: designLabels[value] }));
 
   return (
     <Card>
@@ -35,6 +47,15 @@ export function PreferencesCard() {
           <div className="mt-2">
             <PillSelector options={themeOptions} value={theme} onChange={setTheme} />
           </div>
+        </div>
+        {/* Оформление во всю ширину: названий три и они длиннее, чем
+            «Светлая / Тёмная», — в половине карточки они переносились бы. */}
+        <div className="pt-5 sm:col-span-2 sm:pt-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t("settings.design")}</p>
+          <div className="mt-2">
+            <PillSelector options={designOptions} value={design} onChange={setDesign} />
+          </div>
+          <p className="mt-2 text-xs text-text-muted">{t(`settings.designHint.${design}` as never)}</p>
         </div>
       </CardContent>
     </Card>

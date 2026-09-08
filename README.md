@@ -1,247 +1,188 @@
 <div align="center">
 
-# Aurum-Ex
+<img src="frontend/public/brand/plate-dark.png" alt="Aurum-Ex" width="420" />
 
-**See where every dollar comes from. Know where every dollar goes.**
+[Русский](README.ru.md) • **English**
 
-**Ex — от Extended.** Aurum-Ex это расширенный форк [Aurum](https://github.com/Zproger/Aurum) от [ZProger](https://github.com/ZProger): тот же самостоятельно размещаемый учёт личных финансов, дополненный мультивалютностью, категориями произвольной вложенности, позициями в чеке, участниками и расчётами с людьми.
+**See where every rouble comes from. Know where every rouble goes.**
+
+A self-hosted personal finance app built to replace the kind of hand-made spreadsheet people keep for years — and to answer the questions such a spreadsheet cannot.
 
 [![Fork of Zproger/Aurum](https://img.shields.io/badge/fork%20of-Zproger%2FAurum-6E7B74.svg)](https://github.com/Zproger/Aurum)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 
-[Отличия](#-чем-это-отличается-от-aurum) • [Getting Started](#-getting-started) • [API Docs](DOCS.md) • [Security](#-security--self-hosting) • [License](#-license) • [Благодарности](#-благодарности)
+[Features](#-features) • [Getting started](#-getting-started) • [API](DOCS.md) • [Security](#-security) • [Credits](#-credits)
 
 </div>
 
-> **Это форк, а не оригинал.** Оригинальный проект — **[Zproger/Aurum](https://github.com/Zproger/Aurum)**, автор **[ZProger](https://github.com/ZProger)**. Здесь ведётся переработанная и расширенная версия под другой сценарий использования. Оригинал развивается независимо: вопросы и баги по нему — в его репозиторий, а не сюда.
+> **This is a fork, not the original.** The original project is **[Zproger/Aurum](https://github.com/Zproger/Aurum)** by **[ZProger](https://github.com/ZProger)** — see [its README](https://github.com/Zproger/Aurum#readme). Aurum-Ex is a reworked and extended version aimed at a different use case. The original is developed independently: report its bugs there, not here.
 >
 > `Required Notice: Copyright ZProger (https://github.com/ZProger)`
 
-## 🧭 Чем это отличается от Aurum
+## 🧭 What this is
 
-Форк вырос из попытки заменить самодельную таблицу учёта — из тех, что люди годами ведут в Google Sheets. У таких таблиц набирается набор ограничений, не решаемых внутри них самих: один уровень подкатегорий, отсутствие позиций в чеке, невозможность отделить переводы от других людей от собственного заработка и стартовый остаток счёта, который приходится проводить доходом.
+**Ex stands for Extended.** The fork grew out of a real problem: replacing a four-year-old Google Sheets ledger with something that keeps every number it already held and answers the questions the sheet could not.
 
-Направления переработки:
+Ledgers like that hit the same walls. One level of subcategories, so "Groceries → Dairy → Cheese" is impossible. No line items, so a receipt is a single number and price history for one product cannot exist. No way to tell a transfer from a friend apart from money actually earned. An opening balance that has to be booked as income because there is nowhere else to put it.
 
-- **Категории произвольной вложенности** вместо одного уровня, с выбором любого уровня в транзакции.
-- **Мультивалютность** с курсами ЦБ на дату операции: капитал одной суммой и с разбивкой по валютам.
-- **Позиции в чеке** — необязательные, с количеством, единицей и ценой, приведённой к базовой мере.
-- **Участники** — на кого пришёлся доход или расход, включая питомцев.
-- **Расчёты с людьми** — переводы от других людей не считаются заработком; долги и займы различаются.
-- **Справочник товаров и магазинов** — динамика цен на конкретный товар и сравнение точек продаж.
-- **Настоящий вход** вместо HTTP Basic Auth.
-- **Планирование** разовое, ежемесячное и подневное, на несколько лет вперёд.
-- **Импорт истории из таблицы** — CSV-выгрузка листа операций с предпросмотром до записи. Формат и способ приспособить разбор под свою таблицу описаны в [docs/spreadsheet-import.md](docs/spreadsheet-import.md).
+Aurum-Ex is what those walls turned into:
 
-Работа идёт поэтапно. Ниже описан текущий функционал, во многом ещё унаследованный от оригинала; скриншоты пока тоже оригинальные.
+| The wall | What replaced it |
+|---|---|
+| One level of subcategories | Arbitrary nesting, any level selectable on a transaction |
+| A receipt is one number | Optional line items with quantity, unit and unit price |
+| No product history | Product and store directories, a price curve per item, per unit of measure |
+| Transfers counted as income | Settlements with people: debts and loans are distinct, neither is earnings |
+| One currency | Multi-currency with central-bank rates on the transaction date |
+| Opening balance booked as income | A real opening balance on the account |
+| Everyone shares one column | Participants — who the income or expense was for, pets included |
+| HTTP Basic Auth | A real login with a server-side session |
 
 ## 🖼️ Screenshots
 
+> Screenshots of Aurum-Ex are being retaken. The one below still shows the original Aurum.
+
 <div align="center">
-
-<img src="images/1.png" alt="Aurum dashboard — real income, spending, savings rate, spending by category, and recent transactions" width="100%" />
-
-<br /><br />
-
-<img src="images/2.png" alt="Aurum net worth timeline with full asset allocation breakdown" width="100%" />
-
-<br /><br />
-
-<table>
-<tr>
-<td width="50%"><img src="images/3.png" alt="Capital grouped by type (income / neutral / drain) and by risk level" /></td>
-<td width="50%"><img src="images/4.png" alt="Transactions list with filters" /></td>
-</tr>
-<tr>
-<td width="50%"><img src="images/5.png" alt="Cash flow chart, income vs. expense by month" /></td>
-<td width="50%"><img src="images/6.png" alt="Category spending report over time" /></td>
-</tr>
-</table>
-
+<img src="images/1.png" alt="Dashboard" width="100%" />
 </div>
 
----
+## 🧩 Features
 
-## 📖 Overview
+### Money in, money out
 
-Most finance apps show you a pie chart of last month's spending and call it a day. **Aurum goes further.**
+- **Transactions** with type, category, participant, tags and notes; split across several categories when one receipt covers several things.
+- **Period switch** — month, year, or all time. A per-account statement over a single month tells you nothing; sorting out two linked accounts needs the whole history.
+- **Per-account statement** showing both sides of every transfer, with the running balance computed for the account you picked.
+- **Grouping of repeats** — four bus rides on one day collapse into one row, "Bus ×4".
+- **Day dividers** with daily totals, so the list reads like a bank statement.
+- **Accounts** grouped by bank, with credit terms, grace periods and instalment plans.
+- **Cost in hours worked** — what a purchase cost in working time, at the hourly rate of the year it happened in.
 
-It's built for people who don't just want to **log** transactions — they want to understand the **mechanics** of their money: how capital grows or shrinks over time, which assets are pulling their weight, which subscriptions are quietly draining them, and which income streams are actually passive versus which just look that way on paper.
+### Analysis
 
-Aurum treats your financial life as a **system**, not a spreadsheet.
+- **Dashboard** — real income, spending, net, savings rate, hourly earnings, spending by category, largest expenses, month-by-month flow.
+- **Cash flow** — income against expense over any range, opening balance included.
+- **Reports** — category spending over time, opening on the largest category rather than the first alphabetically.
+- **Net worth** — assets minus liabilities over time, never drawn earlier than the first record: a flat zero line is a claim the data does not support.
+- **Advice** — plain observations drawn from your own numbers, not generic tips.
 
-## 💡 Why Aurum
+### Plans
 
-- **Fragmentation is the enemy.** Bank apps, brokerage apps, crypto wallets, spreadsheets, subscription trackers — your financial picture is scattered across a dozen tools that don't talk to each other.
-- **Most trackers stop at "what happened."** Aurum also flags rising spending categories, unbudgeted expenses, and shifts in your savings rate — before they become a problem.
-- **The 80/20 rule, enforced.** Aurum can group your capital by risk level and warn you the moment too much of it is exposed.
-- **It should be free, forever — for you.** Financial clarity shouldn't sit behind a paywall. Aurum is source-available and self-hosted — your data never leaves your own server, and personal use is free forever. (See [License](#-license) — the code is open to read, run, and modify, but not to resell.)
+- **Budgets** — monthly ceilings that warn when crossed.
+- **Planning** — one-off, monthly and daily plans expanded across a whole year. Daily plans can count working days instead of calendar days, so February recalculates itself.
+- **Watchlist** — the few categories you are watching right now, month by month, next to last year's total.
+- **Goals** with contributions, linked to a real account.
+- **Recurring payments** with a posting schedule.
+- **Debts and settlements** — who owes whom, kept out of income entirely.
 
-## 🧩 Core Features
+### Investments
 
-### 💰 Cash Flow & Transactions
-Log income, expenses, and transfers across as many accounts as you want, organized into categories (with one level of subcategories) plus free-form tags, and searchable. One purchase spanning multiple subcategories of the same parent (a grocery receipt part "Sweets", part "Alcohol") can be recorded as a single split transaction instead of several — every report and chart still counts each share under its own category. Already have history elsewhere? Import a bank's CSV export in a guided 3-step wizard instead of typing every line by hand. A dedicated Cash Flow view charts income vs. expense month by month.
+- **Portfolio** with FIFO lot accounting — the oldest lot is sold first, because average cost quietly understates a loss.
+- **Crypto** with live prices via CoinGecko (a free key is enough) and per-portfolio grouping.
+- **Return calculator** — compound interest, contributions, projections.
 
-### 📈 Net Worth Engine
-A live net worth timeline (30 days to all-time) aggregating cash and every manually tracked asset — investments, crypto, real estate, vehicles, precious metals — into one number, with a full breakdown by asset class, by how each asset behaves (income / neutral / drain), and by risk level.
+### Directories and data
 
-### 🪙 Crypto Tracker
-A CoinMarketCap-style portfolio tab for the coins you actually hold: live price plus 1h/24h/7d change, your holdings value, average buy price, and profit/loss — computed from a full buy/sell history, no separate portfolio tracker needed. Refresh on demand with one button, or let it auto-refresh once a day; either way it plugs straight into the Net Worth engine above as just another tracked asset.
+- **Categories** with arbitrary nesting, colours and icons, applied to a whole branch on request.
+- **Products, stores and units** with conversion to a base unit, so 1.5 l at 120 ₽ and 500 ml at 55 ₽ are finally comparable.
+- **Spreadsheet import** — bring in a Google Sheets ledger with a preview before anything is written, and automatic nesting of a flat category list. See [docs/spreadsheet-import.md](docs/spreadsheet-import.md).
+- **CSV import** of bank statements.
+- **Full backup and restore** covering every table, guarded by a test that counts every row before export and after restore.
 
-### 🎯 Budgets, Goals & Recurring Payments
-Set a monthly limit per category and watch progress bars fill up. Track savings goals with a running contribution log. Register recurring bills and post them with one click when they're due — nothing runs automatically in the background.
+### The application itself
 
-### 📊 Reports & Advice
-Rank every category by total spend over any custom period to find what's actually eating your budget. A rules-based Advice tab surfaces rising spending categories, unbudgeted top expenses, and month-over-month savings rate trends in plain language.
+- **Three designs** — Gold (obsidian and gold, marble in light mode), Modern (the same accent with more air and motion) and Classic (the original Aurum look). Each with a light and a dark mode. See [docs/brand.md](docs/brand.md).
+- **Bilingual** — Russian and English throughout.
+- **Mobile first** — every screen works on a phone, wide tables included.
+- **Help badges** — a "!" beside a section title explains what it is for and why it exists.
+- **A real login** — login screen, server-side session, brute-force protection, recovery key.
+- **REST API** for everything the interface can do — see [DOCS.md](DOCS.md).
 
-### 🧮 Returns Calculator
-A standalone ROI calculator: enter what you'd invest and what it would pay you monthly, and see the annual return, payback period, and a compound-interest projection — with a year-by-year comparison chart of compounding vs. just banking the cash — before you commit to a purchase.
+## 🚀 Getting started
 
-### 🔔 Proactive Alerts
-Aurum watches your numbers in the background and surfaces a warning the moment something crosses a threshold you configure: a sustained negative cash flow streak, a declining net worth trend, an over-budget category, too much capital sitting at risk, or cash sitting idle in an account for too long.
-
-### 🌐 Bilingual, Mobile-First
-Full Russian/English UI with a language switch in Settings, a light/dark/system theme toggle, and every screen designed mobile-first from day one.
-
-### 💾 Full Backup & Restore
-Export your entire dataset — accounts, transactions, assets, budgets, goals — to a single JSON file at any time, and restore it later on a fresh install.
-
-## 🚀 Getting Started
-
-Aurum ships as three containers — Postgres, a FastAPI backend, and an nginx-served frontend — wired together with Docker Compose. No local Python, Node, or Postgres installation needed; Docker is the only requirement.
-
-### 1. Install Docker
-
-You need **Docker Engine** and the **Docker Compose plugin** (the `docker compose` command, not the older standalone `docker-compose`).
-
-- **macOS / Windows:** install [Docker Desktop](https://www.docker.com/products/docker-desktop/) — it bundles both.
-- **Linux:** follow the [official install guide](https://docs.docker.com/engine/install/) for your distribution, then install the [Compose plugin](https://docs.docker.com/compose/install/linux/) if it isn't already included.
-
-Confirm both are available:
-
-```bash
-docker --version
-docker compose version
-```
-
-### 2. Get the code
+Three containers — Postgres, a FastAPI backend and an nginx-served frontend — wired with Docker Compose. Nothing else needs installing.
 
 ```bash
 git clone https://github.com/Code0I7/Aurum-Ex.git
 cd Aurum-Ex
-```
-
-Оригинальный Aurum, если нужен именно он: `git clone https://github.com/Zproger/Aurum.git`
-
-### 3. Configure your environment
-
-Copy the template and open it in an editor:
-
-```bash
 cp .env.example .env
 ```
 
-At minimum, change these two before going any further:
+Change two values in `.env` before the first run:
 
 | Variable | What it does |
 |---|---|
-| `AURUM_POSTGRES_PASSWORD` | Password for Aurum's own Postgres container. The template ships with `change-me` on purpose — replace it with something real. |
-| `AURUM_ADMIN_PASSWORD` | Пароль администратора для первого запуска. **Можно оставить пустым** — тогда приложение при первом открытии само попросит задать пароль в браузере, и он не окажется в файле на диске. Вход обязателен в любом случае: установки без пароля больше не бывает. |
-| `AURUM_RECOVERY_KEY` | Аварийный ключ для сброса забытого пароля (`openssl rand -base64 48`). Пусто — сброс выключен. См. [Security & Self-Hosting](#-security--self-hosting). |
+| `AURUM_POSTGRES_PASSWORD` | Password for Aurum-Ex's own Postgres. The template ships `change-me` on purpose. |
+| `AURUM_RECOVERY_KEY` | Emergency key for resetting a forgotten password (`openssl rand -base64 48`). Leave it empty and reset is disabled entirely. |
 
-Everything else in `.env` (currency, CORS, the port Aurum listens on) has a sensible default and can be left alone for a first run.
-
-### 4. Start it
+Leave `AURUM_ADMIN_PASSWORD` empty: the app will ask you to set a password in the browser on first open, and it never reaches a file on disk.
 
 ```bash
 docker compose up -d --build
 ```
 
-This builds the backend and frontend images, starts Postgres, waits for it to report healthy, then starts the backend (which runs every database migration automatically — nothing to do by hand) and finally the frontend. First run takes a minute or two; after that, images are cached and it's seconds.
-
-### 5. Open it
-
-Visit **http://localhost:3000** (or whatever port you set via `AURUM_WEB_PORT` in `.env`). A default account and the standard expense/income categories are seeded automatically — there's nothing to configure before you can add your first transaction.
-
-### 6. Check it's healthy (optional)
+Open **http://localhost:3000**. Migrations run automatically; a default account and the standard categories are seeded.
 
 ```bash
-docker compose ps
+docker compose down          # stop, keep data
+docker compose up -d         # start again
+docker compose down -v       # stop AND delete data permanently
+git pull && docker compose up -d --build   # update
 ```
 
-All three containers (`db`, `backend`, `web`) should show `healthy`. If `web` or `backend` doesn't, check its logs:
+Data lives in a Docker volume (`aurum_pgdata`), not in the repo folder: it survives rebuilds and `git pull`. Before anything risky, export a backup from **Settings → Backup**.
 
-```bash
-docker compose logs backend
-docker compose logs web
-```
+### Publishing it over TLS
 
-### Everyday operations
+The optional `edge` service is an nginx in front of the app, with a Let's Encrypt certificate and a secret-link gate: the first visit carrying the key sets a cookie for a year, and anything without it gets a silent connection close. It listens on a non-standard port, because 443 is often already taken on a machine that hosts something else.
 
-```bash
-docker compose down          # stop everything, keep your data
-docker compose up -d         # start it again later
-docker compose down -v       # stop AND permanently delete your data — be sure
-git pull && docker compose up -d --build   # update to newer code
-```
+Enable it by adding `COMPOSE_PROFILES=public` to `.env` along with `AURUM_DOMAIN`, `AURUM_PUBLIC_PORT` and `AURUM_GATE_KEY`. Without those lines, `docker compose up -d` starts the same three containers as before.
 
-Your data lives in a Docker named volume (`aurum_pgdata`), not in the repo folder — it survives `docker compose down`, image rebuilds, and `git pull`. It's only gone if you explicitly run `docker compose down -v` or delete the volume yourself. For anything short of that, use the in-app **Settings → Backup & Restore** to export a JSON snapshot of everything before making risky changes.
+## 🔒 Security
 
-## 🔌 API
+Unlike the original, Aurum-Ex has a login of its own:
 
-Everything Aurum's UI can do — adding transactions, managing accounts and budgets, importing a CSV,
-tracking assets, exporting a backup — is also available as a plain JSON REST API at `/api`, so you
-can script Aurum or connect it to other programs. See **[DOCS.md](DOCS.md)** for the full reference,
-or open `/api/docs` on your running instance for interactive Swagger docs.
+- **Login screen and server-side session.** The password is stored hashed (scrypt); the session lives in an HttpOnly cookie a page script cannot read. Logging out actually ends the session on the server.
+- **One account per household.** This is not multi-user: everyone signs in as the same administrator and sees the same data, distinguished by the participant on a transaction. That is how a family budget works.
+- **A forgotten password** is reset with `AURUM_RECOVERY_KEY`, known only to whoever owns the server. A normal password change requires the current one, so nobody locks the household out by accident.
+- **Brute-force protection** — after `AURUM_MAX_FAILED_LOGINS` failures, login is blocked for `AURUM_LOCKOUT_MINUTES`.
+- **`AURUM_SECURE_COOKIES=true`** when published. Browsers make an exception for `localhost`, so an SSH tunnel keeps working.
 
-## 🔒 Security & Self-Hosting
+Found a security issue? Please report it privately via GitHub's Security tab.
 
-**В отличие от оригинального Aurum, у Aurum-Ex есть собственный вход.** Оригинал полагался на HTTP Basic Auth в nginx: браузерное окно, без сессии, без выхода, с паролем в каждом запросе и в открытом виде в `.env`. Здесь вместо этого:
+## 🛠️ Tech stack
 
-- **страница входа и серверная сессия.** Пароль хранится хешем (scrypt), сессия — в HttpOnly-куке, которую не прочитать скриптом со страницы. «Выйти» действительно обрывает сессию на сервере, а не просто стирает куку;
-- **одна учётная запись на всё домохозяйство.** Это не многопользовательский режим: все входят под одним администратором и видят одни данные, а различаются участником в транзакции. Так семейный бюджет и устроен;
-- **при первом открытии приложение само просит задать пароль.** Можно задать его заранее через `AURUM_ADMIN_PASSWORD`, но тогда он какое-то время лежит в файле на диске — надёжнее оставить переменную пустой и завести пароль в браузере;
-- **забытый пароль** сбрасывается аварийным ключом `AURUM_RECOVERY_KEY` из `.env`, который знает только владелец сервера. Обычная смена пароля требует текущего, чтобы никто из домашних не заперся снаружи по случайности. Ключ не задан — сброс выключен целиком;
-- **защита от перебора:** после `AURUM_MAX_FAILED_LOGINS` неудачных попыток вход блокируется на `AURUM_LOCKOUT_MINUTES` минут.
-
-Что остаётся на вас:
-
-- **TLS.** Aurum-Ex не терминирует HTTPS сам — нужен обратный прокси (Caddy, Traefik, nginx + Let's Encrypt). Публикуя экземпляр наружу, включите заодно `AURUM_SECURE_COOKIES=true`, чтобы кука сессии не уходила по открытому HTTP;
-- **HTTP Basic Auth** (`AURUM_BASIC_AUTH_USER` / `AURUM_BASIC_AUTH_PASSWORD`) остался как необязательный второй барьер перед страницей входа. Раньше он был единственной защитой, теперь — дополнительный слой, и без него приложение уже не беззащитно.
-
-If you find a security issue, please open a private report via GitHub's Security tab rather than a public issue.
-
-## 🛠️ Tech Stack
-
-- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, React Router, TanStack Query, Recharts
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts
 - **Backend:** FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2
-- **Database:** PostgreSQL
-- **Deployment:** Docker Compose (Postgres + FastAPI + nginx-served SPA)
+- **Database:** PostgreSQL 16
+- **Deployment:** Docker Compose, optional nginx + Let's Encrypt front door
 
 ## 🤝 Contributing
 
-Это личный форк, и правки в нём подчинены задачам конкретного сценария использования. Прежде чем присылать сюда pull request, проверьте, не относится ли он к оригиналу: **исправления и улучшения базового Aurum правильнее отправлять в [Zproger/Aurum](https://github.com/Zproger/Aurum)** — так они попадут ко всем пользователям, а не только сюда. Файл [CONTRIBUTING.md](CONTRIBUTING.md) с описанием дев-окружения унаследован от оригинала и остаётся в силе.
+This is a personal fork, and changes here follow one specific use case. Before opening a pull request, check whether it belongs upstream instead: **fixes and improvements to base Aurum are better sent to [Zproger/Aurum](https://github.com/Zproger/Aurum)**, where they reach everyone. [CONTRIBUTING.md](CONTRIBUTING.md), inherited from the original, still describes the dev environment.
 
 ## 📄 License
 
-Aurum-Ex распространяется под той же лицензией, что и оригинал, — [PolyForm Noncommercial License 1.0.0](LICENSE). Форк не может смягчить условия оригинала и не пытается: файл [LICENSE](LICENSE) оставлен без единого изменения, вместе с обязательной строкой уведомления.
+Same license as the original — [PolyForm Noncommercial License 1.0.0](LICENSE). A fork cannot loosen the original's terms and does not try: [LICENSE](LICENSE) is untouched, required notice included.
 
 `Required Notice: Copyright ZProger (https://github.com/ZProger)`
 
-Простыми словами: код можно читать, разворачивать у себя, изменять и использовать в любых личных, учебных и некоммерческих целях бесплатно и бессрочно. Нельзя — продавать его или изменённую версию, хостить как платный сервис для других и строить на нём коммерческий продукт. Это **не** OSI-совместимая открытая лицензия, а **source-available**. Точные условия — в файле [LICENSE](LICENSE).
+In plain words: read it, run it, modify it, and use it for any personal, educational or non-commercial purpose, free and forever. You may not sell it or a modified version, host it as a paid service, or build a commercial product on it. This is **not** an OSI-approved open source license — it is **source-available**. The exact terms are in [LICENSE](LICENSE).
 
-Отдельное требование лицензии, которое касается любого, кто распространяет этот код дальше: вместе с копией нужно передавать текст лицензии (или ссылку на неё) **и** строку `Required Notice`, приведённую выше. Она относится к автору оригинала и не убирается ни при каком объёме доработок.
+Anyone redistributing this code must pass along the license text (or a link to it) **and** the `Required Notice` above. It refers to the original author and does not go away no matter how much is reworked.
 
-## 🙏 Благодарности
+## 🙏 Credits
 
-Весь фундамент этого проекта — чужая работа. **[ZProger](https://github.com/ZProger)** написал [Aurum](https://github.com/Zproger/Aurum): архитектуру, движок капитала, аналитику, докеризацию и двуязычный интерфейс, — и открыл исходный код, благодаря чему этот форк вообще стал возможен. Здесь переработана доменная модель под другой сценарий, но каркас, на котором всё держится, остался авторским.
+The whole foundation of this project is someone else's work. **[ZProger](https://github.com/ZProger)** wrote [Aurum](https://github.com/Zproger/Aurum) — the architecture, the net worth engine, the analytics, the Docker setup and the bilingual interface — and opened the source, which is the only reason this fork exists at all. The domain model here has been reworked for a different use case, but the frame everything hangs on is his.
 
-Если проект оказался полезен, поддержать стоит именно автора оригинала: **[Donate via Lava](https://app.lava.top/782447112?tabId=donate)** — реквизиты его, а не форка. И звезда оригинальному репозиторию помогает ему больше, чем звезда этому.
+If this project turned out useful, support the original author rather than the fork: **[Donate via Lava](https://app.lava.top/782447112?tabId=donate)**. A star on the original repository helps him more than a star on this one.
+
+Most of the code in this fork — the data model rework, the services, the migrations, the tests and this README — was written with **[Claude](https://claude.com/claude-code)** by **[Anthropic](https://www.anthropic.com/)**, working from a description of what the spreadsheet could not do. The decisions about what to build, and the judgement about whether the result was honest about the numbers, stayed with a human; the typing largely did not.
 
 ---
 
 <div align="center">
 
-**Понравилась идея? Поставьте ⭐ [оригинальному Aurum](https://github.com/Zproger/Aurum) — проект вырос из него.**
+**Like the idea? Star [the original Aurum](https://github.com/Zproger/Aurum) — this grew out of it.**
 
 </div>

@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { formatCurrency, formatSignedCurrency, getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CashFlowResponse } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
+import { BAR_CURSOR } from "@/components/charts/cursors";
 
 interface CashFlowChartProps {
   cashFlow: CashFlowResponse | undefined;
@@ -61,7 +63,7 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
-    <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
+    <ChartTooltipBox>
       <p className="text-text-muted">{formatMonthLabel(point.key)}</p>
       <p className="text-success">
         {incomeLabel}: {formatCurrency(point.income)}
@@ -79,7 +81,7 @@ function ChartTooltip({
           {openingLabel}: {formatSignedCurrency(point.opening)}
         </p>
       )}
-    </div>
+    </ChartTooltipBox>
   );
 }
 
@@ -138,6 +140,7 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
               {isLoading ? t("common.loading") : t("cashFlow.noData")}
             </div>
           ) : (
+            <div className="chart-palette h-full w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
                 {yearTicks.length > 0 && (
@@ -153,6 +156,7 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
                   />
                 )}
                 <Tooltip
+                  isAnimationActive={false}
                   content={
                     <ChartTooltip
                       incomeLabel={incomeLabel}
@@ -161,7 +165,7 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
                       openingLabel={openingLabel}
                     />
                   }
-                  cursor={{ fill: "var(--surface-2)" }}
+                  cursor={BAR_CURSOR}
                 />
                 <Legend
                   verticalAlign="top"
@@ -173,6 +177,7 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
                 <Bar dataKey="expense" fill="var(--danger)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
+            </div>
           )}
         </div>
         {chartData.length > 1 && (

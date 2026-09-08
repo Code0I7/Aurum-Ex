@@ -293,7 +293,10 @@ export function TransactionsGrid({
               collapsed ? (
                 <tr
                   key={groupRow.key}
-                  className="group cursor-pointer hover:bg-surface-2/40"
+                  // Свёрнутая группа подсвечена акцентом и линией слева —
+                  // той же, что помечает её раскрытые строки, чтобы связь
+                  // между шапкой и содержимым читалась без раскрытия.
+                  className="group cursor-pointer bg-accent/[0.06] hover:bg-accent/10"
                   onClick={() => toggleGroup(groupRow.key)}
                 >
                   {columns.map((column, index) => (
@@ -301,21 +304,35 @@ export function TransactionsGrid({
                       key={column.id}
                       className={cn(
                         "max-w-[280px] truncate px-3 py-2 text-text-primary",
-                        column.align === "right" && "text-right"
+                        column.align === "right" && "text-right",
+                        index === 0 && "border-l-2 border-accent/40"
                       )}
                     >
-                      <span className="flex items-center gap-1">
-                        {index === 0 &&
-                          (isOpen ? (
-                            <ChevronDown size={13} className="shrink-0 text-text-muted" />
+                      {/* Флексом оборачивается только первая колонка — та,
+                          где стоит стрелка. Раньше в него попадали все, и
+                          text-right переставал действовать: у флекс-строки
+                          выравнивание задаёт justify-content, а не
+                          text-align. Из-за этого «Сумма» и «Баланс после» у
+                          свёрнутой группы уезжали влево, хотя внутри
+                          раскрытой группы стояли ровно. */}
+                      {index === 0 ? (
+                        <span className="flex items-center gap-1">
+                          {isOpen ? (
+                            <ChevronDown size={13} className="shrink-0 text-accent/70" />
                           ) : (
-                            <ChevronRight size={13} className="shrink-0 text-text-muted" />
-                          ))}
-                        {renderCell(column.id, groupRow.head, {
+                            <ChevronRight size={13} className="shrink-0 text-accent/70" />
+                          )}
+                          {renderCell(column.id, groupRow.head, {
+                            count: groupRow.items.length,
+                            total: groupRow.total,
+                          })}
+                        </span>
+                      ) : (
+                        renderCell(column.id, groupRow.head, {
                           count: groupRow.items.length,
                           total: groupRow.total,
-                        })}
-                      </span>
+                        })
+                      )}
                     </td>
                   ))}
                   <td className="px-3 py-2" />
@@ -348,7 +365,7 @@ export function TransactionsGrid({
                     // тонкой линией у левого края, а не отступом: любой
                     // отступ сдвигает содержимое, и колонки раскрытой группы
                     // перестают совпадать с колонками таблицы.
-                    collapsed && columnIndex === 0 && "border-l-2 border-text-muted/40"
+                    collapsed && columnIndex === 0 && "border-l-2 border-accent/25"
                   )}
                 >
                   {columnIndex === 0 ? (

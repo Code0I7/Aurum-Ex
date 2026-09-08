@@ -55,6 +55,7 @@ export function RoiProjectionCard({ rows }: Props) {
                 tickFormatter={(value: number) => `${Math.round(value / 1000)}k`}
               />
               <Tooltip
+                isAnimationActive={false}
                 contentStyle={{
                   background: "var(--surface-1)",
                   border: "1px solid var(--border)",

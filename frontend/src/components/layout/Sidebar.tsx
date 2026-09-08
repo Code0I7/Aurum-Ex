@@ -121,12 +121,13 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
             title={t("sidebar.expandMenu")}
             className="flex items-center justify-center gap-2 px-0 py-4 hover:opacity-80"
           >
-            <Logo size={24} />
+            <Logo variant="icon" size={30} />
           </button>
         ) : (
-          <div className="flex items-center gap-2 px-4 py-4">
-            <Logo size={24} />
-            <span className="text-lg font-semibold tracking-tight text-text-primary">Aurum-Ex</span>
+          // Плашка по центру и крупнее: в углу она читалась как значок
+          // рядом с пустотой, а по центру шапка меню выглядит шапкой.
+          <div className="flex items-center justify-center px-3 py-4">
+            <Logo variant="plate" size={51} />
           </div>
         )}
         <NavList collapsed={collapsed} />
@@ -152,9 +153,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
           <div className="absolute inset-0 bg-black/40" onClick={onCloseMobile} />
           <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-surface-1 shadow-xl">
             <div className="flex items-center justify-between gap-2 px-4 py-4">
-              <span className="flex items-center gap-2 text-lg font-semibold tracking-tight text-text-primary">
-                <Logo size={24} /> Aurum-Ex
-              </span>
+              <Logo variant="plate" size={34} />
               <button
                 type="button"
                 onClick={onCloseMobile}

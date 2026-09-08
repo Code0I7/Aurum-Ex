@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useTranslation, getLanguage } from "@/lib/i18n";
 import { formatCurrency, formatSignedCurrency, getMonthLabels } from "@/lib/format";
 import type { DashboardMonthPoint } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
+import { BAR_CURSOR } from "@/components/charts/cursors";
 
 /**
  * Движение денег по месяцам внутри выбранного периода.
@@ -35,6 +37,7 @@ export function MonthlyFlowCard({ points }: { points: DashboardMonthPoint[] }) {
       </CardHeader>
       <CardContent>
         <div className="h-52 w-full sm:h-60">
+          <div className="chart-palette h-full w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }} stackOffset="sign">
               <CartesianGrid stroke="var(--gridline)" vertical={false} />
@@ -51,11 +54,13 @@ export function MonthlyFlowCard({ points }: { points: DashboardMonthPoint[] }) {
                 tickFormatter={(value: number) => formatCurrency(Math.abs(value))}
               />
               <Tooltip
+                isAnimationActive={false}
+                cursor={BAR_CURSOR}
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
                   const point = payload[0].payload as (typeof data)[number];
                   return (
-                    <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-xs shadow-md">
+                    <ChartTooltipBox className="text-xs">
                       <p className="text-text-muted">{point.label}</p>
                       <p className="text-success">
                         {t("cashFlow.income")}: {formatCurrency(point.income)}
@@ -66,7 +71,7 @@ export function MonthlyFlowCard({ points }: { points: DashboardMonthPoint[] }) {
                       <p className="font-medium text-text-primary">
                         {t("cashFlow.net")}: {formatSignedCurrency(point.net)}
                       </p>
-                    </div>
+                    </ChartTooltipBox>
                   );
                 }}
               />
@@ -74,6 +79,7 @@ export function MonthlyFlowCard({ points }: { points: DashboardMonthPoint[] }) {
               <Bar dataKey="expense" fill="var(--danger)" radius={[0, 0, 2, 2]} />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </div>
       </CardContent>
     </Card>

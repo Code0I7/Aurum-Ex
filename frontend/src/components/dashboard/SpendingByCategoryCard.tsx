@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { CategoryBreakdownItem } from "@/types";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 
 interface SpendingByCategoryCardProps {
   items: CategoryBreakdownItem[];
@@ -17,12 +18,12 @@ function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   if (!active || !payload?.length) return null;
   const item = payload[0].payload;
   return (
-    <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm shadow-md">
+    <ChartTooltipBox>
       <p className="font-medium text-text-primary">{translateCategoryName(item.name)}</p>
       <p className="text-text-secondary">
         {formatCurrency(item.amount)} · {item.percent.toFixed(1)}%
       </p>
-    </div>
+    </ChartTooltipBox>
   );
 }
 
@@ -47,7 +48,7 @@ export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
         {!hasData ? (
           <p className="py-10 text-center text-sm text-text-muted">{t("dashboard.noExpensesThisMonth")}</p>
         ) : (
-          <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+          <div className="chart-palette flex flex-col items-center gap-6 sm:flex-row sm:items-center">
             <div className="h-56 w-56 shrink-0 sm:h-64 sm:w-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -66,7 +67,7 @@ export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
                       <Cell key={item.category_id ?? "other"} fill={item.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<DonutTooltip />} />
+                  <Tooltip isAnimationActive={false} content={<DonutTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>

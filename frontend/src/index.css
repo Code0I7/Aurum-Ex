@@ -1,63 +1,100 @@
 @import "tailwindcss";
 
 /*
- * Semantic tokens, light values first. Dark values are re-declared for both
- * the OS-level `prefers-color-scheme` and the manual `[data-theme]` toggle
- * (Settings → Theme, see lib/theme.ts), per the dataviz skill's reference
- * palette (references/palette.md).
+ * Оформление задаётся двумя атрибутами на <html>:
+ *
+ *   data-design = gold | modern | legacy   — в каком характере
+ *   data-scheme = light | dark             — светло или темно
+ *
+ * Атрибуты независимы: человек, выбравший тёмное, не обязан выбирать
+ * вместе с ним и золото. Ставит их lib/design.ts и lib/theme.ts, а до
+ * первой отрисовки — встроенный скрипт в index.html.
+ *
+ * Тема разложена в JS, а не выражена через `prefers-color-scheme`, и это
+ * осознанный размен. С медиазапросом тёмные значения пришлось бы писать
+ * дважды на каждое оформление — под запрос и под ручной выбор, — то есть
+ * шесть почти одинаковых блоков вместо трёх. Такие копии расходятся молча.
+ *
+ * Каждый блок называет своё оформление целиком, без опоры на порядок в
+ * файле: у `:root[data-design=X]` и `:root[data-scheme=dark]` одинаковый
+ * вес, и «тёмный legacy» перебил бы «светлое золото» просто потому, что
+ * стоит ниже. Поэтому тёмные блоки — всегда пара атрибутов.
+ *
+ * Добавить своё оформление: строка в DESIGNS (lib/design.ts) и пара блоков
+ * ниже с тем же именем. Больше ничего — цвета приложение берёт только
+ * отсюда.
  */
+
+/* Запасные значения: те же, что у legacy в светлом. Нужны на случай, если
+   атрибута нет вовсе — до того, как отработает скрипт. */
 :root {
   color-scheme: light;
-  --surface-0: #f9f9f7; /* page plane */
-  --surface-1: #fcfcfb; /* card surface */
-  --surface-2: #f2f1ed; /* hover/active wash */
+  --surface-0: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --surface-2: #f2f1ed;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
   --text-muted: #898781;
   --border: rgba(11, 11, 11, 0.1);
   --gridline: #e1e0d9;
-
+  --accent: #0b0b0b;
   --success: #006300;
   --danger: #c1302a;
-
-  --series-1: #2a78d6; /* blue */
-  --series-2: #eb6834; /* orange */
-  --series-3: #1baf7a; /* aqua */
-  --series-4: #eda100; /* yellow */
-  --series-5: #e87ba4; /* magenta */
-  --series-6: #008300; /* green */
-  --series-7: #4a3aa7; /* violet */
-  --series-8: #e34948; /* red */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
   --series-other: #898781;
+  --radius-app: 0.5rem;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05);
+  /* Насыщенность графиков. Цвета категорий заданы в базе и принадлежат
+     человеку, а не оформлению: перекрашивать его данные ради вида было бы
+     самоуправством. Поэтому не подмена цветов, а приглушение при показе —
+     обратимое и общее для всех графиков сразу. */
+  --chart-saturation: 1;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --surface-0: #0d0d0d;
-    --surface-1: #1a1a19;
-    --surface-2: #232322;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --border: rgba(255, 255, 255, 0.1);
-    --gridline: #2c2c2a;
+/* ==========================================================================
+   LEGACY — оформление, доставшееся от оригинального Aurum. Оставлено ради
+   возврата: у привыкшего к нему не должно пропасть привычное.
+   ========================================================================== */
 
-    --success: #0ca30c;
-    --danger: #e66767;
-
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-    --series-6: #008300;
-    --series-7: #9085e9;
-    --series-8: #e66767;
-  }
+:root[data-design="legacy"] {
+  color-scheme: light;
+  --surface-0: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --surface-2: #f2f1ed;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --border: rgba(11, 11, 11, 0.1);
+  --gridline: #e1e0d9;
+  --accent: #0b0b0b;
+  --success: #006300;
+  --danger: #c1302a;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --series-other: #898781;
+  --radius-app: 0.5rem;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05);
+  /* Насыщенность графиков. Цвета категорий заданы в базе и принадлежат
+     человеку, а не оформлению: перекрашивать его данные ради вида было бы
+     самоуправством. Поэтому не подмена цветов, а приглушение при показе —
+     обратимое и общее для всех графиков сразу. */
+  --chart-saturation: 1;
 }
 
-:root[data-theme="dark"] {
+:root[data-design="legacy"][data-scheme="dark"] {
   color-scheme: dark;
   --surface-0: #0d0d0d;
   --surface-1: #1a1a19;
@@ -67,10 +104,9 @@
   --text-muted: #898781;
   --border: rgba(255, 255, 255, 0.1);
   --gridline: #2c2c2a;
-
+  --accent: #ffffff;
   --success: #0ca30c;
   --danger: #e66767;
-
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -79,6 +115,137 @@
   --series-6: #008300;
   --series-7: #9085e9;
   --series-8: #e66767;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================================================
+   GOLD — обсидиан и золото, светлая пара на мраморе.
+
+   Золота намеренно мало: оно выделяет, а не заливает. Покрась им сразу и
+   доходы, и кнопки, и активную вкладку — оно перестанет что-либо означать,
+   как перестаёт работать текст, набранный целиком полужирным. Поэтому
+   золото только в акценте и в первом ряду графиков, а характер несёт сама
+   подложка.
+   ========================================================================== */
+
+:root[data-design="gold"] {
+  color-scheme: light;
+  --surface-0: #f6f2ea;
+  --surface-1: #fffdf8;
+  --surface-2: #ece5d6;
+  --text-primary: #15130d;
+  --text-secondary: #4b463a;
+  --text-muted: #8b8371;
+  --border: rgba(21, 19, 13, 0.12);
+  --gridline: #e2dac8;
+  --accent: #a67c00;
+  --success: #1f7a45;
+  --danger: #b3352f;
+  --series-1: #a67c00;
+  --series-2: #2f6f8f;
+  --series-3: #2f7f63;
+  --series-4: #c08a2e;
+  --series-5: #94566f;
+  --series-6: #4a7a33;
+  --series-7: #51518c;
+  --series-8: #a8443c;
+  --series-other: #8b8371;
+  --radius-app: 0.625rem;
+  --shadow-card: 0 1px 3px rgba(60, 45, 10, 0.09);
+  /* Заметно приглушённее: рядом с золотом чистый ализарин и электрический
+     синий выглядят чужими — не потому, что ярки сами по себе, а потому,
+     что спорят с подложкой. */
+  --chart-saturation: 0.68;
+}
+
+:root[data-design="gold"][data-scheme="dark"] {
+  color-scheme: dark;
+  --surface-0: #08080a;
+  --surface-1: #121215;
+  --surface-2: #1c1c20;
+  --text-primary: #f4f1e8;
+  --text-secondary: #b6b0a1;
+  --text-muted: #837c6d;
+  /* Кайма с примесью золота: на обсидиане чисто серая линия выглядит
+     грязной, а тёплая читается как отблеск. */
+  --border: rgba(212, 175, 55, 0.16);
+  --gridline: #24242a;
+  --accent: #d4af37;
+  --success: #37a866;
+  --danger: #e0645c;
+  --series-1: #d4af37;
+  --series-2: #4f9fd0;
+  --series-3: #3fa98a;
+  --series-4: #e0c26a;
+  --series-5: #cf7f9e;
+  --series-6: #5aa85f;
+  --series-7: #8f86d8;
+  --series-8: #e0645c;
+  --series-other: #837c6d;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* ==========================================================================
+   MODERN — то же золото в акценте, но воздуха больше, углы мягче, и всё
+   появляется движением. Светлая пара тоже мраморная, только холоднее и
+   чище: рядом с золотым оформлением она должна отличаться характером, а не
+   палитрой.
+   ========================================================================== */
+
+:root[data-design="modern"] {
+  color-scheme: light;
+  --surface-0: #f7f6f3;
+  --surface-1: #ffffff;
+  --surface-2: #edebe6;
+  --text-primary: #101114;
+  --text-secondary: #4a4d55;
+  --text-muted: #85888f;
+  --border: rgba(16, 17, 20, 0.09);
+  --gridline: #e7e5df;
+  --accent: #b8912f;
+  --success: #1f8a4c;
+  --danger: #cf3f3a;
+  --series-1: #3b6fe0;
+  --series-2: #e2703a;
+  --series-3: #14a07a;
+  --series-4: #c9a227;
+  --series-5: #d4638f;
+  --series-6: #2f9e44;
+  --series-7: #6b4fd6;
+  --series-8: #d94b47;
+  --series-other: #85888f;
+  --radius-app: 0.875rem;
+  --shadow-card:
+    0 1px 2px rgba(16, 17, 20, 0.04),
+    0 8px 24px -12px rgba(16, 17, 20, 0.14);
+  --chart-saturation: 0.82;
+}
+
+:root[data-design="modern"][data-scheme="dark"] {
+  color-scheme: dark;
+  --surface-0: #0a0b0e;
+  --surface-1: #14161b;
+  --surface-2: #1e2128;
+  --text-primary: #f3f5f8;
+  --text-secondary: #aab1bd;
+  --text-muted: #767d89;
+  --border: rgba(255, 255, 255, 0.09);
+  --gridline: #242830;
+  --accent: #d9b64a;
+  --success: #34c06a;
+  --danger: #ef6b66;
+  --series-1: #5b8def;
+  --series-2: #ef8354;
+  --series-3: #2bbd93;
+  --series-4: #e0c05a;
+  --series-5: #e884ab;
+  --series-6: #4ec46a;
+  --series-7: #9b87f0;
+  --series-8: #ef6b66;
+  --series-other: #767d89;
+  --shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 12px 32px -16px rgba(0, 0, 0, 0.85);
 }
 
 @theme {
@@ -90,6 +257,7 @@
   --color-text-muted: var(--text-muted);
   --color-border: var(--border);
   --color-gridline: var(--gridline);
+  --color-accent: var(--accent);
   --color-success: var(--success);
   --color-danger: var(--danger);
 
@@ -103,6 +271,12 @@
   --color-series-8: var(--series-8);
   --color-series-other: var(--series-other);
 
+  /* Скругление — часть характера оформления, а не решение каждого места по
+     отдельности. Классы rounded-lg и rounded-xl во всём приложении берут
+     значение отсюда, поэтому смена оформления меняет форму разом. */
+  --radius-lg: var(--radius-app);
+  --radius-xl: calc(var(--radius-app) * 1.5);
+
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -114,4 +288,91 @@ body {
 
 * {
   border-color: var(--color-border);
+}
+
+/* Тень карточек берётся из оформления: у «современного» — мягкая глубина,
+   у legacy — прежняя почти незаметная линия. */
+.shadow-sm {
+  box-shadow: var(--shadow-card);
+}
+
+/* --------------------------------------------------------------------------
+   Движение. Только у «современного»: в остальных оформлениях интерфейс
+   должен появляться мгновенно — это ожидание, а не недоработка.
+   -------------------------------------------------------------------------- */
+
+@keyframes aurum-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes aurum-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Содержимое страницы всплывает при переходе. Анимируются прямые дети
+   main, а не каждая карточка: так волна идёт по крупным блокам, а не
+   рябью по десяткам мелких. */
+:root[data-design="modern"] main > * {
+  animation: aurum-rise 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+:root[data-design="modern"] .shadow-sm {
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+/* Приподнимание под курсором — только там, где курсор есть. На телефоне
+   наведения нет, и без этого условия карточка «залипала» бы приподнятой
+   после касания. */
+@media (hover: hover) {
+  :root[data-design="modern"] main .shadow-sm:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* Приглушение цвета графиков. Ставится на обёртку, а не на каждый
+   элемент: в круге цвета приходят из базы, в столбцах — из переменных
+   успеха и убытка, и подгонять их по отдельности значило бы держать два
+   набора значений вместо одного рычага. */
+.chart-palette {
+  filter: saturate(var(--chart-saturation));
+}
+
+/* Подсказка графиков появляется на месте, а не приезжает откуда-то сбоку.
+   Класс ставит components/charts/ChartTooltipBox.tsx. */
+.chart-tooltip {
+  animation: aurum-fade 120ms ease-out both;
+}
+
+:root[data-design="modern"] .chart-tooltip {
+  animation: aurum-rise 140ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Человеку, которого укачивает от движения в интерфейсе, выбирать
+   оформление не приходится — движение просто выключается. */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="modern"] main > *,
+  .chart-tooltip,
+  :root[data-design="modern"] .chart-tooltip {
+    animation: none;
+  }
+  :root[data-design="modern"] .shadow-sm {
+    transition: none;
+  }
+  :root[data-design="modern"] main .shadow-sm:hover {
+    transform: none;
+  }
 }

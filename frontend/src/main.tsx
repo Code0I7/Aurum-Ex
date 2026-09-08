@@ -5,7 +5,11 @@ import { BrowserRouter } from "react-router-dom";
 import App from "@/App";
 import { LoginGate } from "@/components/auth/LoginGate";
 import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
+// Оформление и тема применяются при загрузке модуля: атрибуты уже
+// проставлены встроенным скриптом в index.html, здесь подхватывается
+// цвет адресной строки, для которого нужны загруженные стили.
 import "@/lib/theme";
+import "@/lib/design";
 import "@/index.css";
 
 const queryClient = new QueryClient({
