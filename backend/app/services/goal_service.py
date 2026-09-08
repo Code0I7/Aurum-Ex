@@ -64,7 +64,12 @@ async def list_goals(session: AsyncSession) -> list[GoalRead]:
 
 
 async def create_goal(session: AsyncSession, payload: GoalCreate) -> GoalRead:
-    goal = Goal(name=payload.name, target_amount=payload.target_amount, target_date=payload.target_date)
+    goal = Goal(
+        name=payload.name,
+        target_amount=payload.target_amount,
+        target_date=payload.target_date,
+        account_id=payload.account_id,
+    )
     session.add(goal)
     await session.commit()
     return GoalRead(
@@ -72,6 +77,8 @@ async def create_goal(session: AsyncSession, payload: GoalCreate) -> GoalRead:
         name=goal.name,
         target_amount=goal.target_amount,
         target_date=goal.target_date,
+        account_id=goal.account_id,
+        status=goal.status,
         current_amount=Decimal("0"),
         remaining=goal.target_amount,
         percent=0.0,

@@ -95,7 +95,7 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
     if not eligible_ids:
         return 0
 
-    # Same derivation account_service._account_balances uses — balance is
+    # Same derivation account_service.get_balances_by_account uses — balance is
     # never stored, only ever summed from the full transaction history — plus
     # tracking the most recent date that touched each account along the way.
     rows = await session.execute(

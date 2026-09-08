@@ -2,6 +2,12 @@
 Dashboard (locked to one month) nor Reports (one category at a time, or a
 category ranking) answers on its own. Transfers between the user's own
 accounts are excluded from both totals, same as the Dashboard breakdown.
+
+Начальные остатки счетов входят в оборот. Деньги, лежавшие на счёте до
+первой записи, тоже были когда-то заработаны — просто раньше, чем начался
+учёт, — и выбросить их значит показать сальдо, которое не сходится с
+остатком на счетах. Отрицательный начальный остаток (счёт открыт с долгом)
+попадает в расход: направление денег важнее удобной подписи.
 """
 from collections import defaultdict
 from datetime import date as date_
@@ -10,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.account import Account
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
 from app.services.transaction_service import counted_only, earnings_and_spending_only
@@ -32,6 +39,35 @@ async def get_cash_flow(
     if end_date:
         bounds_stmt = bounds_stmt.where(Transaction.date <= end_date)
     min_date, max_date = (await session.execute(bounds_stmt)).one()
+
+    # Начальные остатки: сумма и дата, с которой счёт считается открытым.
+    # Нулевые не берём — они ничего не добавляют, но растянули бы диапазон.
+    openings = [
+        (opening_date, amount)
+        for opening_date, amount in (
+            await session.execute(
+                select(Account.opening_date, Account.opening_balance).where(
+                    Account.opening_balance.is_not(None),
+                    Account.opening_balance != 0,
+                )
+            )
+        ).all()
+    ]
+
+    # Диапазон расширяется до самого раннего остатка: счёт мог быть открыт
+    # раньше первой записи, и обрезать его значило бы потерять деньги, с
+    # которых всё началось.
+    opening_dates = [date for date, _ in openings if date is not None]
+    if opening_dates:
+        earliest_opening = min(opening_dates)
+        if min_date is None or earliest_opening < min_date:
+            min_date = earliest_opening
+        # И до самого позднего: без единой операции остаток — это всё, что
+        # вообще произошло, и не показать его значит показать пустоту вместо
+        # денег, которые на счёте лежат.
+        latest_opening = max(opening_dates)
+        if max_date is None or latest_opening > max_date:
+            max_date = latest_opening
 
     effective_start = start_date or min_date
     effective_end = end_date or max_date
@@ -68,13 +104,41 @@ async def get_cash_flow(
     for year, month, tx_type, amount in rows:
         by_month[(int(year), int(month))][tx_type] = amount
 
+    # Остатки раскладываются по месяцам открытия счетов. Счёт без даты
+    # открытия относится к первому месяцу диапазона: «до начала учёта» — это
+    # и есть его начало, а выбросить остаток нельзя.
+    opening_by_month: dict[tuple[int, int], Decimal] = defaultdict(Decimal)
+    for opening_date, amount in openings:
+        moment = opening_date or effective_start
+        if not (effective_start <= moment <= effective_end):
+            # За пределами выбранного периода: при фильтре «2026 год» остаток
+            # 2022-го показывать неоткуда.
+            continue
+        opening_by_month[(moment.year, moment.month)] += amount
+
     points: list[CashFlowPoint] = []
     year, month = effective_start.year, effective_start.month
     while (year, month) <= (effective_end.year, effective_end.month):
         totals = by_month.get((year, month), {})
         income = totals.get(TransactionType.INCOME, Decimal("0"))
         expense = totals.get(TransactionType.EXPENSE, Decimal("0"))
-        points.append(CashFlowPoint(year=year, month=month, income=income, expense=expense, net=income - expense))
+        opening = opening_by_month.get((year, month), Decimal("0"))
+        # Знак решает, в какую сторону попадёт остаток. Счёт, открытый с
+        # долгом, — это не отрицательный доход, а расход.
+        if opening >= 0:
+            income += opening
+        else:
+            expense += -opening
+        points.append(
+            CashFlowPoint(
+                year=year,
+                month=month,
+                income=income,
+                expense=expense,
+                net=income - expense,
+                opening=opening,
+            )
+        )
         year, month = _next_month(year, month)
 
     total_income = sum((p.income for p in points), Decimal("0"))
@@ -87,4 +151,5 @@ async def get_cash_flow(
         total_income=total_income,
         total_expense=total_expense,
         total_net=total_income - total_expense,
+        total_opening=sum((p.opening for p in points), Decimal("0")),
     )

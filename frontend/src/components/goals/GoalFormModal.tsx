@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useCreateGoal, useUpdateGoal } from "@/hooks/useGoals";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useTranslation } from "@/lib/i18n";
 import type { Goal } from "@/types";
 
@@ -12,12 +13,13 @@ interface GoalFormModalProps {
   goal?: Goal | null;
 }
 
-const EMPTY_FORM = { name: "", target_amount: "", target_date: "" };
+const EMPTY_FORM = { name: "", target_amount: "", target_date: "", account_id: "" };
 
 export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
   const { t } = useTranslation();
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
+  const { data: accounts } = useAccounts(false);
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,12 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
   useEffect(() => {
     if (!open) return;
     if (goal) {
-      setForm({ name: goal.name, target_amount: goal.target_amount, target_date: goal.target_date ?? "" });
+      setForm({
+        name: goal.name,
+        target_amount: goal.target_amount,
+        target_date: goal.target_date ?? "",
+        account_id: goal.account_id?.toString() ?? "",
+      });
     } else {
       setForm(EMPTY_FORM);
     }
@@ -42,6 +49,10 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
       name: form.name,
       target_amount: form.target_amount,
       target_date: form.target_date || null,
+      // Счёт необязателен: цель можно завести и до того, как решено, откуда
+      // копить. Но пока он не указан, счёт не покажет «отложено» — деньги
+      // обещаны, а откуда возьмутся, неизвестно.
+      account_id: form.account_id ? Number(form.account_id) : null,
     };
 
     try {
@@ -92,6 +103,24 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
               onChange={(event) => setForm((prev) => ({ ...prev, target_date: event.target.value }))}
             />
           </div>
+        </div>
+
+        <div>
+          <Label htmlFor="goal-account">{t("goal.form.accountLabel")}</Label>
+          <select
+            id="goal-account"
+            value={form.account_id}
+            onChange={(event) => setForm((prev) => ({ ...prev, account_id: event.target.value }))}
+            className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
+          >
+            <option value="">{t("goal.form.accountNone")}</option>
+            {(accounts ?? []).map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-text-muted">{t("goal.form.accountHint")}</p>
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}

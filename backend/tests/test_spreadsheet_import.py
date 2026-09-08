@@ -222,3 +222,81 @@ async def test_apply_is_refused_on_a_non_empty_database(client: AsyncClient, acc
         files={"transactions": ("t.csv", csv_of(row()).encode("utf-8"), "text/csv")},
     )
     assert resp.status_code == 409
+
+
+# --- Кредитные счета ---
+
+
+def test_credit_accounts_are_found_by_interest_not_by_name():
+    """Название счёта — ненадёжный признак. «Маркет Кредит» о себе говорит,
+    «Маркет 2222» молчит, а проценты начисляются на оба."""
+    plan = build_plan(
+        csv_of(
+            row(account="Маркет 2222", dds="Расходы", category="Долги - Погашение",
+                sub="Проценты по кредитам", amount="1 200,00"),
+            row(account="Банк 1111", dds="Расходы", category="Долги - Погашение",
+                sub="Погашение кредитов", amount="5 000,00"),
+            row(account="Банк 1111", dds="Доходы", category="Иван", sub="Иван - Зарплата",
+                amount="50 000,00"),
+        )
+    )
+    assert plan.credit_accounts == {"Маркет 2222"}
+
+
+def test_repayment_does_not_mark_the_paying_account_as_credit():
+    """Погашение списывается с обычного счёта, с которого платят. Считать
+    кредитным его — значит перепутать должника с кредитом."""
+    plan = build_plan(
+        csv_of(
+            row(account="Банк 1111", dds="Расходы", category="Долги - Погашение",
+                sub="Погашение кредитов", amount="5 000,00"),
+        )
+    )
+    assert plan.credit_accounts == set()
+
+
+async def test_imported_credit_account_becomes_a_liability(client: AsyncClient):
+    """Счёт с процентами приезжает обязательством, и минус на нём разрешён:
+    отрицательный баланс кредитного счёта — это и есть долг."""
+    payload = csv_of(
+        row(account="Маркет 2222", dds="Расходы", category="Долги - Погашение",
+            sub="Проценты по кредитам", amount="1 200,00"),
+        row(account="Наличные", dds="Расходы", category="Быстропит", sub="Выпечка", amount="100,00"),
+    )
+    resp = await client.post(
+        "/import/spreadsheet/apply",
+        files={"transactions": ("transactions.csv", payload.encode("utf-8"), "text/csv")},
+    )
+    assert resp.status_code == 200, resp.text
+
+    accounts = {item["name"]: item for item in (await client.get("/accounts")).json()}
+    assert accounts["Маркет 2222"]["nature"] == "liability"
+    assert accounts["Маркет 2222"]["kind"] == "credit_card"
+    assert accounts["Маркет 2222"]["allow_negative"] is True
+    # Обычный счёт не задет.
+    assert accounts["Наличные"]["nature"] == "asset"
+
+
+async def test_one_misfiled_row_does_not_flip_a_whole_category(client: AsyncClient):
+    """В настоящей таблице у «Прочих расходов» 179 расходных строк и одна
+    доходная — человек однажды промахнулся видом операции. Правило «есть
+    хоть один доход → категория доходная» переносило всю ветку не на ту
+    сторону: расход на восемьдесят тысяч оказывался доходом."""
+    content = csv_of(
+        *[
+            row(dds="Расходы", category="Прочие расходы", sub="Прочие расходы - Переводы", amount="300,00")
+            for _ in range(5)
+        ],
+        row(dds="Доходы", category="Прочие расходы", sub="Прочие расходы - Переводы", amount="200,00"),
+    )
+    resp = await client.post(
+        "/import/spreadsheet/apply",
+        files={"transactions": ("transactions.csv", content.encode("utf-8"), "text/csv")},
+    )
+    assert resp.status_code == 200, resp.text
+
+    categories = {c["name"]: c for c in (await client.get("/categories")).json()}
+    assert categories["Прочие расходы"]["kind"] == "expense"
+    # Подкатегория наследует вид родителя: одна ветка не может быть наполовину
+    # доходной.
+    assert categories["Прочие расходы - Переводы"]["kind"] == "expense"

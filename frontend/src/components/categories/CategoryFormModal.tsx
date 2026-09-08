@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
@@ -17,6 +17,10 @@ interface CategoryFormModalProps {
   // can't change after creation (see backend CategoryUpdate schema).
   defaultKind: CategoryKind;
 }
+
+// Должно совпадать с MAX_DEPTH в backend/app/services/category_tree.py:
+// предлагать вариант, на который сервер ответит отказом, бессмысленно.
+const MAX_CATEGORY_DEPTH = 5;
 
 const KINDS: CategoryKind[] = ["expense", "income"];
 
@@ -49,12 +53,60 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
     setError(null);
   }, [open, category, defaultKind]);
 
-  // A category that already has subcategories can't become one itself
-  // (backend rejects it) — the parent picker is disabled in that case.
-  const hasChildren = category ? (allCategories ?? []).some((c) => c.parent_id === category.id) : false;
-  const parentCandidates = (allCategories ?? []).filter(
-    (c) => c.kind === form.kind && c.parent_id === null && c.id !== category?.id
-  );
+  // Кандидаты в родители — всё дерево нужного вида, отсортированное как оно
+  // выглядит, с отступом по глубине. Ветку с детьми теперь тоже можно
+  // перенести целиком, поэтому отдельного запрета для неё нет.
+  //
+  // Из списка убирается сама категория и всё, что под ней: подвесить ветку
+  // внутрь себя нельзя, и предлагать такой вариант, чтобы потом отказать,
+  // бессмысленно. Глубже предела тоже не предлагаем — по той же причине.
+  const parentCandidates = useMemo(() => {
+    const all = allCategories ?? [];
+    const childrenOf = new Map<number, Category[]>();
+    for (const item of all) {
+      if (item.parent_id === null) continue;
+      const bucket = childrenOf.get(item.parent_id);
+      if (bucket) bucket.push(item);
+      else childrenOf.set(item.parent_id, [item]);
+    }
+
+    // Высота переносимой ветки: ветку из трёх уровней нельзя подвесить так,
+    // чтобы её низ вышел за предел.
+    function heightOf(id: number): number {
+      let best = 1;
+      for (const child of childrenOf.get(id) ?? []) best = Math.max(best, 1 + heightOf(child.id));
+      return best;
+    }
+    const branchHeight = category ? heightOf(category.id) : 1;
+
+    const forbidden = new Set<number>();
+    if (category) {
+      forbidden.add(category.id);
+      const queue = [category.id];
+      while (queue.length > 0) {
+        const current = queue.pop()!;
+        for (const child of childrenOf.get(current) ?? []) {
+          forbidden.add(child.id);
+          queue.push(child.id);
+        }
+      }
+    }
+
+    const result: Array<{ item: Category; depth: number }> = [];
+    function walk(parentId: number | null, depth: number) {
+      const level = all
+        .filter((item) => item.parent_id === parentId && item.kind === form.kind)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      for (const item of level) {
+        if (!forbidden.has(item.id) && depth + 1 + branchHeight <= MAX_CATEGORY_DEPTH) {
+          result.push({ item, depth });
+        }
+        walk(item.id, depth + 1);
+      }
+    }
+    walk(null, 0);
+    return result;
+  }, [allCategories, category, form.kind]);
 
   const isSaving = createCategory.isPending || updateCategory.isPending;
 
@@ -115,18 +167,20 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
           <Label htmlFor="category-parent">{t("category.form.parentLabel")}</Label>
           <Select
             id="category-parent"
-            value={hasChildren ? "" : form.parent_id}
-            disabled={hasChildren}
+            value={form.parent_id}
             onChange={(event) => setForm((prev) => ({ ...prev, parent_id: event.target.value }))}
           >
             <option value="">{t("category.form.noParent")}</option>
-            {parentCandidates.map((parent) => (
-              <option key={parent.id} value={parent.id}>
-                {translateCategoryName(parent.name)}
+            {parentCandidates.map(({ item, depth }) => (
+              <option key={item.id} value={item.id}>
+                {/* Неразрывные пробелы: обычные схлопываются в <option>, и
+                    дерево превратилось бы в плоский список. */}
+                {"  ".repeat(depth)}
+                {depth > 0 ? "└ " : ""}
+                {translateCategoryName(item.name)}
               </option>
             ))}
           </Select>
-          {hasChildren && <p className="mt-1 text-xs text-text-muted">{t("category.form.hasChildrenHint")}</p>}
         </div>
 
         <div>

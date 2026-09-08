@@ -10,6 +10,11 @@ class CashFlowPoint(BaseModel):
     income: Decimal
     expense: Decimal
     net: Decimal
+    # Начальный остаток счетов, открытых в этом месяце. Уже включён в income
+    # (или в expense, если остаток отрицательный) — выделен отдельно, чтобы
+    # столбец «доход» в месяце открытия счёта не выглядел необъяснимым
+    # всплеском.
+    opening: Decimal = Decimal("0")
 
 
 class CashFlowResponse(BaseModel):
@@ -19,3 +24,6 @@ class CashFlowResponse(BaseModel):
     total_income: Decimal
     total_expense: Decimal
     total_net: Decimal
+    # Сколько из оборота пришлось на начальные остатки. Ноль, если все счета
+    # заведены с нуля.
+    total_opening: Decimal = Decimal("0")

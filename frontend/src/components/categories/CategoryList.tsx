@@ -12,17 +12,22 @@ interface CategoryListProps {
 
 interface RowProps {
   category: Category;
-  indented: boolean;
+  /** Глубина в дереве: 0 — корень. Задаёт отступ. */
+  depth: number;
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
 }
 
-function CategoryRow({ category, indented, onEdit, onDelete }: RowProps) {
+// Шаг отступа. Меньше, чем прежние 32px на один уровень: с пятью уровнями
+// такой отступ съел бы половину ширины на телефоне.
+const INDENT_STEP = 18;
+
+function CategoryRow({ category, depth, onEdit, onDelete }: RowProps) {
   const { t } = useTranslation();
   const Icon = getCategoryIcon(category.icon);
 
   return (
-    <li className={`flex items-center gap-3 py-2.5 ${indented ? "pl-8" : ""}`}>
+    <li className="flex items-center gap-3 py-2.5" style={{ paddingLeft: depth * INDENT_STEP }}>
       <span
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
         style={{ backgroundColor: `${category.color}1a`, color: category.color }}
@@ -66,30 +71,38 @@ export function CategoryList({ items, onEdit, onDelete }: CategoryListProps) {
     return <p className="py-6 text-center text-sm text-text-muted">{t("category.empty")}</p>;
   }
 
-  // `items` arrives pre-sorted (alphabetically, by CategoriesPage) — walk
-  // top-level categories in that order and splice each one's children in
-  // directly beneath it, so a subcategory renders indented under its parent
-  // while everything stays a single flat, evenly-divided list.
-  const topLevel = items.filter((category) => category.parent_id === null);
-  const topLevelIds = new Set(topLevel.map((category) => category.id));
-  // Defensive only — a child whose parent got filtered out (e.g. a kind
-  // mismatch) should never happen given the create/update validation, but
-  // falls back to a top-level row instead of silently disappearing.
-  const orphaned = items.filter((category) => category.parent_id !== null && !topLevelIds.has(category.parent_id));
+  // `items` приходит отсортированным (по алфавиту, из CategoriesPage).
+  // Дерево обходится сверху вниз на любую глубину: раньше здесь было ровно
+  // два уровня, и внук просто не отрисовывался бы.
+  const byId = new Map(items.map((category) => [category.id, category]));
+  const childrenOf = new Map<number | null, Category[]>();
+  for (const category of items) {
+    // Ребёнок, чей родитель не попал в список (отфильтровали по виду),
+    // считается корневым — иначе он исчез бы с экрана вместе с ветвью.
+    const key = category.parent_id !== null && byId.has(category.parent_id) ? category.parent_id : null;
+    const bucket = childrenOf.get(key);
+    if (bucket) bucket.push(category);
+    else childrenOf.set(key, [category]);
+  }
 
-  const rows: { category: Category; indented: boolean }[] = [];
-  for (const parent of topLevel) {
-    rows.push({ category: parent, indented: false });
-    for (const child of items) {
-      if (child.parent_id === parent.id) rows.push({ category: child, indented: true });
+  const rows: { category: Category; depth: number }[] = [];
+  const visited = new Set<number>();
+  function walk(parentId: number | null, depth: number) {
+    for (const category of childrenOf.get(parentId) ?? []) {
+      // Защита от цикла в данных: бэкенд его не допускает, но испорченная
+      // база не должна вешать страницу бесконечной рекурсией.
+      if (visited.has(category.id)) continue;
+      visited.add(category.id);
+      rows.push({ category, depth });
+      walk(category.id, depth + 1);
     }
   }
-  for (const category of orphaned) rows.push({ category, indented: false });
+  walk(null, 0);
 
   return (
     <ul className="divide-y divide-gridline">
-      {rows.map(({ category, indented }) => (
-        <CategoryRow key={category.id} category={category} indented={indented} onEdit={onEdit} onDelete={onDelete} />
+      {rows.map(({ category, depth }) => (
+        <CategoryRow key={category.id} category={category} depth={depth} onEdit={onEdit} onDelete={onDelete} />
       ))}
     </ul>
   );

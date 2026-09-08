@@ -35,6 +35,7 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
       {items.map((account) => {
         const Icon = KIND_ICONS[account.kind];
         const balance = Number(account.balance);
+        const reserved = Number(account.reserved ?? 0);
 
         return (
           <li key={account.id} className={`flex items-center gap-3 py-3 ${account.is_archived ? "opacity-50" : ""}`}>
@@ -52,13 +53,30 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
               </span>
               <span className="block truncate text-xs text-text-muted">
                 {t(`account.kind.${account.kind}` as TranslationKey)}
+                {/* Резерв дописывается к виду счёта, а не отдельной строкой:
+                    у большинства счетов его нет, и пустая строка растянула бы
+                    список без пользы. Баланс при этом не уменьшается — деньги
+                    лежат там же, просто часть обещана цели. */}
+                {reserved > 0 && (
+                  <>
+                    {" · "}
+                    {t("account.reservedShort", { amount: formatCurrency(reserved) })}
+                  </>
+                )}
               </span>
             </span>
-            <span
-              className="shrink-0 text-sm font-medium tabular-nums"
-              style={{ color: balance < 0 ? "var(--danger)" : "var(--text-primary)" }}
-            >
-              {formatCurrency(balance)}
+            <span className="shrink-0 text-right">
+              <span
+                className="block text-sm font-medium tabular-nums"
+                style={{ color: balance < 0 ? "var(--danger)" : "var(--text-primary)" }}
+              >
+                {formatCurrency(balance)}
+              </span>
+              {reserved > 0 && (
+                <span className="block text-xs tabular-nums text-text-muted">
+                  {t("account.availableShort", { amount: formatCurrency(account.available) })}
+                </span>
+              )}
             </span>
             <span className="flex shrink-0 gap-1">
               <button

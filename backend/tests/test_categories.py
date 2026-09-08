@@ -25,7 +25,14 @@ async def test_subcategory_cannot_have_a_different_kind_than_its_parent(client: 
     assert resp.status_code == 400
 
 
-async def test_subcategories_are_only_one_level_deep(client: AsyncClient, categories):
+async def test_subcategories_can_nest_deeper_than_one_level(client: AsyncClient, categories):
+    """Раньше здесь стоял обратный запрет — наследие оригинального Aurum.
+    Он мешал разложить накопившийся за годы список статей: «Продукты →
+    Алкоголь → Вино» отклонялось четырёхсотым.
+
+    Границы вложенности и подъём сумм к корню проверяются подробно в
+    tests/test_category_nesting.py.
+    """
     groceries = categories["Groceries"]["id"]
     child = await client.post(
         "/categories", json={"name": "Alcohol", "kind": "expense", "color": "#e34948", "parent_id": groceries}
@@ -35,7 +42,8 @@ async def test_subcategories_are_only_one_level_deep(client: AsyncClient, catego
     resp = await client.post(
         "/categories", json={"name": "Wine", "kind": "expense", "color": "#e34948", "parent_id": child_id}
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["parent_id"] == child_id
 
 
 async def test_category_cannot_be_its_own_parent(client: AsyncClient, categories):
@@ -44,15 +52,24 @@ async def test_category_cannot_be_its_own_parent(client: AsyncClient, categories
     assert resp.status_code == 400
 
 
-async def test_a_category_with_subcategories_cannot_itself_become_a_subcategory(client: AsyncClient, categories):
+async def test_a_category_with_subcategories_moves_as_a_whole_branch(client: AsyncClient, categories):
+    """Ветку переносят целиком — иначе разложить дерево можно было бы только
+    разобрав его по одной категории и собрав заново."""
     groceries = categories["Groceries"]["id"]
     dining = categories["Dining Out"]["id"]
-    await client.post(
-        "/categories", json={"name": "Alcohol", "kind": "expense", "color": "#e34948", "parent_id": groceries}
-    )
+    child = (
+        await client.post(
+            "/categories", json={"name": "Alcohol", "kind": "expense", "color": "#e34948", "parent_id": groceries}
+        )
+    ).json()
 
     resp = await client.patch(f"/categories/{groceries}", json={"parent_id": dining})
-    assert resp.status_code == 400
+    assert resp.status_code == 200, resp.text
+
+    listing = {row["id"]: row for row in (await client.get("/categories")).json()}
+    assert listing[groceries]["parent_id"] == dining
+    # Ребёнок остался под своим родителем и уехал вместе с ним.
+    assert listing[child["id"]]["parent_id"] == groceries
 
 
 async def test_deleting_a_parent_leaves_children_as_top_level(client: AsyncClient, categories):

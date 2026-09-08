@@ -10,12 +10,18 @@ class GoalCreate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     target_amount: Decimal = Field(gt=0)
     target_date: date_ | None = None
+    # Счёт, на котором физически лежат отложенные деньги. Необязателен: цель
+    # можно завести и до того, как решено, откуда копить. Но пока он не
+    # указан, счёт не сможет показать «отложено» — деньги обещаны, а откуда
+    # они возьмутся, неизвестно.
+    account_id: int | None = None
 
 
 class GoalUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     target_amount: Decimal | None = Field(default=None, gt=0)
     target_date: date_ | None = None
+    account_id: int | None = None
 
 
 class GoalContributionCreate(BaseModel):

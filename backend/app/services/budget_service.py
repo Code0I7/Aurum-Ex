@@ -16,6 +16,7 @@ from app.models.budget import Budget
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+from app.services.category_tree import load_category_tree
 from app.services.transaction_service import counted_only
 from app.schemas.budget import BudgetCreate, BudgetStatus, BudgetStatusResponse, BudgetUpdate
 
@@ -82,13 +83,14 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
     # spent on the Dashboard and 0 against its own budget. A subcategory that
     # has a budget of its own still tracks its own spending: both bars move,
     # each against its own limit.
+    # Ветка берётся целиком, на любую глубину: бюджет на «Продуктах» обязан
+    # видеть сыр, лежащий двумя уровнями ниже, иначе месяц читался бы как
+    # 900 потрачено на дашборде и 0 против собственного бюджета.
+    tree = await load_category_tree(session)
     budget_category_ids = [b.category_id for b in budgets]
     children_by_parent: dict[int, list[int]] = defaultdict(list)
-    child_rows = await session.execute(
-        select(Category.id, Category.parent_id).where(Category.parent_id.in_(budget_category_ids))
-    )
-    for child_id, parent_id in child_rows.all():
-        children_by_parent[parent_id].append(child_id)
+    for parent_id in budget_category_ids:
+        children_by_parent[parent_id] = tree.descendants_of(parent_id)
 
     counted_ids = set(budget_category_ids).union(
         child_id for children in children_by_parent.values() for child_id in children

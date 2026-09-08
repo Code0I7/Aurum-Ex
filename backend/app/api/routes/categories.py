@@ -7,23 +7,51 @@ from app.models.category import Category
 from app.models.enums import CategoryKind
 from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
+from app.services.category_tree import MAX_DEPTH, load_category_tree
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
 
 async def _validate_parent(session: AsyncSession, parent_id: int, kind: CategoryKind, category_id: int | None) -> None:
-    """Subcategories are one level deep only: a parent must itself be
-    top-level, and must share the child's kind (an expense category can't
-    nest under an income one, or vice versa)."""
+    """Проверяет, что категорию можно подвесить под этого родителя.
+
+    Вложенность произвольной глубины: «Продукты → Молочное → Сыр» законны, и
+    ветку с детьми можно целиком перенести под другую. Запрещено только то,
+    что делает дерево невозможным или бессмысленным:
+
+      * категория не может стать потомком самой себя — получился бы цикл, а
+        ветка, подвешенная сама к себе, исчезла бы из всех отчётов;
+      * доход не вкладывается в расход и наоборот — иначе одна ветка
+        оказалась бы наполовину доходной, и подъём суммы к корню менял бы
+        знак;
+      * глубже MAX_DEPTH не пускаем: категория седьмого уровня не помещается
+        ни в один список и не находится в выпадающем меню.
+    """
     if parent_id == category_id:
         raise HTTPException(status_code=400, detail="A category cannot be its own parent")
     parent = await session.get(Category, parent_id)
     if parent is None:
         raise HTTPException(status_code=400, detail="Parent category not found")
-    if parent.parent_id is not None:
-        raise HTTPException(status_code=400, detail="Subcategories can only be one level deep")
     if parent.kind != kind:
         raise HTTPException(status_code=400, detail="A subcategory must have the same kind as its parent")
+
+    tree = await load_category_tree(session)
+
+    if category_id is not None and category_id in tree.ancestors_of(parent_id):
+        # Перенос ветки внутрь самой себя. Без этой проверки обе части
+        # оторвались бы от корня и пропали из отчётов молча.
+        raise HTTPException(
+            status_code=400, detail="A category cannot be moved inside its own subtree"
+        )
+
+    # Глубина считается по итогу перемещения: место родителя плюс высота
+    # переносимой ветки. Ветку из трёх уровней нельзя подвесить так, чтобы
+    # её низ вышел за предел.
+    branch_height = tree.depth_below(category_id) if category_id is not None else 1
+    if tree.depth_of(parent_id) + branch_height > MAX_DEPTH:
+        raise HTTPException(
+            status_code=400, detail=f"Categories cannot nest deeper than {MAX_DEPTH} levels"
+        )
 
 
 @router.get("", response_model=list[CategoryRead])
@@ -60,12 +88,10 @@ async def update_category(
         raise HTTPException(status_code=404, detail="Category not found")
     updates = payload.model_dump(exclude_unset=True)
     if "parent_id" in updates and updates["parent_id"] is not None:
+        # Ветка с детьми переезжает целиком — это и есть «нормальная
+        # вложенность»: человек раскладывает накопившиеся категории, не
+        # разбирая их по одной.
         await _validate_parent(session, updates["parent_id"], category.kind, category_id=category_id)
-        has_children = (
-            await session.execute(select(Category.id).where(Category.parent_id == category_id).limit(1))
-        ).first()
-        if has_children is not None:
-            raise HTTPException(status_code=400, detail="A category with subcategories cannot become a subcategory itself")
     for field, value in updates.items():
         setattr(category, field, value)
     await session.commit()

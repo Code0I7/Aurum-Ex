@@ -13,6 +13,7 @@ from app.api.routes import (
     budgets,
     cash_flow,
     categories,
+    credits,
     currencies,
     crypto,
     dashboard,
@@ -20,11 +21,14 @@ from app.api.routes import (
     goals,
     insights,
     net_worth,
+    plans,
     recurring,
     reports,
     settings as settings_routes,
+    settlements,
     tags,
     transactions,
+    work_periods,
     spreadsheet_import,
 )
 from app.core.config import APP_VERSION, get_settings
@@ -107,6 +111,10 @@ app.include_router(backup.router, prefix="/api", dependencies=_protected)
 app.include_router(reports.router, prefix="/api", dependencies=_protected)
 app.include_router(insights.router, prefix="/api", dependencies=_protected)
 app.include_router(settings_routes.router, prefix="/api", dependencies=_protected)
+app.include_router(settlements.router, prefix="/api", dependencies=_protected)
+app.include_router(credits.router, prefix="/api", dependencies=_protected)
+app.include_router(plans.router, prefix="/api", dependencies=_protected)
+app.include_router(work_periods.router, prefix="/api", dependencies=_protected)
 app.include_router(budgets.router, prefix="/api", dependencies=_protected)
 app.include_router(advice.router, prefix="/api", dependencies=_protected)
 app.include_router(goals.router, prefix="/api", dependencies=_protected)

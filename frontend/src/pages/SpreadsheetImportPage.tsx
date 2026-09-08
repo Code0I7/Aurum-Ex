@@ -24,6 +24,8 @@ interface ImportPlan {
   participants: string[];
   goals: number;
   total_rows: number;
+  // Счета, опознанные как кредитные по начисленным на них процентам.
+  credit_accounts: string[];
   issues: ImportIssue[];
   can_apply: boolean;
   existing_transactions: number;
@@ -161,6 +163,23 @@ export function SpreadsheetImportPage() {
                       <span className="text-text-muted">{name}</span>
                       <span className="tabular-nums text-text-primary">{amount}</span>
                     </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {plan.credit_accounts.length > 0 && (
+              <div className="rounded border border-gridline p-3">
+                <p className="mb-1 text-sm font-medium text-text-primary">
+                  {t("spreadsheet.creditAccountsTitle")}
+                </p>
+                {/* Догадка показывается до импорта именно затем, чтобы её
+                    можно было оспорить: счёт мог попасть сюда потому, что с
+                    него однажды заплатили проценты по чужому кредиту. */}
+                <p className="mb-2 text-xs text-text-muted">{t("spreadsheet.creditAccountsHint")}</p>
+                <ul className="space-y-0.5 text-sm text-text-primary">
+                  {plan.credit_accounts.map((name) => (
+                    <li key={name}>{name}</li>
                   ))}
                 </ul>
               </div>

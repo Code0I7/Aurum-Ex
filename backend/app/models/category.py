@@ -22,10 +22,18 @@ class Category(Base):
     # Fixed slot ordering keeps the donut chart's category order stable across renders.
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Self-referential, one level deep only (routes/categories.py rejects a
-    # parent that itself has a parent) — a subcategory ("Alcohol" under
-    # "Groceries"). SET NULL so deleting a parent turns its children back
-    # into top-level categories instead of cascading the delete.
+    # Ссылка на саму себя: дерево произвольной глубины. Одноуровневое
+    # ограничение оригинального Aurum снято — «Продукты → Молочное → Сыр»
+    # законны, и ветку с детьми можно перенести целиком. Границы ставит
+    # routes/categories.py: не глубже MAX_DEPTH уровней, без циклов и без
+    # смешения доходов с расходами в одной ветке.
+    #
+    # Подъём суммы к корню ветки НЕ выражается через coalesce(parent_id, id):
+    # это один шаг, а корень может быть выше. Ходить по дереву умеет
+    # services/category_tree.py, и делать это надо через него.
+    #
+    # SET NULL: удаление родителя поднимает детей на верхний уровень, а не
+    # удаляет их вместе с историей.
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")

@@ -150,6 +150,8 @@ class ImportPlan:
     goals: set[str] = field(default_factory=set)
     # Счета-копилки, распущенные в цели: «имя копилки → счёт-источник».
     envelopes: dict[str, str | None] = field(default_factory=dict)
+    # Счета, опознанные как кредитные по начисленным на них процентам.
+    credit_accounts: set[str] = field(default_factory=set)
 
     incomes: list[ParsedTransaction] = field(default_factory=list)
     expenses: list[ParsedTransaction] = field(default_factory=list)
@@ -474,6 +476,7 @@ def build_plan(transactions_csv: str, collapse_envelopes: bool = True) -> Import
     # на него и с него отбрасываются — они не двигали настоящих денег.
     envelopes = detect_envelope_accounts(rows) if collapse_envelopes else {}
     plan.envelopes = envelopes
+    plan.credit_accounts = detect_credit_accounts(rows)
 
     for row in rows:
         plan.accounts.setdefault(row.account, Decimal("0"))
@@ -582,6 +585,34 @@ def _rows_of(plan: ImportPlan) -> list[ParsedTransaction]:
     return rows
 
 
+# Слова, по которым узнаётся статья «проценты по кредиту». Именно проценты, а
+# не погашение: погашение уходит С обычного счёта, а проценты начисляются НА
+# кредитный — поэтому только они и указывают на нужный счёт.
+_INTEREST_WORDS = ("процент", "переплат")
+_CREDIT_WORDS = ("кредит", "рассрочк", "займ")
+
+
+def detect_credit_accounts(rows: list[ParsedTransaction]) -> set[str]:
+    """Счета, на которых начисляются проценты по кредиту.
+
+    Название счёта — ненадёжный признак: «Маркет Кредит» о себе говорит, а
+    «Маркет 2222» молчит, хотя проценты начисляются и на него. Данные говорят
+    прямее: если на счёт легла статья «Проценты по кредитам», это кредитный
+    счёт, как бы он ни назывался.
+
+    Погашение для этого не годится: оно списывается с обычного счёта, с
+    которого платят, и по нему кредитным оказался бы как раз не тот.
+    """
+    credit_accounts: set[str] = set()
+    for row in rows:
+        text = f"{row.category or ''} {row.subcategory or ''}".lower()
+        if any(word in text for word in _INTEREST_WORDS) and any(
+            word in text for word in _CREDIT_WORDS
+        ):
+            credit_accounts.add(row.account)
+    return credit_accounts
+
+
 def _guess_account_kind(name: str) -> AccountKind:
     """Вид счёта по его названию.
 
@@ -603,7 +634,14 @@ def _guess_account_kind(name: str) -> AccountKind:
     return AccountKind.CHECKING
 
 
-def _guess_account_nature(name: str) -> AccountNature:
+def _guess_account_nature(name: str, credit_accounts: set[str] | None = None) -> AccountNature:
+    """Актив или обязательство.
+
+    Найденное в данных перевешивает догадку по названию: счёт, на который
+    начисляли проценты, — обязательство, даже если в имени об этом ни слова.
+    """
+    if credit_accounts and name in credit_accounts:
+        return AccountNature.LIABILITY
     kind = _guess_account_kind(name)
     return AccountNature.LIABILITY if kind is AccountKind.CREDIT_CARD else AccountNature.ASSET
 
@@ -611,9 +649,21 @@ def _guess_account_nature(name: str) -> AccountNature:
 def _guess_category_kind(name: str, plan: ImportPlan) -> CategoryKind:
     """Доходная категория или расходная — по тому, в каких операциях она
     реально встречается. Название об этом не говорит: «Долги — Возврат» это
-    доход, а «Долги — Погашение» расход."""
-    in_income = any(row.category == name for row in plan.incomes)
-    return CategoryKind.INCOME if in_income else CategoryKind.EXPENSE
+    доход, а «Долги — Погашение» расход.
+
+    Решает большинство, а не единственное совпадение. В настоящей таблице
+    у «Прочих расходов» 179 расходных строк и одна доходная — человек
+    однажды промахнулся видом операции, — и правило «есть хоть один доход →
+    категория доходная» переносило всю ветку не на ту сторону: расход на
+    восемьдесят тысяч оказывался доходом.
+
+    При равенстве выбирается расход. Ошибка в эту сторону безобиднее:
+    завышенный доход искажает представление человека о себе сильнее, чем
+    завышенный расход.
+    """
+    income_rows = sum(1 for row in plan.incomes if row.category == name)
+    expense_rows = sum(1 for row in plan.expenses if row.category == name)
+    return CategoryKind.INCOME if income_rows > expense_rows else CategoryKind.EXPENSE
 
 
 async def apply_plan(
@@ -679,17 +729,25 @@ async def apply_plan(
         # внутри настоящего счёта (см. detect_envelope_accounts).
         if name in plan.envelopes:
             continue
+        nature = _guess_account_nature(name, plan.credit_accounts)
         account = Account(
             name=name,
-            kind=_guess_account_kind(name),
-            nature=_guess_account_nature(name),
+            # Вид счёта тоже уточняется найденным: счёт с процентами — не
+            # расчётный, даже если назван просто номером карты.
+            kind=(
+                AccountKind.CREDIT_CARD
+                if nature is AccountNature.LIABILITY and _guess_account_kind(name) is AccountKind.CHECKING
+                else _guess_account_kind(name)
+            ),
+            nature=nature,
             # Валюта счёта берётся из листа настроек, если он приложен: там
             # она указана прямо, а догадываться по названию неоткуда.
             currency=known_currencies.get(name, base_currency),
             opening_balance=opening,
             # Начальный остаток действует с первой операции по этому счёту.
             opening_date=min((row.date for row in _rows_of(plan) if row.account == name), default=None),
-            allow_negative=_guess_account_nature(name) is AccountNature.LIABILITY,
+            # Кредитному счёту минус разрешён: это и есть долг.
+            allow_negative=nature is AccountNature.LIABILITY,
         )
         session.add(account)
         accounts[name] = account

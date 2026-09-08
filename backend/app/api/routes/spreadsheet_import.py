@@ -50,6 +50,11 @@ class PlanOut(BaseModel):
     work_years: list[int] = []
     goals: int
     total_rows: int
+    # Счета, опознанные как кредитные по начисленным на них процентам. Это
+    # догадка, и показывается она отдельным списком именно поэтому: человек
+    # должен увидеть её до импорта и поправить, если счёт попал сюда потому,
+    # что с него однажды заплатили проценты по чужому кредиту.
+    credit_accounts: list[str] = []
     issues: list[IssueOut]
     # Можно ли применять: непустая база блокирует импорт.
     can_apply: bool
@@ -101,6 +106,7 @@ def _to_plan_out(plan: ImportPlan, existing: int, sheet=None) -> PlanOut:
         work_years=sorted(sheet.work_hours_by_year) if sheet else [],
         goals=len(plan.goals),
         total_rows=plan.total_rows,
+        credit_accounts=sorted(plan.credit_accounts),
         issues=[IssueOut(row=issue.row, reason=issue.reason, detail=issue.detail) for issue in plan.issues],
         can_apply=existing == 0,
         existing_transactions=existing,

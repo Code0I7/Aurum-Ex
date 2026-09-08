@@ -15,6 +15,7 @@ from app.models.account import Account
 from app.models.enums import AccountKind, AccountNature, TransactionType
 from app.models.transaction import Transaction
 from app.schemas.account import AccountCreate, AccountUpdate, AccountWithBalance
+from app.services.settlement_service import get_reserved_by_account
 from app.services.currency_service import (
     convert_balance,
     get_base_currency,
@@ -29,7 +30,7 @@ from app.services.currency_service import (
 _LIABILITY_KINDS = {AccountKind.CREDIT_CARD, AccountKind.LOAN}
 
 
-async def _account_balances(session: AsyncSession) -> dict[int, Decimal]:
+async def get_balances_by_account(session: AsyncSession) -> dict[int, Decimal]:
     """Опорная точка баланса — начальный остаток счёта, а не ноль: деньги,
     лежавшие на счёте до первой записи, входят в баланс, но доходом не
     являются (см. models/account.py). Формула — "начальный остаток плюс
@@ -78,7 +79,12 @@ def resolve_nature(kind: AccountKind, explicit: AccountNature | None) -> Account
     return AccountNature.LIABILITY if kind in _LIABILITY_KINDS else AccountNature.ASSET
 
 
-def _to_read(account: Account, balance: Decimal, balance_base: Decimal | None = None) -> AccountWithBalance:
+def _to_read(
+    account: Account,
+    balance: Decimal,
+    balance_base: Decimal | None = None,
+    reserved: Decimal = Decimal("0"),
+) -> AccountWithBalance:
     return AccountWithBalance(
         id=account.id,
         name=account.name,
@@ -93,6 +99,10 @@ def _to_read(account: Account, balance: Decimal, balance_base: Decimal | None = 
         is_archived=account.is_archived,
         balance=balance,
         balance_base=balance_base if balance_base is not None else balance,
+        reserved=reserved,
+        # Доступно не уходит в минус: если отложено больше, чем сейчас на
+        # счёте, свободных денег просто нет — но и долга это не создаёт.
+        available=max(balance - reserved, Decimal("0")),
     )
 
 
@@ -101,19 +111,25 @@ async def list_accounts(session: AsyncSession, include_archived: bool) -> list[A
     if not include_archived:
         stmt = stmt.where(Account.is_archived.is_(False))
     accounts = (await session.execute(stmt)).scalars().all()
-    balances = await _account_balances(session)
+    balances = await get_balances_by_account(session)
 
     # Остаток переоценивается по СЕГОДНЯШНЕМУ курсу, в отличие от операций,
     # где курс заморожен на дату. Полтинник долларов на счёте стоит столько,
     # сколько стоит сейчас, а трата 2022 года так и осталась тратой того
     # года (см. services/currency_service.py).
     rates = await get_current_rates(session)
+    reserved_by_account = await get_reserved_by_account(session)
 
     def read(account: Account) -> AccountWithBalance:
         raw = balances.get(account.id, Decimal("0"))
         # Оба числа приводятся к двум знакам: иначе нулевой счёт отдаёт "0"
         # в одном поле и "0.00" в другом — одно и то же число в двух видах.
-        return _to_read(account, quantize_money(raw), convert_balance(raw, account.currency, rates))
+        return _to_read(
+            account,
+            quantize_money(raw),
+            convert_balance(raw, account.currency, rates),
+            quantize_money(reserved_by_account.get(account.id, Decimal("0"))),
+        )
 
     return [read(account) for account in accounts]
 
@@ -152,7 +168,7 @@ async def update_account(session: AsyncSession, account_id: int, payload: Accoun
         setattr(account, field, value)
     await session.commit()
     await session.refresh(account)
-    balances = await _account_balances(session)
+    balances = await get_balances_by_account(session)
     return _to_read(account, balances.get(account.id, Decimal("0")))
 
 

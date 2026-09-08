@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+from app.services.category_tree import load_category_tree
 from app.services.transaction_service import counted_only
 
 
@@ -111,6 +112,9 @@ async def rollup_spending_by_top_level_category(
         return []
 
     categories_by_id = {c.id: c for c in (await session.execute(select(Category))).scalars().all()}
+    # Подъём до корня ветки, а не на один шаг: у «Продукты → Молочное → Сыр»
+    # родитель не корень, и сыр попал бы в молочное вместо продуктов.
+    tree = await load_category_tree(session)
 
     amount_by_effective: dict[int, Decimal] = defaultdict(Decimal)
     txn_ids_by_effective: dict[int, set[int]] = defaultdict(set)
@@ -119,8 +123,7 @@ async def rollup_spending_by_top_level_category(
     # filed directly on the parent, and a genuine child id otherwise.
     amount_by_leaf: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
     for transaction_id, category_id, amount in contributions:
-        category = categories_by_id.get(category_id)
-        effective_id = category.parent_id if category and category.parent_id is not None else category_id
+        effective_id = tree.top_level_of(category_id) if category_id in categories_by_id else category_id
         amount_by_effective[effective_id] += amount
         amount_by_leaf[effective_id][category_id] += amount
         txn_ids_by_effective[effective_id].add(transaction_id)
@@ -156,3 +159,48 @@ async def rollup_spending_by_top_level_category(
         )
     items.sort(key=lambda item: (-item.amount, item.sort_order))
     return items
+
+
+async def monthly_amounts_by_category(
+    session: AsyncSession,
+    *,
+    transaction_type: TransactionType,
+    start_date: date_,
+    end_date: date_,
+) -> dict[tuple[int, int, int], Decimal]:
+    """Факт по месяцам и категориям: (год, месяц, категория) → сумма.
+
+    Отдельная функция, а не аргумент к сводке по категориям: там нужен один
+    период целиком, здесь — двенадцать подряд, и склеивать это в один вызов
+    значило бы усложнить оба.
+
+    Категория остаётся той, что указана в записи, БЕЗ подъёма к родителю:
+    план может стоять и на подкатегории, и на ветке целиком, и решать, что
+    с чем сравнивать, — дело плана, а не этой функции.
+    """
+    plain_stmt = select(
+        Transaction.date, Transaction.category_id, Transaction.amount
+    ).where(
+        Transaction.type == transaction_type,
+        Transaction.category_id.is_not(None),
+        Transaction.date >= start_date,
+        Transaction.date <= end_date,
+        counted_only(),
+    )
+    split_stmt = (
+        select(Transaction.date, TransactionSplit.category_id, TransactionSplit.amount)
+        .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
+        .where(
+            Transaction.type == transaction_type,
+            TransactionSplit.category_id.is_not(None),
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            counted_only(),
+        )
+    )
+
+    totals: dict[tuple[int, int, int], Decimal] = defaultdict(Decimal)
+    for stmt in (plain_stmt, split_stmt):
+        for tx_date, category_id, amount in (await session.execute(stmt)).all():
+            totals[(tx_date.year, tx_date.month, category_id)] += amount
+    return totals

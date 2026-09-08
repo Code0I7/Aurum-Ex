@@ -13,6 +13,8 @@ import { CategoriesPage } from "@/pages/CategoriesPage";
 import { CryptoPage } from "@/pages/CryptoPage";
 import { CsvImportPage } from "@/pages/CsvImportPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { DebtsPage } from "@/pages/DebtsPage";
+import { PlanningPage } from "@/pages/PlanningPage";
 import { GoalsPage } from "@/pages/GoalsPage";
 import { NetWorthPage } from "@/pages/NetWorthPage";
 import { RecurringPage } from "@/pages/RecurringPage";
@@ -65,6 +67,8 @@ export default function App() {
             <Route path="/budget" element={<BudgetPage />} />
             <Route path="/advice" element={<AdvicePage />} />
             <Route path="/goals" element={<GoalsPage />} />
+            <Route path="/debts" element={<DebtsPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
             <Route path="/recurring" element={<RecurringPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

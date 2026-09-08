@@ -39,6 +39,8 @@ interface ChartPoint {
   income: number;
   expense: number;
   net: number;
+  // Начальный остаток счетов, открытых в этом месяце. Уже входит в income.
+  opening: number;
 }
 
 function ChartTooltip({
@@ -47,12 +49,14 @@ function ChartTooltip({
   incomeLabel,
   expenseLabel,
   netLabel,
+  openingLabel,
 }: {
   active?: boolean;
   payload?: Array<{ payload: ChartPoint }>;
   incomeLabel: string;
   expenseLabel: string;
   netLabel: string;
+  openingLabel: string;
 }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
@@ -68,6 +72,13 @@ function ChartTooltip({
       <p className="font-medium text-text-primary">
         {netLabel}: {formatSignedCurrency(point.net)}
       </p>
+      {/* Начальный остаток уже сложен в доход. Подписывается отдельно, иначе
+          столбец в месяце открытия счёта выглядит необъяснимым всплеском. */}
+      {point.opening !== 0 && (
+        <p className="mt-1 text-xs text-text-muted">
+          {openingLabel}: {formatSignedCurrency(point.opening)}
+        </p>
+      )}
     </div>
   );
 }
@@ -77,6 +88,7 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
   const incomeLabel = t("cashFlow.income");
   const expenseLabel = t("cashFlow.expense");
   const netLabel = t("cashFlow.net");
+  const openingLabel = t("cashFlow.opening");
 
   const chartData: ChartPoint[] =
     cashFlow?.points.map((point) => ({
@@ -84,6 +96,7 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
       income: Number(point.income),
       expense: Number(point.expense),
       net: Number(point.net),
+      opening: Number(point.opening),
     })) ?? [];
   const yearTicks = computeYearTicks(chartData.map((point) => point.key));
 
@@ -104,6 +117,16 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
               <span className="font-medium text-danger">
                 {expenseLabel} {formatCurrency(cashFlow.total_expense)}
               </span>
+            </p>
+          )}
+          {/* Начальные остатки заработаны до начала учёта. В обороте они
+              участвуют — иначе сальдо не сойдётся с остатком на счетах, — но
+              приписывать их периоду молча нечестно. */}
+          {cashFlow && Number(cashFlow.total_opening) !== 0 && (
+            <p className="mt-1 text-xs text-text-muted">
+              {t("cashFlow.openingHint", {
+                amount: formatSignedCurrency(cashFlow.total_opening),
+              })}
             </p>
           )}
         </div>
@@ -130,7 +153,14 @@ export function CashFlowChart({ cashFlow, isLoading }: CashFlowChartProps) {
                   />
                 )}
                 <Tooltip
-                  content={<ChartTooltip incomeLabel={incomeLabel} expenseLabel={expenseLabel} netLabel={netLabel} />}
+                  content={
+                    <ChartTooltip
+                      incomeLabel={incomeLabel}
+                      expenseLabel={expenseLabel}
+                      netLabel={netLabel}
+                      openingLabel={openingLabel}
+                    />
+                  }
                   cursor={{ fill: "var(--surface-2)" }}
                 />
                 <Legend

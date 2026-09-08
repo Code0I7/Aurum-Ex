@@ -82,3 +82,133 @@ async def test_monthly_points_split_income_and_expense_correctly(client: AsyncCl
     assert money(point["income"]) == Decimal("2000.00")
     assert money(point["expense"]) == Decimal("300.00")
     assert money(point["net"]) == Decimal("1700.00")
+
+
+# --- Начальные остатки ---
+
+
+async def test_opening_balance_counts_as_earned(client: AsyncClient, categories):
+    """Деньги, лежавшие на счёте до первой записи, тоже были заработаны —
+    просто раньше, чем начался учёт. Без них сальдо не сходится с остатком
+    на счетах."""
+    account = (
+        await client.post(
+            "/accounts",
+            json={
+                "name": "Карта",
+                "kind": "checking",
+                "currency": "RUB",
+                "opening_balance": "5210.40",
+                "opening_date": "2026-01-15",
+            },
+        )
+    ).json()
+    await client.post(
+        "/transactions",
+        json={
+            "account_id": account["id"],
+            "type": "expense",
+            "amount": "1000.00",
+            "description": "Продукты",
+            "date": "2026-02-03",
+            "category_id": categories["Groceries"]["id"],
+        },
+    )
+
+    data = (await client.get("/cash-flow")).json()
+    january = next(p for p in data["points"] if p["year"] == 2026 and p["month"] == 1)
+    assert Decimal(january["income"]) == Decimal("5210.40")
+    # Выделен отдельно, чтобы всплеск в месяце открытия счёта был объясним.
+    assert Decimal(january["opening"]) == Decimal("5210.40")
+
+    # Сальдо за весь период совпадает с остатком на счёте — ради этого всё и
+    # затевалось.
+    assert Decimal(data["total_net"]) == Decimal("6354.71")
+    assert Decimal(data["total_opening"]) == Decimal("5210.40")
+
+    accounts = (await client.get("/accounts")).json()
+    balance = next(a["balance"] for a in accounts if a["id"] == account["id"])
+    assert Decimal(balance) == Decimal(data["total_net"])
+
+
+async def test_negative_opening_balance_is_an_expense_not_negative_income(client: AsyncClient):
+    """Счёт, открытый с долгом, — это не отрицательный доход."""
+    await client.post(
+        "/accounts",
+        json={
+            "name": "Кредитка",
+            "kind": "credit_card",
+            "currency": "RUB",
+            "opening_balance": "-12000.00",
+            "opening_date": "2026-03-01",
+        },
+    )
+
+    data = (await client.get("/cash-flow")).json()
+    march = next(p for p in data["points"] if p["year"] == 2026 and p["month"] == 3)
+    assert Decimal(march["income"]) == Decimal("0")
+    assert Decimal(march["expense"]) == Decimal("12000.00")
+    assert Decimal(march["opening"]) == Decimal("-12000.00")
+
+
+async def test_opening_outside_the_selected_period_is_not_shown(client: AsyncClient, categories):
+    """При фильтре «2026 год» остаток 2025-го показывать неоткуда."""
+    account = (
+        await client.post(
+            "/accounts",
+            json={
+                "name": "Старая карта",
+                "kind": "checking",
+                "currency": "RUB",
+                "opening_balance": "5000.00",
+                "opening_date": "2025-06-01",
+            },
+        )
+    ).json()
+    await client.post(
+        "/transactions",
+        json={
+            "account_id": account["id"],
+            "type": "expense",
+            "amount": "300.00",
+            "description": "Продукты",
+            "date": "2026-04-10",
+            "category_id": categories["Groceries"]["id"],
+        },
+    )
+
+    data = (await client.get("/cash-flow?start_date=2026-01-01&end_date=2026-12-31")).json()
+    assert Decimal(data["total_opening"]) == Decimal("0")
+    assert Decimal(data["total_expense"]) == Decimal("300.00")
+
+
+async def test_opening_widens_the_range_when_it_predates_every_transaction(client: AsyncClient, categories):
+    """Счёт открыт раньше первой записи — период начинается с него, иначе
+    деньги, с которых всё началось, просто исчезли бы."""
+    account = (
+        await client.post(
+            "/accounts",
+            json={
+                "name": "Карта",
+                "kind": "checking",
+                "currency": "RUB",
+                "opening_balance": "1000.00",
+                "opening_date": "2026-01-10",
+            },
+        )
+    ).json()
+    await client.post(
+        "/transactions",
+        json={
+            "account_id": account["id"],
+            "type": "expense",
+            "amount": "100.00",
+            "description": "Продукты",
+            "date": "2026-05-01",
+            "category_id": categories["Groceries"]["id"],
+        },
+    )
+
+    data = (await client.get("/cash-flow")).json()
+    assert data["points"][0]["month"] == 1
+    assert Decimal(data["points"][0]["opening"]) == Decimal("1000.00")

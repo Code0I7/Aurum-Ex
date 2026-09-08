@@ -55,6 +55,10 @@ export interface Account {
 // a silent `undefined` at runtime.
 export interface AccountWithBalance extends Account {
   balance: string;
+  // Отложено под цели и доступно к трате. Резерв НЕ уменьшает баланс:
+  // деньги лежат там же, просто часть обещана другой задаче.
+  reserved: string;
+  available: string;
 }
 
 export interface AccountInput {
@@ -388,6 +392,9 @@ export interface CashFlowPoint {
   income: string;
   expense: string;
   net: string;
+  // Начальный остаток счетов, открытых в этом месяце. Уже входит в income
+  // (или в expense, если отрицателен).
+  opening: string;
 }
 
 export interface CashFlowResponse {
@@ -397,6 +404,7 @@ export interface CashFlowResponse {
   total_income: string;
   total_expense: string;
   total_net: string;
+  total_opening: string;
 }
 
 export interface CategoryRankingChildItem {
@@ -430,6 +438,9 @@ export interface Goal {
   name: string;
   target_amount: string;
   target_date: string | null;
+  // Счёт, на котором физически лежат отложенные деньги. Без него счёт не
+  // сможет показать «отложено»: непонятно, откуда цель копит.
+  account_id: number | null;
   current_amount: string;
   remaining: string;
   percent: number;
@@ -440,6 +451,64 @@ export interface GoalInput {
   name: string;
   target_amount: string;
   target_date: string | null;
+  account_id: number | null;
+}
+
+// Расчёты с людьми. Оборот и долг — разные величины: жена, передавшая за
+// четыре года полмиллиона на продукты, ничего не должна.
+export interface Settlement {
+  counterparty_id: number;
+  name: string;
+  received: string;
+  given: string;
+  owed_to_me: string;
+  owed_by_me: string;
+  // Плюс — должны вам, минус — должны вы.
+  balance: string;
+  operations: number;
+  last_date: string | null;
+}
+
+export interface SettlementSummary {
+  owed_to_me: string;
+  owed_by_me: string;
+}
+
+// Условия по кредиту. Сам долг описан счётом — отрицательным балансом;
+// здесь то, чего в таблице не было: во сколько этот долг обходится.
+export interface CreditTerms {
+  account_id: number;
+  account_name: string;
+  // Долг положительным числом — читается легче, чем «баланс −12 300».
+  debt: string;
+  annual_rate_percent: string | null;
+  credit_limit: string | null;
+  available: string | null;
+  used_percent: number | null;
+  grace_days: number | null;
+  payment_day: number | null;
+  minimum_payment: string | null;
+  // Оценка, а не банковское число: льготный период здесь не воспроизводится.
+  estimated_monthly_interest: string | null;
+  opened_on: string | null;
+  closes_on: string | null;
+  notes: string | null;
+}
+
+export interface CreditTermsInput {
+  annual_rate_percent?: string | null;
+  credit_limit?: string | null;
+  grace_days?: number | null;
+  payment_day?: number | null;
+  minimum_payment?: string | null;
+  opened_on?: string | null;
+  closes_on?: string | null;
+  notes?: string | null;
+}
+
+export interface CreditSummary {
+  debt: string;
+  estimated_monthly_interest: string;
 }
 
 export interface GoalContributionInput {
@@ -631,3 +700,77 @@ export interface HealthStatus {
   version: string;
 }
 
+
+// Планирование. Отличается от бюджета: бюджет — потолок на месяц, который
+// предупреждает; план — ожидание на годы, из которого складывается картина
+// года.
+export type PlanKind = "one_off" | "monthly" | "daily";
+
+export interface Plan {
+  id: number;
+  category_id: number | null;
+  category_name: string | null;
+  participant_id: number | null;
+  kind: PlanKind;
+  // Для разового и ежемесячного — сумма на месяц, для ежедневного — на день.
+  amount: string;
+  currency: string;
+  valid_from: string;
+  valid_to: string | null;
+  // Только для ежедневного: считать по отработанным дням, а не календарным.
+  workdays_only: boolean;
+  note: string | null;
+  is_active: boolean;
+}
+
+export interface PlanInput {
+  category_id: number | null;
+  kind: PlanKind;
+  amount: string;
+  valid_from: string;
+  valid_to: string | null;
+  workdays_only: boolean;
+  note: string | null;
+}
+
+export interface PlanMonthCell {
+  month: number;
+  planned: string;
+  actual: string;
+  // Факт минус план. Что считать хорошим знаком, решает вид строки.
+  deviation: string;
+}
+
+export interface PlanRow {
+  category_id: number | null;
+  name: string;
+  kind: CategoryKind;
+  months: PlanMonthCell[];
+  planned_total: string;
+  actual_total: string;
+}
+
+export interface PlanOverview {
+  year: number;
+  rows: PlanRow[];
+  income_totals: PlanMonthCell[];
+  expense_totals: PlanMonthCell[];
+  // Свободные средства: доходы минус расходы, по плану и по факту.
+  free_totals: PlanMonthCell[];
+}
+
+export interface WorkPeriod {
+  id: number;
+  year: number;
+  month: number;
+  hours: string;
+  workdays: number | null;
+  participant_id: number | null;
+}
+
+export interface WorkPeriodInput {
+  year: number;
+  month: number;
+  hours: string;
+  workdays: number | null;
+}

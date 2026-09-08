@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+from app.services.category_tree import load_category_tree
 from app.schemas.reports import (
     CategoryRankingChildItem,
     CategoryRankingItem,
@@ -36,15 +37,12 @@ async def get_category_spending_report(
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    # A top-level category's own report folds in its subcategories' spending
-    # too (same rollup as the Dashboard breakdown); a subcategory picked
-    # directly shows just its own transactions — there's nothing beneath it.
-    category_ids: list[int] = [category_id]
-    if category.parent_id is None:
-        child_ids = (
-            await session.execute(select(Category.id).where(Category.parent_id == category_id))
-        ).scalars().all()
-        category_ids.extend(child_ids)
+    # Отчёт по категории включает всю ветку под ней — на любую глубину, а
+    # не только прямых детей. «Продукты» обязаны показывать и сыр, лежащий
+    # двумя уровнями ниже, иначе отчёт по ветке занижал бы её собственные
+    # траты. У листа ветки нет, и он показывает только себя.
+    tree = await load_category_tree(session)
+    category_ids: list[int] = tree.subtree_of(category_id)
 
     # Plain transactions filed directly under one of these categories, plus
     # split lines that assign part of a transaction to one of them — same
