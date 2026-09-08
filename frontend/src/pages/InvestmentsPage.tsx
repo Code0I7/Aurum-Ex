@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { HoldingList } from "@/components/investments/HoldingList";
 import { HoldingFormModal } from "@/components/investments/HoldingFormModal";
 import { HoldingDetailModal } from "@/components/investments/HoldingDetailModal";
+import { PortfolioFormModal } from "@/components/investments/PortfolioFormModal";
 import {
   useCreatePortfolio,
   useInvestmentHoldings,
@@ -12,7 +13,7 @@ import {
 } from "@/hooks/useInvestments";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency, formatSignedCurrency } from "@/lib/format";
-import type { InvestmentKind } from "@/types";
+import type { InvestmentKind, InvestmentPortfolio } from "@/types";
 
 const KINDS: Array<InvestmentKind | "all"> = ["all", "stock", "bond", "fund", "crypto", "metal", "other"];
 
@@ -28,6 +29,8 @@ export function InvestmentsPage() {
   const { t } = useTranslation();
   const { data: portfolios } = useInvestmentPortfolios();
   const createPortfolio = useCreatePortfolio();
+  const [portfolioModalOpen, setPortfolioModalOpen] = useState(false);
+  const [editingPortfolio, setEditingPortfolio] = useState<InvestmentPortfolio | null>(null);
   const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [kind, setKind] = useState<InvestmentKind | "all">("all");
   const { data: holdings, isLoading } = useInvestmentHoldings(portfolioId ?? undefined);
@@ -104,6 +107,37 @@ export function InvestmentsPage() {
                     onClick={() => setPortfolioId(portfolio.id)}
                   />
                 ))}
+                {/* Правка — у выбранного портфеля, а не у каждого: значок
+                    на каждой метке превратил бы ряд в частокол кнопок.
+                    При «Все» править нечего, и кнопка не показывается. */}
+                {portfolioId !== null && (
+                  <button
+                    type="button"
+                    aria-label={t("investments.editPortfolio")}
+                    title={t("investments.editPortfolio")}
+                    onClick={() => {
+                      setEditingPortfolio(
+                        (portfolios ?? []).find((item) => item.id === portfolioId) ?? null
+                      );
+                      setPortfolioModalOpen(true);
+                    }}
+                    className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={t("investments.newPortfolio")}
+                  title={t("investments.newPortfolio")}
+                  onClick={() => {
+                    setEditingPortfolio(null);
+                    setPortfolioModalOpen(true);
+                  }}
+                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                >
+                  <Plus size={14} />
+                </button>
               </div>
 
               <div className="flex flex-wrap gap-1">
@@ -141,6 +175,16 @@ export function InvestmentsPage() {
           )}
         </CardContent>
       </Card>
+
+      <PortfolioFormModal
+        open={portfolioModalOpen}
+        onClose={() => setPortfolioModalOpen(false)}
+        portfolio={editingPortfolio}
+        // Удалённый портфель перестаёт существовать вместе с выбором:
+        // оставить его выбранным значило бы показывать пустой список
+        // бумаг без объяснения, куда они делись.
+        onDeleted={() => setPortfolioId(null)}
+      />
 
       <HoldingFormModal
         open={formOpen}

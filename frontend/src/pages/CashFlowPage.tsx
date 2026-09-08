@@ -1,18 +1,18 @@
-import { useState } from "react";
 import { PillSelector } from "@/components/layout/PillSelector";
 import { YearRangeSelector } from "@/components/layout/YearSelector";
 import { CashFlowChart } from "@/components/cashflow/CashFlowChart";
 import { useCashFlow } from "@/hooks/useCashFlow";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
+import { useSessionState } from "@/hooks/useSessionState";
 import { useTranslation } from "@/lib/i18n";
 
 export function CashFlowPage() {
   const { t } = useTranslation();
   const now = new Date();
   const { data: years } = useTransactionYears();
-  const [range, setRange] = useState<RangePreset>("this_year");
-  const [customRange, setCustomRange] = useState<CustomYearRange>({
+  const [range, setRange] = useSessionState<RangePreset>("aurum:cashflow-range", "this_year");
+  const [customRange, setCustomRange] = useSessionState<CustomYearRange>("aurum:cashflow-custom", {
     fromYear: now.getFullYear(),
     toYear: now.getFullYear(),
   });

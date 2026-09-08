@@ -17,6 +17,10 @@ export function createPortfolio(input: InvestmentPortfolioInput) {
   return api.post<InvestmentPortfolio>("/investments/portfolios", input);
 }
 
+export function updatePortfolio(id: number, input: Partial<InvestmentPortfolioInput>) {
+  return api.patch<InvestmentPortfolio>(`/investments/portfolios/${id}`, input);
+}
+
 export function deletePortfolio(id: number) {
   return api.delete<void>(`/investments/portfolios/${id}`);
 }

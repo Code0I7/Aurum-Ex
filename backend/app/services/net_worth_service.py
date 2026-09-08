@@ -45,7 +45,18 @@ _CLASS_META: dict[str, tuple[str, str, str]] = {
     # skill's validated 8-slot order (blue, orange, aqua, yellow, magenta,
     # green, violet, red) in this exact sequence — an adjacent-pair-safe
     # order for a segmented bar/donut; do not reorder without re-validating.
+    # Деньги делятся надвое, и это не придирка к словам. Купюра в кармане
+    # — это деньги; остаток на карте — обязательство банка выплатить их по
+    # требованию. Риски у них разные: банк может ограничить доступ, а
+    # карман нет. Называть вторую строку «наличными» значит стирать
+    # различие, которое как раз и стоит держать на виду.
+    #
+    # Третьей строки под цифровые деньги нет намеренно: цифровой рубль
+    # хранится не на банковском счёте, и когда он появится у кого-то из
+    # пользователей, ему понадобится свой вид счёта, а не переименование
+    # этой строки. Криптовалюта своя строка уже есть.
     "cash": ("Наличные", "#2a78d6", "wallet"),  # slot 1 blue
+    "bank": ("На счетах", "#4a9de0", "landmark"),  # slot 1, светлее
     AssetClass.INVESTMENTS.value: ("Инвестиции", "#eb6834", "trending-up"),  # slot 2 orange
     AssetClass.CRYPTO.value: ("Криптовалюта", "#1baf7a", "bitcoin"),  # slot 3 aqua
     AssetClass.REAL_ESTATE.value: ("Недвижимость", "#eda100", "building-2"),  # slot 4 yellow
@@ -91,7 +102,9 @@ def _daily_series(events: list[tuple[date_, Decimal]], start: date_, end: date_)
     return points
 
 
-async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, Decimal]]:
+async def _cash_cumulative_events(
+    session: AsyncSession, kinds: set[AccountKind] | None = None
+) -> list[tuple[date_, Decimal]]:
     """Накопительный итог по денежным счетам, день за днём.
 
     Три поправки против исходной версии, и каждая иначе искажала капитал:
@@ -104,12 +117,17 @@ async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, De
         из капитала;
       * **EXTERNAL_IN / EXTERNAL_OUT** двигают баланс наравне с доходом и
         расходом: они не заработок, но деньги на счёте от этого меняются.
+
+    `kinds` сужает набор счетов — так считается доля наличных внутри
+    денежного итога. Тем же расчётом, а не отдельной формулой: две разные
+    формулы для целого и его части рано или поздно разойдутся, и в сумме
+    перестанет получаться целое.
     """
     accounts_result = await session.execute(select(Account.id, Account.kind, Account.opening_balance))
     cash_accounts = {
         acc_id: opening or Decimal("0")
         for acc_id, acc_kind, opening in accounts_result.all()
-        if acc_kind in CASH_ACCOUNT_TYPES
+        if acc_kind in (kinds if kinds is not None else CASH_ACCOUNT_TYPES)
     }
     cash_account_ids = set(cash_accounts)
 
@@ -235,7 +253,11 @@ async def _risk_level_summary(
 
     if cash_today:
         totals[RiskLevel.LOW] += cash_today
-        items_by_level[RiskLevel.LOW].append(("cash", _CLASS_META["cash"][0], cash_today))
+        # В разрезе по риску наличные и деньги на счетах не разделяются:
+        # риск у них один и тот же, низкий, и две одинаковые строки
+        # подряд ничего бы не добавили. Название общее и точное —
+        # «денежные средства» покрывает и купюры, и остаток на карте.
+        items_by_level[RiskLevel.LOW].append(("cash", "Денежные средства", cash_today))
 
     for asset_id, name, risk_level in asset_rows:
         value = current_by_asset.get(asset_id, Decimal("0"))
@@ -318,6 +340,12 @@ async def get_net_worth_summary(
     # Накопительный ряд уже посчитан, последняя точка — сегодняшние деньги.
     # Считаем её до разрезов: они оба принимают её как долю капитала.
     cash_today = cash_events[-1][1] if cash_events else Decimal("0")
+    # Наличные считаются тем же расчётом по подмножеству счетов, а деньги
+    # на счетах — остаток. Так две строки в сумме всегда дают денежный
+    # итог, даже если где-то в расчёте появится ещё одна поправка.
+    physical_events = await _cash_cumulative_events(session, kinds={AccountKind.CASH})
+    physical_today = physical_events[-1][1] if physical_events else Decimal("0")
+    bank_today = cash_today - physical_today
     capital_roles = await _capital_role_summary(session, current_by_asset, cash_today)
 
     end = min(end_date, today) if end_date is not None else today
@@ -359,8 +387,17 @@ async def get_net_worth_summary(
         return float(amount / total * 100) if total else 0.0
 
     breakdown = []
-    name, color, icon = _CLASS_META["cash"]
-    breakdown.append(NetWorthBreakdownItem(key="cash", name=name, color=color, icon=icon, amount=cash_today, percent=_percent(cash_today)))
+    # Нулевая строка не показывается: у человека без наличных вообще
+    # «Наличные — 0» занимает место и ничего не сообщает.
+    for key, amount in (("cash", physical_today), ("bank", bank_today)):
+        if amount == 0:
+            continue
+        name, color, icon = _CLASS_META[key]
+        breakdown.append(
+            NetWorthBreakdownItem(
+                key=key, name=name, color=color, icon=icon, amount=amount, percent=_percent(amount)
+            )
+        )
     for asset_class in AssetClass:
         name, color, icon = _CLASS_META[asset_class.value]
         amount = class_totals.get(asset_class, Decimal("0"))

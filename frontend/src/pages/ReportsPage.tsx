@@ -13,6 +13,7 @@ import { useCategoryRanking, useCategorySpendingReport } from "@/hooks/useReport
 import { useDeleteTransaction, useTransactions, useTransactionYears } from "@/hooks/useTransactions";
 import type { TransactionSort } from "@/api/transactions";
 import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
+import { useSessionState } from "@/hooks/useSessionState";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import {
@@ -35,9 +36,9 @@ export function ReportsPage() {
   ];
   const { data: categories } = useCategories();
   const { data: years } = useTransactionYears();
-  const [categoryId, setCategoryId] = useState<number | null>(null);
-  const [range, setRange] = useState<RangePreset>("all");
-  const [customRange, setCustomRange] = useState<CustomYearRange>({
+  const [categoryId, setCategoryId] = useSessionState<number | null>("aurum:reports-category", null);
+  const [range, setRange] = useSessionState<RangePreset>("aurum:reports-range", "all");
+  const [customRange, setCustomRange] = useSessionState<CustomYearRange>("aurum:reports-custom", {
     fromYear: now.getFullYear(),
     toYear: now.getFullYear(),
   });

@@ -15,6 +15,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { computeRange, type CustomYearRange } from "@/lib/dateRange";
+import { useSessionState } from "@/hooks/useSessionState";
 import type { Asset, NetWorthRange } from "@/types";
 
 export function NetWorthPage() {
@@ -22,9 +23,9 @@ export function NetWorthPage() {
   // Defaults to 5 years: a short window can show a dip whenever spending
   // briefly outpaces recorded income, which reads as decline even though
   // the long-run trend is up — 5y is long enough to make that trend visible.
-  const [range, setRange] = useState<NetWorthRange>("5y");
+  const [range, setRange] = useSessionState<NetWorthRange>("aurum:networth-range", "5y");
   const now = new Date();
-  const [customRange, setCustomRange] = useState<CustomYearRange>({
+  const [customRange, setCustomRange] = useSessionState<CustomYearRange>("aurum:networth-custom", {
     fromYear: now.getFullYear(),
     toYear: now.getFullYear(),
   });

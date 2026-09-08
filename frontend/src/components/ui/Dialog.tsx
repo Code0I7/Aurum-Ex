@@ -1,5 +1,6 @@
 import type { PropsWithChildren, ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
@@ -22,9 +23,35 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
+  // Пока окно открыто, страница под ним не прокручивается. Иначе колесо
+  // мыши над затемнением уводит список на сотню строк вниз, и после
+  // закрытия человек оказывается неизвестно где.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   if (!open) return null;
 
-  return (
+  /*
+   * Окно рисуется в <body>, а не там, где стоит в разметке.
+   *
+   * `position: fixed` отсчитывается от экрана только до тех пор, пока ни
+   * у одного предка нет transform, filter или containment: любой из них
+   * делает предка точкой отсчёта, и «на весь экран» превращается в «на всю
+   * карточку». Так и вышло — окно правки открывалось где-то посреди
+   * страницы, а при сотне загруженных строк уезжало за её пределы.
+   *
+   * Ловить это по одному предку бессмысленно: их много и появляются новые
+   * (приподнимание карточки под курсором в «современном» оформлении,
+   * приглушение цвета у графиков). Портал снимает вопрос целиком —
+   * предков между окном и <body> просто не остаётся.
+   */
+  return createPortal(
     <div
       className={cn(
         "fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
@@ -48,6 +75,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

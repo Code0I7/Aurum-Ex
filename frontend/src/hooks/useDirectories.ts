@@ -50,6 +50,16 @@ export function useCounterparties(includeArchived = false) {
 /** Создание прямо из формы ввода: набрал новое имя — оно завелось. Ходить
  * за этим в настройки значило бы прерывать ввод транзакции ради заведения
  * магазина, и в итоге поле просто перестали бы заполнять. */
+/** Имя из справочника подставлено в строки операций, в расчёты с людьми и
+ *  в справочник товаров — после правки их все надо перечитать, иначе на
+ *  экране останется старое имя рядом с новым. */
+function invalidatePeople(queryClient: ReturnType<typeof useQueryClient>) {
+  for (const key of ["participants", "stores", "counterparties", "transactions", "settlements", "products"]) {
+    queryClient.invalidateQueries({ queryKey: [key] });
+  }
+}
+
+
 export function useCreateParticipant() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -72,5 +82,36 @@ export function useCreateCounterparty() {
   return useMutation({
     mutationFn: (payload: { name: string }) => api.post<Counterparty>("/counterparties", payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["counterparties"] }),
+  });
+}
+
+/** Правка записи справочника. Переименование здесь — то же самое, что
+ *  пакетное переименование во всех операциях сразу: они ссылаются на
+ *  запись по номеру, а не по имени, поэтому исправление опечатки в одном
+ *  месте исправляет её везде. */
+export function useUpdateParticipant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: Partial<Participant> }) =>
+      api.patch<Participant>(`/participants/${id}`, input),
+    onSuccess: () => invalidatePeople(queryClient),
+  });
+}
+
+export function useUpdateStore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: Partial<Store> }) =>
+      api.patch<Store>(`/stores/${id}`, input),
+    onSuccess: () => invalidatePeople(queryClient),
+  });
+}
+
+export function useUpdateCounterparty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: Partial<Counterparty> }) =>
+      api.patch<Counterparty>(`/counterparties/${id}`, input),
+    onSuccess: () => invalidatePeople(queryClient),
   });
 }

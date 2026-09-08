@@ -4,7 +4,14 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { ItemsEditor } from "@/components/transactions/ItemsEditor";
-import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
+import {
+  useCounterparties,
+  useCreateCounterparty,
+  useCreateParticipant,
+  useCreateStore,
+  useParticipants,
+  useStores,
+} from "@/hooks/useDirectories";
 import { TagInput } from "@/components/transactions/TagInput";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
@@ -18,6 +25,7 @@ import {
 import { fetchSimilarTransactions } from "@/api/transactions";
 import type { SimilarTransaction } from "@/types";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { DirectoryPicker } from "@/components/transactions/DirectoryPicker";
 import { formatCurrency } from "@/lib/format";
 import type {
   Tag,
@@ -180,6 +188,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const relevantCategories = buildHierarchicalCategories(kindCategories, language);
 
   const confirm = useConfirm();
+  // Справочники пополняются прямо отсюда: уходить за этим в другой
+  // раздел значит прерывать ввод операции ради заведения магазина.
+  const createParticipant = useCreateParticipant();
+  const createStore = useCreateStore();
+  const createCounterparty = useCreateCounterparty();
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
 
   function updateSplitRow(key: string, patch: Partial<SplitRowState>) {
@@ -466,24 +479,14 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           <div className="space-y-3 rounded-lg border border-border p-3">
             <div>
               <Label htmlFor="counterparty">{t("transactions.form.counterpartyLabel")}</Label>
-              <Select
+              <DirectoryPicker
                 id="counterparty"
-                required
+                options={counterparties ?? []}
                 value={form.counterparty_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, counterparty_id: event.target.value }))}
-              >
-                <option value="" disabled>
-                  {t("transactions.form.selectCounterparty")}
-                </option>
-                {(counterparties ?? []).map((party) => (
-                  <option key={party.id} value={party.id}>
-                    {party.name}
-                  </option>
-                ))}
-              </Select>
-              {(counterparties ?? []).length === 0 && (
-                <p className="mt-1 text-xs text-text-muted">{t("transactions.form.noCounterparties")}</p>
-              )}
+                onChange={(value) => setForm((prev) => ({ ...prev, counterparty_id: value }))}
+                placeholder={t("transactions.form.selectCounterparty")}
+                onCreate={async (name) => (await createCounterparty.mutateAsync({ name })).id}
+              />
             </div>
 
             <div>
@@ -674,33 +677,27 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="participant">{t("transactions.form.participantLabel")}</Label>
-            <Select
+            <DirectoryPicker
               id="participant"
+              options={participants ?? []}
               value={form.participant_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, participant_id: event.target.value }))}
-            >
-              <option value="">{t("transactions.form.noParticipant")}</option>
-              {(participants ?? []).map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </Select>
+              onChange={(value) => setForm((prev) => ({ ...prev, participant_id: value }))}
+              emptyLabel={t("transactions.form.noParticipant")}
+              placeholder={t("transactions.form.participantPlaceholder")}
+              onCreate={async (name) => (await createParticipant.mutateAsync({ name })).id}
+            />
           </div>
           <div>
             <Label htmlFor="store">{t("transactions.form.storeLabel")}</Label>
-            <Select
+            <DirectoryPicker
               id="store"
+              options={stores ?? []}
               value={form.store_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, store_id: event.target.value }))}
-            >
-              <option value="">{t("transactions.form.noStore")}</option>
-              {(stores ?? []).map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </Select>
+              onChange={(value) => setForm((prev) => ({ ...prev, store_id: value }))}
+              emptyLabel={t("transactions.form.noStore")}
+              placeholder={t("transactions.form.storePlaceholder")}
+              onCreate={async (name) => (await createStore.mutateAsync({ name })).id}
+            />
           </div>
         </div>
 

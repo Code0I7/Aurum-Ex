@@ -10,6 +10,7 @@ import { BudgetFormModal } from "@/components/budget/BudgetFormModal";
 import { useBudgets, useBudgetStatus, useDeleteBudget } from "@/hooks/useBudgets";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
+import { useSessionState } from "@/hooks/useSessionState";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { Budget, BudgetStatus } from "@/types";
@@ -17,8 +18,8 @@ import type { Budget, BudgetStatus } from "@/types";
 export function BudgetPage() {
   const { t } = useTranslation();
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useSessionState("aurum:budget-year", now.getFullYear());
+  const [month, setMonth] = useSessionState("aurum:budget-month", now.getMonth() + 1);
   const { data: years } = useTransactionYears();
 
   const { data: budgets } = useBudgets();

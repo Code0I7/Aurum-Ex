@@ -8,6 +8,7 @@ import { WorkDaysCard } from "@/components/planning/WorkDaysCard";
 import { WatchlistCard } from "@/components/planning/WatchlistCard";
 import { useDeletePlan, usePlanOverview, usePlans } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
+import { useSessionState } from "@/hooks/useSessionState";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { formatCurrency } from "@/lib/format";
 import type { Plan } from "@/types";
@@ -22,7 +23,7 @@ import type { Plan } from "@/types";
  */
 export function PlanningPage() {
   const { t } = useTranslation();
-  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [year, setYear] = useSessionState("aurum:planning-year", new Date().getFullYear());
   const { data: overview, isLoading } = usePlanOverview(year);
   const { data: plans } = usePlans();
   const deletePlan = useDeletePlan();

@@ -344,8 +344,23 @@ export function TransactionsGrid({
               data-row-id={tx.id}
               onPointerMove={move}
               onPointerUp={end}
+              // Щелчок по строке открывает правку. Кнопка карандаша
+              // осталась: она объясняет, что строка вообще нажимается, —
+              // без неё об этом можно не догадаться.
+              onClick={(event) => {
+                // Клик по кнопке внутри строки — это её собственное
+                // действие: удаление, перетаскивание, разбор чека. Проверка
+                // по ближайшей кнопке, а не по списку — иначе следующая
+                // добавленная кнопка молча начала бы открывать редактор.
+                if ((event.target as HTMLElement).closest("button, a, input")) return;
+                // Выделение текста мышью заканчивается щелчком по строке.
+                // Открывать редактор в ответ на попытку скопировать сумму
+                // значит отменять эту попытку.
+                if (window.getSelection()?.toString()) return;
+                onEdit(tx);
+              }}
               className={cn(
-                "group transition-colors hover:bg-surface-2/40",
+                "group cursor-pointer transition-colors hover:bg-surface-2/40",
                 collapsed && "bg-surface-2/20",
                 // Перетаскиваемая строка бледнеет, а место, куда она встанет,
                 // подсвечивается линией сверху — так видно результат до того,
@@ -382,7 +397,7 @@ export function TransactionsGrid({
                           if (!meta || meta.siblings.length < 2) return;
                           start(event, { transaction: tx, indexInDay: meta.indexInDay }, meta.siblings);
                         }}
-                        className="-ml-1 cursor-grab touch-none rounded p-0.5 text-text-muted opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
+                        className="-ml-1 cursor-grab touch-none rounded p-0.5 text-text-muted transition active:cursor-grabbing sm:opacity-0 sm:group-hover:opacity-100"
                       >
                         <GripVertical size={13} />
                       </button>
@@ -394,7 +409,11 @@ export function TransactionsGrid({
                 </td>
               ))}
               <td className="whitespace-nowrap px-3 py-2 text-right">
-                <span className="inline-flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                {/* На узком экране кнопки видны всегда. Прятать их до наведения
+                      значило прятать навсегда: на телефоне наведения не
+                      существует, и до правки с удалением было не добраться
+                      вообще. */}
+                <span className="inline-flex items-center gap-0.5 transition sm:opacity-0 sm:transition sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                   <button
                     type="button"
                     onClick={() => onEdit(tx)}

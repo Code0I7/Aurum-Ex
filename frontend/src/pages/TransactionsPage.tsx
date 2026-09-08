@@ -21,6 +21,7 @@ import {
 import { useCategories } from "@/hooks/useCategories";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import { useSessionState } from "@/hooks/useSessionState";
 import { useViewDefault } from "@/hooks/useViewDefault";
 import { useAppSettings } from "@/hooks/useSettings";
 import { useTags } from "@/hooks/useTags";
@@ -68,8 +69,18 @@ export function TransactionsPage() {
   // разваливается на три страницы. В поиске, который идёт по всей
   // истории, тем более.
   const pageSize = settings?.default_page_size ?? 50;
-  const [year, setYear] = useState(() => parseYearParam(searchParams.get("year"), now.getFullYear()));
-  const [month, setMonth] = useState(() => parseMonthParam(searchParams.get("month"), now.getMonth() + 1));
+  // Месяц, фильтры и страница держатся до конца сеанса: уход в отчёты и
+  // возвращение обратно не должны сбрасывать человека на текущий месяц.
+  // Именно «до конца сеанса», а не навсегда: открывать приложение завтра
+  // на прошлогоднем августе — не память, а ловушка.
+  const [year, setYear] = useSessionState(
+    "aurum:tx-year",
+    parseYearParam(searchParams.get("year"), now.getFullYear())
+  );
+  const [month, setMonth] = useSessionState(
+    "aurum:tx-month",
+    parseMonthParam(searchParams.get("month"), now.getMonth() + 1)
+  );
   // Насколько широко смотрим. Месяц — обычный режим ведения учёта, но
   // выписка по счёту за один август ни о чём не говорит: путаницу между
   // парой связанных счетов видно только на всей истории. Запоминается,
@@ -79,15 +90,15 @@ export function TransactionsPage() {
     "aurum:transactions-scope",
     "month"
   );
-  const [type, setType] = useState<TransactionType | "">("");
-  const [categoryId, setCategoryId] = useState<string>("");
+  const [type, setType] = useSessionState<TransactionType | "">("aurum:tx-type", "");
+  const [categoryId, setCategoryId] = useSessionState<string>("aurum:tx-category", "");
   // Выписка по одному счёту. Без неё распутать пару счетов вроде «карта и
   // рассрочка того же магазина» невозможно: движения между ними видно
   // только вперемешку со всем остальным.
-  const [accountId, setAccountId] = useState<string>("");
-  const [tagId, setTagId] = useState<string>("");
-  const [sort, setSort] = useState<TransactionSort>("date_desc");
-  const [page, setPage] = useState(1);
+  const [accountId, setAccountId] = useSessionState<string>("aurum:tx-account", "");
+  const [tagId, setTagId] = useSessionState<string>("aurum:tx-tag", "");
+  const [sort, setSort] = useSessionState<TransactionSort>("aurum:tx-sort", "date_desc");
+  const [page, setPage] = useSessionState("aurum:tx-page", 1);
 
   // Переход по ссылке с дашборда несёт месяц в адресе — значит спрашивают
   // именно про него, и сохранённый широкий период на этот раз уступает.

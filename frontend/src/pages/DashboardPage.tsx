@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { MonthSelector } from "@/components/layout/MonthSelector";
 import { YearSelector } from "@/components/layout/YearSelector";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -12,6 +11,7 @@ import { useDashboardSummary } from "@/hooks/useDashboard";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { formatCurrency, formatSignedCurrency, formatTransactionDate } from "@/lib/format";
 import { useViewDefault } from "@/hooks/useViewDefault";
+import { useSessionState } from "@/hooks/useSessionState";
 import { useAppSettings } from "@/hooks/useSettings";
 import { useTranslation } from "@/lib/i18n";
 import type { DashboardRange } from "@/types";
@@ -30,8 +30,8 @@ function formatPercent(value: number): string {
 export function DashboardPage() {
   const { t } = useTranslation();
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useSessionState("aurum:dashboard-year", now.getFullYear());
+  const [month, setMonth] = useSessionState("aurum:dashboard-month", now.getMonth() + 1);
   // Период по умолчанию настраивается; год — если ничего не выбрано.
   // Месяц при многолетней истории случайный срез, а «за всё время»
   // отвечает на вопрос «как было вообще», тогда как открывают приложение

@@ -5,6 +5,7 @@ import {
   createPortfolio,
   deleteHolding,
   deletePortfolio,
+  updatePortfolio,
   deleteTrade,
   fetchHolding,
   fetchHoldings,
@@ -52,6 +53,15 @@ export function useCreatePortfolio() {
   const invalidate = useInvalidateInvestments();
   return useMutation({
     mutationFn: (input: InvestmentPortfolioInput) => createPortfolio(input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdatePortfolio() {
+  const invalidate = useInvalidateInvestments();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: Partial<InvestmentPortfolioInput> }) =>
+      updatePortfolio(id, input),
     onSuccess: invalidate,
   });
 }
