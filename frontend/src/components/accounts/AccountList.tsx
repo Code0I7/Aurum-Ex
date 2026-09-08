@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Banknote, CreditCard, Landmark, Package, Pencil, PiggyBank, TrendingUp, Trash2, Wallet, type LucideIcon } from "lucide-react";
+import { Archive, ArchiveRestore, Banknote, Bitcoin, CreditCard, Landmark, Package, Pencil, PiggyBank, TrendingUp, Trash2, Wallet, type LucideIcon } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Account, AccountKind, AccountWithBalance } from "@/types";
@@ -16,6 +16,7 @@ const KIND_ICONS: Record<AccountKind, LucideIcon> = {
   credit_card: CreditCard,
   cash: Banknote,
   investment: TrendingUp,
+  crypto: Bitcoin,
   // Кредит или рассрочка без пластика — тот же долг банку, что и по карте,
   // но выглядеть как карта не должен.
   loan: Landmark,

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # title, /api/health (which the frontend reads to show it in Settings), and
 # embedded in exported backups so an old file can be told apart from a
 # current one.
-APP_VERSION = "1.0.0-alpha.4"
+APP_VERSION = "1.0.0-alpha.5"
 
 
 class Settings(BaseSettings):
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
 
     # Default currency shown across the UI when an account doesn't override it
-    default_currency: str = "USD"
+    default_currency: str = "RUB"
 
     # Comma-separated list of browser origins allowed to call the API. Empty
     # by default, which allows none: the shipped compose serves the UI and the

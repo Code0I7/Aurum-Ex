@@ -176,6 +176,25 @@ async def change_password(session: AsyncSession, current_password: str, new_pass
     await session.commit()
 
 
+async def change_username(session: AsyncSession, current_password: str, new_username: str) -> None:
+    """Смена логина. Требует текущего пароля — как и смена самого пароля.
+
+    Сессии при этом НЕ обрываются, в отличие от смены пароля: логин меняют
+    ради неочевидности, а не потому, что его узнал посторонний, и выкидывать
+    человека из приложения незачем.
+    """
+    user = await get_admin(session)
+    if user is None or not verify_password(current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Текущий пароль неверен")
+
+    cleaned = new_username.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Логин не может быть пустым")
+
+    user.username = cleaned
+    await session.commit()
+
+
 async def reset_password_with_recovery_key(session: AsyncSession, recovery_key: str, new_password: str) -> None:
     """Сброс забытого пароля аварийным ключом из .env.
 

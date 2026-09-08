@@ -24,7 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.api.deps import get_session
 from app.core.config import get_settings
 from app.db.base import Base
-from app.db.seed import seed_default_account, seed_default_app_settings, seed_default_categories
+from app.db.seed import (
+    seed_default_account,
+    seed_default_app_settings,
+    seed_default_categories,
+    seed_default_currencies,
+    seed_default_units,
+)
 from app.main import app
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -101,6 +107,11 @@ async def _clean_database(test_sessionmaker):
             await session.execute(text(f'TRUNCATE TABLE "{table.name}" RESTART IDENTITY CASCADE'))
         await session.commit()
         await seed_default_categories(session)
+        # Валюты и единицы засеваются и здесь: без них установка неполная,
+        # а тест, который этого не заметит, проверяет не то приложение,
+        # которое получает пользователь.
+        await seed_default_currencies(session)
+        await seed_default_units(session)
         await seed_default_account(session)
         await seed_default_app_settings(session)
     yield

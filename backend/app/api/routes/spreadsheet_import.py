@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_session
 from app.models.transaction import Transaction
 from app.services.currency_service import get_base_currency
-from app.services.spreadsheet_import_service import ImportPlan, apply_plan, build_plan
+from app.services.spreadsheet_import_service import ImportPlan, apply_plan, build_plan, parse_settings_csv
 
 router = APIRouter(prefix="/import/spreadsheet", tags=["import"])
 
@@ -45,6 +45,9 @@ class PlanOut(BaseModel):
     categories: int
     subcategories: int
     participants: list[str]
+    # Заполняются только если приложен лист настроек.
+    stores: list[str] = []
+    work_years: list[int] = []
     goals: int
     total_rows: int
     issues: list[IssueOut]
@@ -61,6 +64,7 @@ class ResultOut(BaseModel):
     transactions: int
     transfers: int
     goal_contributions: int
+    work_periods: int = 0
     issues: list[IssueOut]
 
 
@@ -80,7 +84,7 @@ async def _existing_transactions(session: AsyncSession) -> int:
     return int((await session.execute(select(func.count()).select_from(Transaction))).scalar_one())
 
 
-def _to_plan_out(plan: ImportPlan, existing: int) -> PlanOut:
+def _to_plan_out(plan: ImportPlan, existing: int, sheet=None) -> PlanOut:
     excluded = sum(1 for row in (*plan.incomes, *plan.expenses) if row.is_excluded)
     return PlanOut(
         incomes=len(plan.incomes),
@@ -92,7 +96,9 @@ def _to_plan_out(plan: ImportPlan, existing: int) -> PlanOut:
         accounts=sorted(plan.accounts),
         categories=len(plan.categories),
         subcategories=sum(len(children) for children in plan.categories.values()),
-        participants=sorted(plan.participants),
+        participants=sorted(set(plan.participants) | set(sheet.participants if sheet else [])),
+        stores=sorted(sheet.stores) if sheet else [],
+        work_years=sorted(sheet.work_hours_by_year) if sheet else [],
         goals=len(plan.goals),
         total_rows=plan.total_rows,
         issues=[IssueOut(row=issue.row, reason=issue.reason, detail=issue.detail) for issue in plan.issues],
@@ -103,17 +109,25 @@ def _to_plan_out(plan: ImportPlan, existing: int) -> PlanOut:
 
 @router.post("/preview", response_model=PlanOut)
 async def preview_import(
-    transactions: UploadFile = File(...), session: AsyncSession = Depends(get_session)
+    transactions: UploadFile = File(...),
+    settings: UploadFile | None = File(default=None),
+    session: AsyncSession = Depends(get_session),
 ) -> PlanOut:
-    """Разбирает выгрузку и показывает, что получится. Ничего не пишет."""
+    """Разбирает выгрузку и показывает, что получится. Ничего не пишет.
+
+    Лист настроек необязателен: без него счета получают вид по догадке из
+    названия и общую валюту, с ним — то, что указано в таблице прямо."""
     content = await _read_csv(transactions)
     plan = build_plan(content)
-    return _to_plan_out(plan, await _existing_transactions(session))
+    sheet = parse_settings_csv(await _read_csv(settings)) if settings is not None else None
+    return _to_plan_out(plan, await _existing_transactions(session), sheet)
 
 
 @router.post("/apply", response_model=ResultOut)
 async def apply_import(
-    transactions: UploadFile = File(...), session: AsyncSession = Depends(get_session)
+    transactions: UploadFile = File(...),
+    settings: UploadFile | None = File(default=None),
+    session: AsyncSession = Depends(get_session),
 ) -> ResultOut:
     """Переносит историю. Работает только на пустой базе."""
     existing = await _existing_transactions(session)
@@ -128,7 +142,8 @@ async def apply_import(
 
     content = await _read_csv(transactions)
     plan = build_plan(content)
-    result = await apply_plan(session, plan, await get_base_currency(session))
+    sheet = parse_settings_csv(await _read_csv(settings)) if settings is not None else None
+    result = await apply_plan(session, plan, await get_base_currency(session), sheet)
 
     return ResultOut(
         accounts=result.accounts,
@@ -138,5 +153,6 @@ async def apply_import(
         transactions=result.transactions,
         transfers=result.transfers,
         goal_contributions=result.goal_contributions,
+        work_periods=result.work_periods,
         issues=[IssueOut(row=issue.row, reason=issue.reason, detail=issue.detail) for issue in result.issues],
     )

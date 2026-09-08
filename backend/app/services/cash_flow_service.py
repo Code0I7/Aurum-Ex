@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
+from app.services.transaction_service import counted_only, earnings_and_spending_only
 from app.schemas.cash_flow import CashFlowPoint, CashFlowResponse
 
 
@@ -23,7 +24,8 @@ async def get_cash_flow(
     session: AsyncSession, start_date: date_ | None, end_date: date_ | None
 ) -> CashFlowResponse:
     bounds_stmt = select(func.min(Transaction.date), func.max(Transaction.date)).where(
-        Transaction.type != TransactionType.TRANSFER
+        earnings_and_spending_only(),
+        counted_only(),
     )
     if start_date:
         bounds_stmt = bounds_stmt.where(Transaction.date >= start_date)
@@ -53,7 +55,8 @@ async def get_cash_flow(
             func.sum(Transaction.amount).label("amount"),
         )
         .where(
-            Transaction.type != TransactionType.TRANSFER,
+            earnings_and_spending_only(),
+            counted_only(),
             Transaction.date >= effective_start,
             Transaction.date <= effective_end,
         )

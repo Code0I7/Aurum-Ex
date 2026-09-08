@@ -1,6 +1,7 @@
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { formatCurrency, getIntlLocale, pluralizeRu } from "@/lib/format";
+import { formatMonthShort } from "@/lib/format";
 import { useTranslation, type Language } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { CategorySpendingReport } from "@/types";
@@ -25,19 +26,37 @@ function transactionsCountLabel(count: number, language: Language): string {
   return count === 1 ? "transaction" : "transactions";
 }
 
-/** Same landmark idea as the Net Worth chart: year ticks only when the bars
- * span more than one calendar year, so a 5-year report reads at a glance. */
-function computeYearTicks(keys: string[]): string[] {
-  if (keys.length < 2) return [];
+/**
+ * Подписи оси: годы на длинном отрезке и месяцы на коротком.
+ *
+ * Одними годами обходиться нельзя. На отчёте за один год отметок не
+ * оставалось вовсе, и столбцы висели без единой подписи — понять, где март,
+ * а где ноябрь, было не по чему. Поэтому: отрезок в пределах одного года
+ * подписывается месяцами, длиннее — годами, иначе подписи слипаются.
+ */
+function computeAxisTicks(keys: string[]): { ticks: string[]; kind: "year" | "month" } {
+  if (keys.length < 2) return { ticks: [], kind: "month" };
   const startYear = Number(keys[0].slice(0, 4));
   const endYear = Number(keys[keys.length - 1].slice(0, 4));
-  if (startYear === endYear) return [];
+
+  if (startYear === endYear) {
+    // Первый день каждого месяца, который реально есть в данных.
+    const seen = new Set<string>();
+    const ticks = keys.filter((key) => {
+      const month = key.slice(0, 7);
+      if (seen.has(month)) return false;
+      seen.add(month);
+      return true;
+    });
+    return { ticks, kind: "month" };
+  }
+
   const ticks: string[] = [];
   for (let year = startYear + 1; year <= endYear; year++) {
     const jan = `${year}-01-01`;
     if (keys.includes(jan)) ticks.push(jan);
   }
-  return ticks;
+  return { ticks, kind: "year" };
 }
 
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { key: string; amount: number } }> }) {
@@ -57,7 +76,7 @@ export function CategorySpendingChart({ report, isLoading }: CategorySpendingCha
     key: monthKey(point.year, point.month),
     amount: Number(point.amount),
   })) ?? [];
-  const yearTicks = computeYearTicks(chartData.map((point) => point.key));
+  const axis = computeAxisTicks(chartData.map((point) => point.key));
 
   return (
     <Card>
@@ -84,12 +103,14 @@ export function CategorySpendingChart({ report, isLoading }: CategorySpendingCha
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
-                {yearTicks.length > 0 && (
+                {axis.ticks.length > 0 && (
                   <XAxis
                     dataKey="key"
                     type="category"
-                    ticks={yearTicks}
-                    tickFormatter={(value: string) => value.slice(0, 4)}
+                    ticks={axis.ticks}
+                    tickFormatter={(value: string) =>
+                      axis.kind === "year" ? value.slice(0, 4) : formatMonthShort(value)
+                    }
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: "var(--text-muted)", fontSize: 11 }}

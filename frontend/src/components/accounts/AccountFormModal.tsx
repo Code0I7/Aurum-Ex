@@ -12,7 +12,7 @@ interface AccountFormModalProps {
   account?: Account | null;
 }
 
-const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "loan", "other"];
+const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "crypto", "loan", "other"];
 
 const EMPTY_FORM = { name: "", kind: "checking" as AccountKind };
 

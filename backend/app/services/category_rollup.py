@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+from app.services.transaction_service import counted_only
 
 
 @dataclass
@@ -74,12 +75,12 @@ async def _raw_category_contributions(
     transaction is either plain (category_id set, no splits) or split
     (category_id NULL, 2+ splits), enforced at write time."""
     plain_stmt = select(Transaction.id, Transaction.category_id, Transaction.amount).where(
-        Transaction.type == transaction_type, Transaction.category_id.is_not(None)
+        Transaction.type == transaction_type, Transaction.category_id.is_not(None), counted_only()
     )
     split_stmt = (
         select(TransactionSplit.transaction_id, TransactionSplit.category_id, TransactionSplit.amount)
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
-        .where(Transaction.type == transaction_type, TransactionSplit.category_id.is_not(None))
+        .where(Transaction.type == transaction_type, TransactionSplit.category_id.is_not(None), counted_only())
     )
     if start_date is not None:
         plain_stmt = plain_stmt.where(Transaction.date >= start_date)

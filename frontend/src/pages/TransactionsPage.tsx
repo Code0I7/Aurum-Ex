@@ -89,6 +89,9 @@ export function TransactionsPage() {
   // удобнее, когда листаешь подряд. Верного ответа для всех случаев нет,
   // поэтому выбор оставлен человеку и запоминается.
   const [paging, setPaging] = useLocalStorageState<"pages" | "feed">("aurum:transactions-paging", "pages");
+  // Разделители дней с итогами. Включены по умолчанию — так список читается
+  // как банковская выписка, — но кому-то нужен сплошной перечень.
+  const [dayDividers, setDayDividers] = useLocalStorageState<boolean>("aurum:transactions-day-dividers", true);
   // Сохранённая раскладка переживает обновления приложения, в которых
   // колонки появляются и исчезают, — сверяем её с текущим набором.
   const layout = reconcileLayout(storedLayout);
@@ -370,6 +373,14 @@ export function TransactionsPage() {
                     >
                       {t("transactions.groupRepeats")}
                     </Button>
+                    <Button
+                      variant={dayDividers ? "primary" : "secondary"}
+                      onClick={() => setDayDividers(!dayDividers)}
+                      title={t("transactions.dayDividersHint")}
+                      className="whitespace-nowrap"
+                    >
+                      {t("transactions.dayDividers")}
+                    </Button>
                     <ColumnPicker layout={layout} onChange={setStoredLayout} />
                   </>
                 )}
@@ -390,6 +401,7 @@ export function TransactionsPage() {
                 onDelete={handleDelete}
                 onReorder={handleReorder}
                 groupRepeats={groupRepeats}
+                dayDividers={dayDividers}
               />
             ) : (
               // При поиске остаётся список: результаты приходят из разных

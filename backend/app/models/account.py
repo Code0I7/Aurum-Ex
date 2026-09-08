@@ -60,6 +60,10 @@ class Account(Base, TimestampMixin):
     )
     bank_id: Mapped[int | None] = mapped_column(ForeignKey("banks.id", ondelete="SET NULL"), nullable=True)
 
+    # Значение по умолчанию нужно только на уровне БД, чтобы колонка не
+    # была пустой при прямой вставке. Настоящая валюта приходит из
+    # настроек приложения (см. services/currency_service.get_base_currency)
+    # или со счёта операции.
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
 
     # Money already on the account the day tracking began. Part of the

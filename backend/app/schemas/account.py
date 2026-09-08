@@ -36,7 +36,10 @@ class AccountBase(BaseModel):
     # and loans become liabilities) unless the user overrides it.
     nature: AccountNature | None = None
     bank_id: int | None = None
-    currency: str = Field(default="RUB", min_length=3, max_length=3)
+    # None означает "как в настройках приложения". Литерала здесь быть не
+    # должно: базовую валюту выбирает пользователь, и зашитый в схему код
+    # означал бы, что новый счёт молча заводится в чужой валюте.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
     opening_balance: Decimal = Decimal("0")
     opening_date: date_ | None = None
     allow_negative: bool | None = None
@@ -83,3 +86,7 @@ class AccountWithBalance(AccountRead):
     Cash. Used only by /api/accounts' own endpoints, never nested."""
 
     balance: Decimal
+    # Тот же остаток, пересчитанный в базовую валюту по текущему курсу.
+    # Для счёта в базовой валюте совпадает с balance — так потребителю не
+    # нужна отдельная ветка на «а вдруг валюта та же».
+    balance_base: Decimal

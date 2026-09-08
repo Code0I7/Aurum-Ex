@@ -1,4 +1,4 @@
-import { getCurrency, getLanguage, type Language } from "@/lib/i18n";
+import { getCurrency, getLanguage, t, type Language } from "@/lib/i18n";
 
 /** Maps our app language to the Intl locale used for number/date formatting. */
 export function getIntlLocale(language: Language = getLanguage()): string {
@@ -85,6 +85,41 @@ export function formatTransactionDate(isoDate: string, includeYear = false): str
     day: "numeric",
     year: includeYear ? "numeric" : undefined,
   }).format(date);
+}
+
+/** Месяц тремя буквами для подписей осей: «янв», «фев». Даты на графике
+ * подписываются коротко — полное название съедает место, которого на узкой
+ * оси нет. */
+export function formatMonthShort(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  return new Intl.DateTimeFormat(getIntlLocale(), { month: "short" }).format(date);
+}
+
+/**
+ * Заголовок дня для разделителя в таблице операций — как в банковской
+ * выписке: «сегодня», «вчера» или «6 августа, среда».
+ *
+ * Относительные подписи только для сегодня и вчера: «3 дня назад» читатель
+ * всё равно переводит в дату в уме, и на длинном списке такие подписи
+ * мешают больше, чем помогают.
+ */
+export function formatDayHeading(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+
+  if (diffDays === 0) return t("common.today");
+  if (diffDays === -1) return t("common.yesterday");
+
+  const formatted = new Intl.DateTimeFormat(getIntlLocale(), {
+    day: "numeric",
+    month: "long",
+    weekday: "short",
+    // Год показывается только у прошлых лет: в текущем он лишний шум.
+    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  }).format(date);
+  return formatted;
 }
 
 /** Russian noun pluralization: pick the right form for 1/2-4/5+ (with the

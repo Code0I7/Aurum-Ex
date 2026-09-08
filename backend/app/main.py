@@ -13,6 +13,7 @@ from app.api.routes import (
     budgets,
     cash_flow,
     categories,
+    currencies,
     crypto,
     dashboard,
     directories,
@@ -98,6 +99,7 @@ app.include_router(dashboard.router, prefix="/api", dependencies=_protected)
 app.include_router(directories.router, prefix="/api", dependencies=_protected)
 app.include_router(accounts.router, prefix="/api", dependencies=_protected)
 app.include_router(categories.router, prefix="/api", dependencies=_protected)
+app.include_router(currencies.router, prefix="/api", dependencies=_protected)
 app.include_router(transactions.router, prefix="/api", dependencies=_protected)
 app.include_router(assets.router, prefix="/api", dependencies=_protected)
 app.include_router(net_worth.router, prefix="/api", dependencies=_protected)

@@ -3,7 +3,7 @@ import { ArrowLeftRight, ChevronDown, ChevronRight, GripVertical, Pencil, Square
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
 import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
-import { formatCurrency, formatTransactionDate } from "@/lib/format";
+import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { COLUMNS, type ColumnId, type ColumnLayout } from "@/components/transactions/columns";
@@ -23,6 +23,9 @@ interface TransactionsGridProps {
   /** Склеивать ли одинаковые операции одного дня в одну строку — четыре
    * поездки на автобусе показываются как «Автобус ×4». */
   groupRepeats: boolean;
+  /** Показывать ли заголовки дней с итогами. Кому-то нужен сплошной
+   * список без лишних строк. */
+  dayDividers: boolean;
 }
 
 /**
@@ -39,7 +42,15 @@ interface TransactionsGridProps {
  * перетаскивание конфликтует с прокруткой страницы, а кнопки одинаково
  * работают и мышью, и пальцем, и с клавиатуры.
  */
-export function TransactionsGrid({ items, layout, onEdit, onDelete, onReorder, groupRepeats }: TransactionsGridProps) {
+export function TransactionsGrid({
+  items,
+  layout,
+  onEdit,
+  onDelete,
+  onReorder,
+  groupRepeats,
+  dayDividers,
+}: TransactionsGridProps) {
   const { t } = useTranslation();
   const { data: categories } = useCategories();
   const { data: participants } = useParticipants();
@@ -59,6 +70,21 @@ export function TransactionsGrid({ items, layout, onEdit, onDelete, onReorder, g
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const groups = useMemo(() => groupTransactions(items, groupRepeats), [items, groupRepeats]);
   const { drag, start, move, end } = useRowDrag(onReorder);
+
+  // Итог по каждому дню — то, что в банковских выписках стоит в шапке дня.
+  // Переводы в него не входят: это движение своих же денег между
+  // собственными счетами, и в трату оно превращается только на бумаге.
+  const dayTotals = useMemo(() => {
+    const totals = new Map<string, { spent: number; earned: number }>();
+    for (const tx of items) {
+      if (tx.is_excluded || tx.type === "transfer") continue;
+      const current = totals.get(tx.date) ?? { spent: 0, earned: 0 };
+      if (tx.type === "income" || tx.type === "external_in") current.earned += Number(tx.amount);
+      else current.spent += Number(tx.amount);
+      totals.set(tx.date, current);
+    }
+    return totals;
+  }, [items]);
 
   // Соседи по дню и счёту — то, внутри чего разрешено перетаскивание.
   // Считается один раз на весь список: искать их заново на каждое движение
@@ -101,7 +127,7 @@ export function TransactionsGrid({ items, layout, onEdit, onDelete, onReorder, g
   const renderCell = (column: ColumnId, tx: Transaction, group?: { count: number; total: number }) => {
     switch (column) {
       case "date":
-        return <span className="tabular-nums">{formatTransactionDate(tx.date)}</span>;
+        return <span className="tabular-nums text-text-muted">{formatTransactionDate(tx.date)}</span>;
 
       case "description":
         return (
@@ -202,8 +228,14 @@ export function TransactionsGrid({ items, layout, onEdit, onDelete, onReorder, g
           </tr>
         </thead>
         <tbody className="divide-y divide-gridline">
-          {groups.flatMap((groupRow) => {
+          {groups.flatMap((groupRow, groupIndex) => {
             const collapsed = groupRow.items.length > 1;
+            // Разделитель дня — как в банковском приложении: дата и итог
+            // за день над блоком его операций. Ставится при смене даты, а
+            // не перед каждой строкой.
+            const previousDate = groupIndex > 0 ? groups[groupIndex - 1].head.date : null;
+            const startsNewDay = dayDividers && groupRow.head.date !== previousDate;
+            const totals = dayTotals.get(groupRow.head.date);
             const isOpen = expanded.has(groupRow.key);
             // Свёрнутая группа рисуется как одна строка; раскрытая — как
             // заголовок плюс её собственные операции, каждая со своим
@@ -211,6 +243,27 @@ export function TransactionsGrid({ items, layout, onEdit, onDelete, onReorder, g
             const rows = collapsed && !isOpen ? [] : groupRow.items;
 
             return [
+              startsNewDay ? (
+                <tr key={`day-${groupRow.head.date}`} className="bg-surface-2/30">
+                  <td colSpan={columns.length + 1} className="px-3 py-1.5">
+                    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                      <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
+                        {formatDayHeading(groupRow.head.date)}
+                      </span>
+                      {totals && totals.spent > 0 && (
+                        <span className="text-xs tabular-nums text-text-muted">
+                          −{formatCurrency(totals.spent, groupRow.head.currency)}
+                        </span>
+                      )}
+                      {totals && totals.earned > 0 && (
+                        <span className="text-xs tabular-nums text-success">
+                          +{formatCurrency(totals.earned, groupRow.head.currency)}
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              ) : null,
               collapsed ? (
                 <tr
                   key={groupRow.key}

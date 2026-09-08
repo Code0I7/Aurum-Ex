@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
+from app.services.transaction_service import counted_only
 from app.schemas.dashboard import CategoryBreakdownChildItem, CategoryBreakdownItem, DashboardSummary
 from app.services.category_rollup import rollup_spending_by_top_level_category
 
@@ -27,7 +28,7 @@ async def get_dashboard_summary(session: AsyncSession, year: int, month: int) ->
 
     totals_stmt = (
         select(Transaction.type, func.coalesce(func.sum(Transaction.amount), 0))
-        .where(Transaction.date >= start, Transaction.date <= end)
+        .where(Transaction.date >= start, Transaction.date <= end, counted_only())
         .group_by(Transaction.type)
     )
     totals_result = await session.execute(totals_stmt)

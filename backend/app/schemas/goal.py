@@ -1,6 +1,8 @@
 from datetime import date as date_
 from decimal import Decimal
 
+from app.models.enums import GoalStatus
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -39,6 +41,10 @@ class GoalRead(BaseModel):
     name: str
     target_amount: Decimal
     target_date: date_ | None
+    # Счёт, на котором физически лежат отложенные деньги. Без него взнос
+    # непонятно откуда взялся, а счёт не может показать «отложено».
+    account_id: int | None = None
+    status: GoalStatus = GoalStatus.ACTIVE
     current_amount: Decimal
     remaining: Decimal
     percent: float

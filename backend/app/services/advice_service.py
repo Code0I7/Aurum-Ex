@@ -17,6 +17,7 @@ from app.models.budget import Budget
 from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
+from app.services.transaction_service import counted_only
 from app.schemas.advice import AdviceItem, AdviceResponse
 from app.services.dashboard_service import get_dashboard_summary
 
@@ -40,6 +41,7 @@ async def _category_expense_totals(session: AsyncSession, year: int, month: int)
         select(Transaction.category_id, func.sum(Transaction.amount))
         .where(
             Transaction.type == TransactionType.EXPENSE,
+            counted_only(),
             Transaction.category_id.is_not(None),
             Transaction.date >= start,
             Transaction.date <= end,

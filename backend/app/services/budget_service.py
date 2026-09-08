@@ -16,6 +16,7 @@ from app.models.budget import Budget
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+from app.services.transaction_service import counted_only
 from app.schemas.budget import BudgetCreate, BudgetStatus, BudgetStatusResponse, BudgetUpdate
 
 _EAGER = (selectinload(Budget.category),)
@@ -101,6 +102,7 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
         .where(
             Transaction.category_id.in_(counted_ids),
             Transaction.type == TransactionType.EXPENSE,
+            counted_only(),
             Transaction.date >= start,
             Transaction.date <= end,
         )
@@ -112,6 +114,7 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
         .where(
             TransactionSplit.category_id.in_(counted_ids),
             Transaction.type == TransactionType.EXPENSE,
+            counted_only(),
             Transaction.date >= start,
             Transaction.date <= end,
         )

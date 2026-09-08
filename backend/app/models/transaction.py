@@ -76,6 +76,10 @@ class Transaction(Base, TimestampMixin):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     # Валюта операции и та же сумма в базовой валюте. Курс заморожен в
     # строке: пересчёт по сегодняшнему курсу переписывал бы прошлое.
+    # Значение по умолчанию нужно только на уровне БД, чтобы колонка не
+    # была пустой при прямой вставке. Настоящая валюта приходит из
+    # настроек приложения (см. services/currency_service.get_base_currency)
+    # или со счёта операции.
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("1"))
     amount_base: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)

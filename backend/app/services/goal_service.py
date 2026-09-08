@@ -17,10 +17,20 @@ _SELECT_WITH_TOTAL = (
         Goal.name,
         Goal.target_amount,
         Goal.target_date,
+        Goal.account_id,
+        Goal.status,
         func.coalesce(func.sum(GoalContribution.amount), 0).label("current_amount"),
     )
     .outerjoin(GoalContribution, GoalContribution.goal_id == Goal.id)
-    .group_by(Goal.id, Goal.name, Goal.target_amount, Goal.target_date, Goal.created_at)
+    .group_by(
+        Goal.id,
+        Goal.name,
+        Goal.target_amount,
+        Goal.target_date,
+        Goal.account_id,
+        Goal.status,
+        Goal.created_at,
+    )
     .order_by(Goal.created_at)
 )
 
@@ -34,6 +44,8 @@ def _to_read(row: Row) -> GoalRead:
         name=row.name,
         target_amount=target,
         target_date=row.target_date,
+        account_id=row.account_id,
+        status=row.status,
         current_amount=current,
         remaining=target - current,
         percent=percent,

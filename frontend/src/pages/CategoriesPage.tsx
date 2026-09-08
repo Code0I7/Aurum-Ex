@@ -57,23 +57,6 @@ export function CategoriesPage() {
     <div className="space-y-5">
       <Card>
         <CardHeader>
-          <CardTitle>{t("category.expenseSectionTitle")}</CardTitle>
-          <Button onClick={() => openCreateModal("expense")}>
-            <Plus size={16} />
-            {t("common.add")}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
-          ) : (
-            <CategoryList items={expenseCategories} onEdit={openEditModal} onDelete={handleDelete} />
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>{t("category.incomeSectionTitle")}</CardTitle>
           <Button onClick={() => openCreateModal("income")}>
             <Plus size={16} />
@@ -85,6 +68,23 @@ export function CategoriesPage() {
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
             <CategoryList items={incomeCategories} onEdit={openEditModal} onDelete={handleDelete} />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("category.expenseSectionTitle")}</CardTitle>
+          <Button onClick={() => openCreateModal("expense")}>
+            <Plus size={16} />
+            {t("common.add")}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
+          ) : (
+            <CategoryList items={expenseCategories} onEdit={openEditModal} onDelete={handleDelete} />
           )}
         </CardContent>
       </Card>

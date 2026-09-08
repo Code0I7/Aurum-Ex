@@ -15,6 +15,12 @@ from app.models.account import Account
 from app.models.enums import AccountKind, AccountNature, TransactionType
 from app.models.transaction import Transaction
 from app.schemas.account import AccountCreate, AccountUpdate, AccountWithBalance
+from app.services.currency_service import (
+    convert_balance,
+    get_base_currency,
+    get_current_rates,
+    quantize_money,
+)
 
 # Kinds whose balance is a debt rather than savings. Used only to pick a
 # default when the user doesn't state a nature — the stored value always
@@ -72,7 +78,7 @@ def resolve_nature(kind: AccountKind, explicit: AccountNature | None) -> Account
     return AccountNature.LIABILITY if kind in _LIABILITY_KINDS else AccountNature.ASSET
 
 
-def _to_read(account: Account, balance: Decimal) -> AccountWithBalance:
+def _to_read(account: Account, balance: Decimal, balance_base: Decimal | None = None) -> AccountWithBalance:
     return AccountWithBalance(
         id=account.id,
         name=account.name,
@@ -86,6 +92,7 @@ def _to_read(account: Account, balance: Decimal) -> AccountWithBalance:
         color=account.color,
         is_archived=account.is_archived,
         balance=balance,
+        balance_base=balance_base if balance_base is not None else balance,
     )
 
 
@@ -95,11 +102,28 @@ async def list_accounts(session: AsyncSession, include_archived: bool) -> list[A
         stmt = stmt.where(Account.is_archived.is_(False))
     accounts = (await session.execute(stmt)).scalars().all()
     balances = await _account_balances(session)
-    return [_to_read(account, balances.get(account.id, Decimal("0"))) for account in accounts]
+
+    # Остаток переоценивается по СЕГОДНЯШНЕМУ курсу, в отличие от операций,
+    # где курс заморожен на дату. Полтинник долларов на счёте стоит столько,
+    # сколько стоит сейчас, а трата 2022 года так и осталась тратой того
+    # года (см. services/currency_service.py).
+    rates = await get_current_rates(session)
+
+    def read(account: Account) -> AccountWithBalance:
+        raw = balances.get(account.id, Decimal("0"))
+        # Оба числа приводятся к двум знакам: иначе нулевой счёт отдаёт "0"
+        # в одном поле и "0.00" в другом — одно и то же число в двух видах.
+        return _to_read(account, quantize_money(raw), convert_balance(raw, account.currency, rates))
+
+    return [read(account) for account in accounts]
 
 
 async def create_account(session: AsyncSession, payload: AccountCreate) -> AccountWithBalance:
     data = payload.model_dump()
+    # Валюта не указана — берём базовую из настроек приложения, а не из
+    # литерала в схеме: её выбирает пользователь.
+    if not data.get("currency"):
+        data["currency"] = await get_base_currency(session)
     # Природа и разрешение уходить в минус выводятся из вида счёта, если
     # пользователь не задал их явно: дебетовая карта уйти в минус не может,
     # кредитная — только так и живёт.

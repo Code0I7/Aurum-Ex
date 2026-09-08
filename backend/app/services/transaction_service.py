@@ -164,3 +164,27 @@ async def running_balances(session: AsyncSession, transaction_ids: list[int]) ->
         balances[tx_id] = (openings.get(account_id) or Decimal("0")) + (delta or Decimal("0")) + incoming
 
     return balances
+
+
+def counted_only():
+    """Условие «эта запись участвует в подсчётах».
+
+    Одно место на все отчёты — иначе каждый сервис решает сам, и половина
+    забывает. Ровно так и вышло: признак «не учитывать» добавили, обновили
+    три сервиса из десяти, а движение денег продолжало вычитать возвращённые
+    покупки.
+    """
+    return Transaction.is_excluded.is_(False)
+
+
+def earnings_and_spending_only():
+    """Условие «это заработок или трата».
+
+    Переводы между своими счетами деньгами не становятся, а EXTERNAL_IN и
+    EXTERNAL_OUT меняют баланс, но заработком не являются: жена передала на
+    продукты — это не доход, и в норму сбережений попадать не должно.
+    Поэтому фильтр перечисляет разрешённое, а не исключает переводы: при
+    добавлении нового вида операции «всё, кроме перевода» тихо включило бы
+    его в доходы.
+    """
+    return Transaction.type.in_([TransactionType.INCOME, TransactionType.EXPENSE])

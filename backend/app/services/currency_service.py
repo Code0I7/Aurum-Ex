@@ -76,3 +76,59 @@ async def to_base(
     rate = await get_rate(session, currency, on_date) or Decimal("1")
     amount_base = (Decimal(amount) * rate).quantize(_CENTS, rounding=ROUND_HALF_UP)
     return rate, amount_base
+
+
+def quantize_money(amount: Decimal) -> Decimal:
+    """Приводит сумму к двум знакам после запятой — тому же виду, в каком
+    деньги лежат в базе."""
+    return Decimal(amount).quantize(_CENTS, rounding=ROUND_HALF_UP)
+
+
+async def get_current_rate(session: AsyncSession, currency: str) -> Decimal:
+    """Самый свежий известный курс валюты к базовой.
+
+    Для остатков берётся именно он, а не курс на дату операции: 50 долларов
+    на счёте стоят столько, сколько стоят сегодня. Курс на дату нужен другой
+    половине расчёта — самой операции, и там он заморожен в записи.
+    """
+    base = await get_base_currency(session)
+    if currency.upper() == base.upper():
+        return Decimal("1")
+
+    stmt = (
+        select(ExchangeRate.rate)
+        .where(ExchangeRate.code == currency.upper())
+        .order_by(ExchangeRate.rate_date.desc())
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none() or Decimal("1")
+
+
+async def get_current_rates(session: AsyncSession) -> dict[str, Decimal]:
+    """Свежие курсы всех валют разом — чтобы не ходить в базу на каждый счёт."""
+    base = (await get_base_currency(session)).upper()
+    rows = (
+        await session.execute(
+            select(ExchangeRate.code, ExchangeRate.rate, ExchangeRate.rate_date).order_by(
+                ExchangeRate.code, ExchangeRate.rate_date.desc()
+            )
+        )
+    ).all()
+
+    rates: dict[str, Decimal] = {base: Decimal("1")}
+    for code, rate, _ in rows:
+        # Строки отсортированы по дате убыванию, поэтому первая встреченная
+        # для каждой валюты и есть самая свежая.
+        rates.setdefault(code.upper(), rate)
+    return rates
+
+
+def convert_balance(amount: Decimal, currency: str, rates: dict[str, Decimal]) -> Decimal:
+    """Остаток в базовой валюте по текущему курсу.
+
+    Неизвестная валюта считается один к одному, а не отбрасывается: потерять
+    счёт в подсчёте капитала хуже, чем показать его неточно, — пропажу
+    заметят нескоро, а неверную сумму сразу.
+    """
+    rate = rates.get(currency.upper(), Decimal("1"))
+    return (Decimal(amount) * rate).quantize(_CENTS, rounding=ROUND_HALF_UP)

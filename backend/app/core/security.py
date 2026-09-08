@@ -92,6 +92,27 @@ def needs_rehash(stored: str) -> bool:
     return (int(n_raw), int(r_raw), int(p_raw)) != (_SCRYPT_N, _SCRYPT_R, _SCRYPT_P)
 
 
+# Слоги для случайного логина: согласная-гласная-согласная. Такой набор
+# читается и диктуется вслух, в отличие от строки случайных символов, а
+# стойкость набирает длиной.
+_SYLLABLE_CONSONANTS = "bvgdkmnprstf"
+_SYLLABLE_VOWELS = "aeiouy"
+
+
+def new_random_username(syllables: int = 3) -> str:
+    """Случайный логин вида «kotimeraved».
+
+    Смысл ограниченный, но реальный: перебор упирается в блокировку по
+    учётной записи, и угадывать приходится обе половины, а не только пароль.
+    Как единственная защита это ничего не стоит — как дополнительный барьер
+    поверх пароля и блокировки работает.
+    """
+    return "".join(
+        secrets.choice(_SYLLABLE_CONSONANTS) + secrets.choice(_SYLLABLE_VOWELS) + secrets.choice(_SYLLABLE_CONSONANTS)
+        for _ in range(syllables)
+    )
+
+
 def new_session_token() -> str:
     """Секрет сессии, который уезжает в куку браузера. 32 случайных байта в
     URL-безопасном виде — угадать нельзя, подписывать нечем и незачем:

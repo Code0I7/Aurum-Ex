@@ -12,7 +12,8 @@ two of them by typing a number into every month by hand:
   * ONE_OFF — машина в мае 2027: одна сумма в один месяц;
   * MONTHLY — связь 700 ₽: одно и то же каждый месяц, пока не изменишь;
   * DAILY — столовая 300 ₽ в день: сумма умножается на число дней месяца,
-    а при `workdays_only` — только на рабочие, и в феврале пересчитывается
+    а при `workdays_only` — на число отработанных дней этого месяца из
+    work_periods (см. models/work_period.py). В феврале пересчитывается
     сама.
 
 No automatic indexation anywhere. When a price rises the user edits the
@@ -56,9 +57,15 @@ class Plan(Base, TimestampMixin):
     valid_from: Mapped[date_] = mapped_column(Date, nullable=False)
     valid_to: Mapped[date_ | None] = mapped_column(Date, nullable=True)
 
-    # Только для DAILY: считать рабочие дни вместо календарных. Рабочая
-    # столовая по выходным не работает, и календарные дни завышали бы план
-    # почти в полтора раза.
+    # Только для DAILY: считать по отработанным дням вместо календарных.
+    # Рабочая столовая по выходным не работает, и календарные дни завышали
+    # бы план почти в полтора раза.
+    #
+    # Число дней берётся из work_periods, а НЕ из производственного
+    # календаря: график у людей разный. Сутки через двое, вахта, четыре дня
+    # в неделю — календарные "пн-пт" для всех них неверны, а введённое
+    # человеком число верно всегда. Если на месяц дней не задано, план
+    # считается по календарным дням: лучше приблизительно, чем никак.
     workdays_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)

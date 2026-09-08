@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.account import Account
 from app.models.enums import AccountKind, TransactionType
 from app.models.transaction import Transaction
+from app.services.transaction_service import counted_only
 from app.schemas.insights import AlertsResponse, FinancialAlert
 from app.schemas.net_worth import NetWorthSummary
 from app.services.budget_service import get_budget_status
@@ -98,7 +99,13 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
     # never stored, only ever summed from the full transaction history — plus
     # tracking the most recent date that touched each account along the way.
     rows = await session.execute(
-        select(Transaction.type, Transaction.amount, Transaction.account_id, Transaction.transfer_account_id, Transaction.date)
+        select(
+            Transaction.type,
+            Transaction.amount,
+            Transaction.account_id,
+            Transaction.transfer_account_id,
+            Transaction.date,
+        ).where(counted_only())
     )
     balances: dict[int, Decimal] = defaultdict(Decimal)
     last_activity: dict[int, date] = {}

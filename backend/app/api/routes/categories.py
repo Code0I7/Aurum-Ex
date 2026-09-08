@@ -30,7 +30,10 @@ async def _validate_parent(session: AsyncSession, parent_id: int, kind: Category
 async def list_categories(
     kind: CategoryKind | None = None, session: AsyncSession = Depends(get_session)
 ) -> list[Category]:
-    stmt = select(Category).order_by(Category.sort_order)
+    # Доходы идут первыми: список читают сверху вниз, а разговор о деньгах
+    # начинается с того, откуда они берутся. В перечислении INCOME объявлен
+    # раньше EXPENSE, поэтому сортировки по самому полю достаточно.
+    stmt = select(Category).order_by(Category.kind, Category.sort_order, Category.name)
     if kind is not None:
         stmt = stmt.where(Category.kind == kind)
     result = await session.execute(stmt)

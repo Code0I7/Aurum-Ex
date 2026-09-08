@@ -92,18 +92,45 @@ def _daily_series(events: list[tuple[date_, Decimal]], start: date_, end: date_)
 
 
 async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, Decimal]]:
-    accounts_result = await session.execute(select(Account.id, Account.kind))
-    cash_account_ids = {acc_id for acc_id, acc_type in accounts_result.all() if acc_type in CASH_ACCOUNT_TYPES}
+    """Накопительный итог по денежным счетам, день за днём.
+
+    Три поправки против исходной версии, и каждая иначе искажала капитал:
+
+      * **начальный остаток счёта** входит в расчёт. Без него деньги,
+        лежавшие на счёте до первой операции, просто пропадали, и график
+        начинался с отрицательного значения там, где на счёте были деньги;
+      * **записи «не учитывать» пропускаются.** Возвращённый товар остаётся
+        в истории, но денег не двигает — иначе возврат навсегда вычитался
+        из капитала;
+      * **EXTERNAL_IN / EXTERNAL_OUT** двигают баланс наравне с доходом и
+        расходом: они не заработок, но деньги на счёте от этого меняются.
+    """
+    accounts_result = await session.execute(select(Account.id, Account.kind, Account.opening_balance))
+    cash_accounts = {
+        acc_id: opening or Decimal("0")
+        for acc_id, acc_kind, opening in accounts_result.all()
+        if acc_kind in CASH_ACCOUNT_TYPES
+    }
+    cash_account_ids = set(cash_accounts)
 
     txns_result = await session.execute(
-        select(Transaction.date, Transaction.type, Transaction.amount, Transaction.account_id, Transaction.transfer_account_id)
+        select(
+            Transaction.date,
+            Transaction.type,
+            Transaction.amount_base,
+            Transaction.account_id,
+            Transaction.transfer_account_id,
+            Transaction.is_excluded,
+        )
     )
 
     delta_by_date: dict[date_, Decimal] = defaultdict(Decimal)
-    for tx_date, tx_type, amount, account_id, transfer_account_id in txns_result.all():
-        if tx_type == TransactionType.INCOME and account_id in cash_account_ids:
+    for tx_date, tx_type, amount, account_id, transfer_account_id, is_excluded in txns_result.all():
+        if is_excluded:
+            continue
+        if tx_type in (TransactionType.INCOME, TransactionType.EXTERNAL_IN) and account_id in cash_account_ids:
             delta_by_date[tx_date] += amount
-        elif tx_type == TransactionType.EXPENSE and account_id in cash_account_ids:
+        elif tx_type in (TransactionType.EXPENSE, TransactionType.EXTERNAL_OUT) and account_id in cash_account_ids:
             delta_by_date[tx_date] -= amount
         elif tx_type == TransactionType.TRANSFER:
             if account_id in cash_account_ids:
@@ -111,8 +138,10 @@ async def _cash_cumulative_events(session: AsyncSession) -> list[tuple[date_, De
             if transfer_account_id in cash_account_ids:
                 delta_by_date[tx_date] += amount
 
+    # Начальные остатки — стартовая точка ряда: они были на счетах ещё до
+    # первой записи.
     events: list[tuple[date_, Decimal]] = []
-    running = Decimal("0")
+    running = sum(cash_accounts.values(), Decimal("0"))
     for day in sorted(delta_by_date):
         running += delta_by_date[day]
         events.append((day, running))
@@ -148,11 +177,20 @@ async def _asset_events_and_class_totals(
     return events, class_totals, current_by_asset
 
 
-async def _capital_role_summary(session: AsyncSession, current_by_asset: dict[int, Decimal]) -> list[CapitalRoleSummary]:
+async def _capital_role_summary(
+    session: AsyncSession, current_by_asset: dict[int, Decimal], cash_total: Decimal
+) -> list[CapitalRoleSummary]:
     """Cross-cuts the same assets by how the user tagged them (income /
     neutral / drain) instead of by asset class — always all three roles,
     even at zero, so the block reads as a fixed scale rather than a list
-    that shuffles as assets are added."""
+    that shuffles as assets are added.
+
+    Деньги на счетах попадают сюда как NEUTRAL — по той же причине, по
+    которой в разрезе риска они отнесены к нулевому уровню: они не приносят
+    дохода и ничего не съедают, просто лежат. Без них разрез оставался
+    пустым у любого, кто пока не завёл ни одного актива, а доли не
+    сходились с капиталом — и человек видел «капитал 55 214», а под ним
+    три нуля."""
     roles_result = await session.execute(select(Asset.id, Asset.capital_role, Asset.monthly_cash_flow))
 
     totals_value: dict[CapitalRole, Decimal] = defaultdict(Decimal)
@@ -162,6 +200,9 @@ async def _capital_role_summary(session: AsyncSession, current_by_asset: dict[in
         totals_value[role] += current_by_asset.get(asset_id, Decimal("0"))
         totals_flow[role] += cash_flow or Decimal("0")
         counts[role] += 1
+
+    if cash_total:
+        totals_value[CapitalRole.NEUTRAL] += cash_total
 
     return [
         CapitalRoleSummary(
@@ -240,7 +281,11 @@ async def get_net_worth_summary(session: AsyncSession, range_key: str) -> NetWor
     today = date_.today()
     cash_events = await _cash_cumulative_events(session)
     asset_events, class_totals, current_by_asset = await _asset_events_and_class_totals(session)
-    capital_roles = await _capital_role_summary(session, current_by_asset)
+
+    # Накопительный ряд уже посчитан, последняя точка — сегодняшние деньги.
+    # Считаем её до разрезов: они оба принимают её как долю капитала.
+    cash_today = cash_events[-1][1] if cash_events else Decimal("0")
+    capital_roles = await _capital_role_summary(session, current_by_asset, cash_today)
 
     start = _resolve_start_date(range_key, cash_events, asset_events, today)
 
@@ -253,10 +298,15 @@ async def get_net_worth_summary(session: AsyncSession, range_key: str) -> NetWor
     current = series[-1].value if series else Decimal("0")
     start_value = series[0].value if series else Decimal("0")
     change_amount = current - start_value
-    change_percent = float(change_amount / start_value * 100) if start_value else None
+    # За всё время процент не показывается вовсе. История начинается с нуля
+    # или почти с нуля, и рост «с сорока рублей до сорока тысяч» даёт сотню
+    # тысяч процентов — число, которое ни о чём не говорит: растёт не
+    # капитал, а бессмысленность самой доли. На отрезках — месяц, год, пять
+    # лет — точка отсчёта уже настоящая, и процент там осмыслен.
+    change_percent = (
+        float(change_amount / start_value * 100) if range_key != "all" and start_value else None
+    )
 
-    # cash_events entries are already cumulative — the last one *is* today's total.
-    cash_today = cash_events[-1][1] if cash_events else Decimal("0")
     risk_levels = await _risk_level_summary(session, current_by_asset, cash_today)
 
     total = cash_today + sum(class_totals.values(), Decimal("0"))

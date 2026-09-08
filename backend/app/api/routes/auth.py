@@ -11,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.core.config import get_settings
+from app.core.security import new_random_username
 from app.services.auth_service import (
     SESSION_COOKIE,
     authenticate,
     change_password,
+    change_username,
     create_admin,
     end_session,
     get_admin,
@@ -34,6 +36,15 @@ class SetupRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=1, max_length=200)
+
+
+class ChangeUsernameRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_username: str = Field(min_length=1, max_length=100)
+
+
+class SuggestedUsername(BaseModel):
+    username: str
 
 
 class ChangePasswordRequest(BaseModel):
@@ -123,6 +134,24 @@ async def login(
         username=user.username if user else None,
         recovery_available=bool(get_settings().recovery_key),
     )
+
+
+@router.get("/suggest-username", response_model=SuggestedUsername)
+async def suggest_username() -> SuggestedUsername:
+    """Случайный логин для экрана первичной настройки.
+
+    Ничего не сохраняет: человек волен взять предложенный или набрать свой.
+    """
+    return SuggestedUsername(username=new_random_username())
+
+
+@router.post("/username", status_code=204)
+async def change_own_username(
+    payload: ChangeUsernameRequest, session: AsyncSession = Depends(get_session)
+) -> None:
+    """Смена логина по текущему паролю. Сессии не обрываются: логин меняют
+    ради неочевидности, а не из-за утечки."""
+    await change_username(session, payload.current_password, payload.new_username)
 
 
 @router.post("/logout", status_code=204)

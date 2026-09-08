@@ -1,6 +1,14 @@
 // Вид счёта. Переименовано из AccountType вместе с бэкендом; добавлен loan
 // — рассрочка или кредит без пластика.
-export type AccountKind = "checking" | "savings" | "credit_card" | "cash" | "investment" | "loan" | "other";
+export type AccountKind =
+  | "checking"
+  | "savings"
+  | "credit_card"
+  | "cash"
+  | "investment"
+  | "crypto"
+  | "loan"
+  | "other";
 // Актив или обязательство — отдельная ось от вида счёта.
 export type AccountNature = "asset" | "liability";
 export type ParticipantKind = "person" | "pet";
