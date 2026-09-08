@@ -107,7 +107,17 @@ class TransactionItemInput(BaseModel):
 
 
 class TransactionItemRead(TransactionItemInput):
+    """Позиция чека, как её отдают наружу.
+
+    Ограничение на количество снято по той же причине, что и у операции:
+    схема чтения обязана уметь показать всё, что лежит в базе. Нулевое
+    количество из перенесённой таблицы иначе роняло бы весь список
+    операций, а не только свою строку.
+    """
+
     model_config = ConfigDict(from_attributes=True)
+
+    quantity: Decimal | None = None
 
     id: int
     position: int

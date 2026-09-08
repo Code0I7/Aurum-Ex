@@ -15,10 +15,12 @@
 не по видимой странице: показать «баланс 350» на отфильтрованном списке,
 где предыдущие операции скрыты, — значит показать неправду.
 """
+from datetime import date as date_
 from decimal import Decimal
 
 from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.account import Account
 from app.models.enums import TransactionType
@@ -83,6 +85,61 @@ def running_balance_subquery() -> Select:
         Transaction.account_id.label("account_id"),
         _signed_amount().label("running_delta"),
     ).subquery()
+
+
+async def find_similar_transactions(
+    session: AsyncSession,
+    *,
+    on_date: date_,
+    transaction_type: TransactionType,
+    amount: Decimal,
+    description: str,
+    limit: int = 5,
+) -> list[Transaction]:
+    """Уже записанные операции того же дня, неотличимые от вводимой.
+
+    Нужно из-за того, как люди на самом деле ведут учёт: не подряд, а
+    вперемешку — сегодняшнее сразу, вчерашнее и позавчерашнее потом. При
+    таком вводе легко записать одну покупку дважды и не заметить, потому
+    что в списке она окажется не рядом с собой, а среди чужих дней.
+
+    Совпадением считается день, вид, сумма и описание — то, что человек
+    видит в строке. Счёт в сравнение НЕ входит: перепутанный счёт при
+    повторном вводе такая же ошибка, как и всё остальное, и прятать из-за
+    него предупреждение значило бы пропускать именно тот случай, ради
+    которого оно заводится. Сам счёт показывается в предупреждении, чтобы
+    человек увидел разницу и решил сам.
+
+    Настоящие повторы дня — две поездки на автобусе — тоже попадут сюда, и
+    это нормально: предупреждение спрашивает, а не запрещает, и такой
+    повтор человек помнит.
+
+    Без описания не ищем ничего. Описание в приложении обязательно, так
+    что пустым оно приходит только от стороннего вызова, а по одним лишь
+    дню и сумме под совпадение попадает слишком много чужого — и
+    предупреждение превращается в шум, который перестают читать.
+    """
+    normalized = description.strip().lower()
+    if not normalized:
+        return []
+
+    conditions = [
+        Transaction.date == on_date,
+        Transaction.type == transaction_type,
+        Transaction.amount == amount,
+        func.lower(func.trim(Transaction.description)) == normalized,
+    ]
+
+    rows = (
+        await session.execute(
+            select(Transaction)
+            .options(selectinload(Transaction.account), selectinload(Transaction.category))
+            .where(*conditions)
+            .order_by(Transaction.day_order, Transaction.id)
+            .limit(limit)
+        )
+    ).scalars()
+    return list(rows)
 
 
 async def running_balances(

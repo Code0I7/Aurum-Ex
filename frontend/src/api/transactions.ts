@@ -1,5 +1,11 @@
 import { api } from "@/api/client";
-import type { Transaction, TransactionInput, TransactionPage } from "@/types";
+import type {
+  SimilarTransaction,
+  Transaction,
+  TransactionInput,
+  TransactionPage,
+  TransactionType,
+} from "@/types";
 
 export type TransactionSort = "date_desc" | "amount_desc" | "amount_asc";
 
@@ -36,6 +42,30 @@ export function fetchTransactions(filters: TransactionFilters = {}) {
  * rationale). */
 export function fetchTransactionYears() {
   return api.get<number[]>("/transactions/years");
+}
+
+/**
+ * Есть ли уже такая операция в этом дне.
+ *
+ * Спрашивается перед записью, а не проверяется при ней: отказ на самой
+ * записи задел бы и импорт таблицы, и проведение регулярных платежей, где
+ * повторы законны. Переспрашивать имеет смысл у того, кто вводит руками.
+ */
+export function fetchSimilarTransactions(params: {
+  date: string;
+  type: TransactionType;
+  amount: string;
+  description: string;
+  category_id?: number | null;
+}) {
+  const query = new URLSearchParams({
+    date: params.date,
+    type: params.type,
+    amount: params.amount,
+    description: params.description,
+  });
+  if (params.category_id) query.set("category_id", String(params.category_id));
+  return api.get<SimilarTransaction[]>(`/transactions/similar?${query.toString()}`);
 }
 
 export function createTransaction(input: TransactionInput) {

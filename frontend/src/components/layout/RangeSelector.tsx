@@ -15,6 +15,9 @@ export function RangeSelector({ value, onChange }: RangeSelectorProps) {
     { value: "1y", label: "1Y" },
     { value: "5y", label: "5Y" },
     { value: "all", label: t("common.allShort") },
+    // Свой период последним: готовые отвечают на «как было в последнее
+    // время», этот — на «а что было тогда-то», и спрашивают его реже.
+    { value: "custom", label: t("reports.rangeCustom") },
   ];
 
   return <PillSelector options={ranges} value={value} onChange={onChange} />;

@@ -13,6 +13,8 @@ import { useNetWorthSummary } from "@/hooks/useNetWorth";
 import { useAssets, useDeleteAsset } from "@/hooks/useAssets";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { useTransactionYears } from "@/hooks/useTransactions";
+import { computeRange, type CustomYearRange } from "@/lib/dateRange";
 import type { Asset, NetWorthRange } from "@/types";
 
 export function NetWorthPage() {
@@ -21,7 +23,21 @@ export function NetWorthPage() {
   // briefly outpaces recorded income, which reads as decline even though
   // the long-run trend is up — 5y is long enough to make that trend visible.
   const [range, setRange] = useState<NetWorthRange>("5y");
-  const { data: summary, isLoading: isSummaryLoading } = useNetWorthSummary(range);
+  const now = new Date();
+  const [customRange, setCustomRange] = useState<CustomYearRange>({
+    fromYear: now.getFullYear(),
+    toYear: now.getFullYear(),
+  });
+  const { data: years } = useTransactionYears();
+  // Даты уходят на сервер только для своего периода: у готовых начало
+  // считает сервер, и присылать ему заодно даты значило бы описать одно и
+  // то же дважды, а потом гадать, что победит.
+  const custom = range === "custom" ? computeRange("custom", customRange) : {};
+  const { data: summary, isLoading: isSummaryLoading } = useNetWorthSummary(
+    range,
+    custom.startDate,
+    custom.endDate
+  );
   const { data: assets, isLoading: isAssetsLoading } = useAssets();
   const deleteAsset = useDeleteAsset();
   const confirm = useConfirm();
@@ -52,7 +68,10 @@ export function NetWorthPage() {
     <div className="space-y-5">
       <AlertBanner />
 
-      <NetWorthChart summary={summary} isLoading={isSummaryLoading} range={range} onRangeChange={setRange} />
+      <NetWorthChart
+        years={years ?? [now.getFullYear()]}
+        customRange={customRange}
+        onCustomRangeChange={setCustomRange} summary={summary} isLoading={isSummaryLoading} range={range} onRangeChange={setRange} />
 
       <AssetAllocationCard breakdown={summary?.breakdown ?? []} isLoading={isSummaryLoading} />
 

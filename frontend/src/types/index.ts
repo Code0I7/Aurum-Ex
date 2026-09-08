@@ -335,7 +335,8 @@ export interface DashboardSummary {
 }
 
 export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals" | "other";
-export type NetWorthRange = "30d" | "90d" | "1y" | "5y" | "all";
+// «custom» — не длина, а признак того, что период задан датами.
+export type NetWorthRange = "30d" | "90d" | "1y" | "5y" | "all" | "custom";
 export type CapitalRole = "income" | "neutral" | "drain";
 export type RiskLevel = "low" | "medium" | "high";
 
@@ -831,6 +832,18 @@ export interface PlanOverview {
   expense_totals: PlanMonthCell[];
   // Свободные средства: доходы минус расходы, по плану и по факту.
   free_totals: PlanMonthCell[];
+}
+
+export interface SimilarTransaction {
+  id: number;
+  date: string;
+  description: string;
+  amount: string;
+  currency: string;
+  account_name: string;
+  category_name: string | null;
+  // Порядок внутри дня: две поездки на автобусе различаются только им.
+  day_order: number;
 }
 
 export interface WatchRow {

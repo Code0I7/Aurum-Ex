@@ -269,6 +269,15 @@ async def _risk_level_summary(
     return summaries
 
 
+def _earliest_event_date(
+    cash_events: list[tuple[date_, Decimal]], asset_events: list[tuple[date_, Decimal]]
+) -> date_ | None:
+    """Дата первой записи в истории — раньше неё капитал не равен нулю, а
+    неизвестен. Пусто, когда записей нет вовсе."""
+    all_dates = [e[0] for e in cash_events] + [e[0] for e in asset_events]
+    return min(all_dates) if all_dates else None
+
+
 def _resolve_start_date(range_key: str, cash_events: list[tuple[date_, Decimal]], asset_events: list[tuple[date_, Decimal]], today: date_) -> date_:
     """Начало графика для выбранного периода.
 
@@ -278,8 +287,7 @@ def _resolve_start_date(range_key: str, cash_events: list[tuple[date_, Decimal]]
     деле он был неизвестен, и разница существенная: ровная линия в полграфика
     съедает масштаб у самих данных и рисует рост, которого не было.
     """
-    all_dates = [e[0] for e in cash_events] + [e[0] for e in asset_events]
-    earliest = min(all_dates) if all_dates else today
+    earliest = _earliest_event_date(cash_events, asset_events) or today
 
     if range_key in RANGE_DAYS:
         requested = today - timedelta(days=RANGE_DAYS[range_key] - 1)
@@ -288,7 +296,21 @@ def _resolve_start_date(range_key: str, cash_events: list[tuple[date_, Decimal]]
     return earliest
 
 
-async def get_net_worth_summary(session: AsyncSession, range_key: str) -> NetWorthSummary:
+async def get_net_worth_summary(
+    session: AsyncSession,
+    range_key: str,
+    start_date: date_ | None = None,
+    end_date: date_ | None = None,
+) -> NetWorthSummary:
+    """Капитал за период.
+
+    `start_date` и `end_date` перекрывают готовый период, когда человек
+    задал свой. Начало всё равно не уходит раньше первой записи: ровная
+    линия по нулю до неё — это утверждение, которого данные не
+    подтверждают. Конец не уходит позже сегодня: капитал завтрашнего дня
+    приложению неизвестен, и рисовать его продолжением сегодняшнего значило
+    бы выдать догадку за факт.
+    """
     today = date_.today()
     cash_events = await _cash_cumulative_events(session)
     asset_events, class_totals, current_by_asset = await _asset_events_and_class_totals(session)
@@ -298,10 +320,21 @@ async def get_net_worth_summary(session: AsyncSession, range_key: str) -> NetWor
     cash_today = cash_events[-1][1] if cash_events else Decimal("0")
     capital_roles = await _capital_role_summary(session, current_by_asset, cash_today)
 
-    start = _resolve_start_date(range_key, cash_events, asset_events, today)
+    end = min(end_date, today) if end_date is not None else today
+    if start_date is not None:
+        # Тот же зажим к первой записи, что и у готовых периодов, — им
+        # занимается _resolve_start_date, и обходить его для своего периода
+        # значило бы, что «с 2015 года» рисует пять лет пустоты.
+        earliest = _earliest_event_date(cash_events, asset_events)
+        start = max(start_date, earliest) if earliest else start_date
+    else:
+        start = _resolve_start_date(range_key, cash_events, asset_events, end)
+    # Перевёрнутый диапазон — не ошибка ввода, а промах на один щелчок в
+    # выпадающем списке. Показываем один день вместо пустого графика.
+    start = min(start, end)
 
-    cash_series = _daily_series(cash_events, start, today)
-    asset_series = _daily_series(asset_events, start, today)
+    cash_series = _daily_series(cash_events, start, end)
+    asset_series = _daily_series(asset_events, start, end)
     series = [
         NetWorthPoint(date=c.date, value=c.value + a.value) for c, a in zip(cash_series, asset_series, strict=True)
     ]

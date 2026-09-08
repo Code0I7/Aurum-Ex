@@ -15,6 +15,9 @@ import {
   categoryOptionPrefix,
   translateCategoryName,
 } from "@/lib/categoryLabels";
+import { fetchSimilarTransactions } from "@/api/transactions";
+import type { SimilarTransaction } from "@/types";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { formatCurrency } from "@/lib/format";
 import type {
   Tag,
@@ -176,6 +179,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   // here.
   const relevantCategories = buildHierarchicalCategories(kindCategories, language);
 
+  const confirm = useConfirm();
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
 
   function updateSplitRow(key: string, patch: Partial<SplitRowState>) {
@@ -307,12 +311,71 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       if (transaction) {
         await updateTransaction.mutateAsync({ id: transaction.id, input: payload });
       } else {
+        if (!(await confirmNoDuplicate(payload))) return;
         await createTransaction.mutateAsync(payload);
       }
       onClose();
     } catch {
       setError(t("transactions.form.saveError"));
     }
+  }
+
+  /**
+   * Спрашивает, если такая операция в этом дне уже записана.
+   *
+   * Нужно из-за того, как учёт ведут на самом деле: не подряд, а
+   * вперемешку — сегодняшнее сразу, вчерашнее потом. При таком вводе одна
+   * покупка легко записывается дважды и не бросается в глаза, потому что в
+   * списке эти две строки оказываются не рядом.
+   *
+   * Спрашивает, а не запрещает: две поездки на автобусе за день —
+   * настоящий повтор, и человек его помнит. Показываются сами найденные
+   * строки, чтобы решать было по чему.
+   */
+  async function confirmNoDuplicate(payload: TransactionInput): Promise<boolean> {
+    let similar: SimilarTransaction[];
+    try {
+      similar = await fetchSimilarTransactions({
+        date: payload.date,
+        type: payload.type,
+        amount: payload.amount,
+        description: payload.description,
+        category_id: payload.category_id,
+      });
+    } catch {
+      // Проверка не удалась — записываем как обычно. Предупреждение,
+      // которое из-за собственного сбоя мешает сохранить операцию, вредит
+      // больше, чем пропущенный повтор.
+      return true;
+    }
+    if (similar.length === 0) return true;
+
+    return confirm({
+      title: t("transactions.duplicateTitle"),
+      tone: "danger",
+      confirmLabel: t("transactions.duplicateConfirm"),
+      message: (
+        <span className="block">
+          {t("transactions.duplicateQuestion", { count: similar.length })}
+          <span className="mt-2 block divide-y divide-border rounded-lg border border-border">
+            {similar.map((item) => (
+              <span key={item.id} className="flex items-baseline justify-between gap-3 px-2.5 py-1.5">
+                <span className="min-w-0 truncate text-text-primary">
+                  {item.description || t("transactions.form.noCategory")}
+                  <span className="block text-xs text-text-muted">
+                    {item.account_name}
+                    {item.category_name ? ` · ${translateCategoryName(item.category_name)}` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 tabular-nums text-text-primary">
+                  {formatCurrency(item.amount, item.currency)}
+                </span>
+              </span>
+            ))}
+          </span>
+        </span>
+      ),
+    });
   }
 
   return (

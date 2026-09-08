@@ -20,6 +20,7 @@ from app.schemas.transaction import (
     TransactionPage,
     TransactionRead,
     TransactionReorder,
+    SimilarTransaction,
     TransactionSplitInput,
     TransactionUpdate,
     split_rule_violation,
@@ -30,7 +31,11 @@ from app.schemas.product import TransactionItemInput
 from app.services.category_tree import load_category_tree
 from app.services.currency_service import get_base_currency, to_base
 from app.services.product_service import resolve_item_category
-from app.services.transaction_service import next_day_order, running_balances
+from app.services.transaction_service import (
+    find_similar_transactions,
+    next_day_order,
+    running_balances,
+)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -316,6 +321,46 @@ async def _apply_currency(session: AsyncSession, transaction: Transaction, expli
     rate, amount_base = await to_base(session, transaction.amount, transaction.currency, transaction.date)
     transaction.exchange_rate = rate
     transaction.amount_base = amount_base
+
+
+@router.get("/similar", response_model=list[SimilarTransaction])
+async def read_similar_transactions(
+    date: date_ = Query(...),
+    type: TransactionType = Query(...),
+    amount: Decimal = Query(..., gt=0),
+    description: str = Query(default=""),
+    session: AsyncSession = Depends(get_session),
+) -> list[SimilarTransaction]:
+    """Есть ли уже такая операция в этом дне.
+
+    Отдельным запросом перед записью, а не отказом при самой записи:
+    отказывать пришлось бы и импорту таблицы, и проведению регулярных
+    платежей, и любому скрипту через API, — а повторы там законны и
+    ожидаемы. Спрашивать имеет смысл ровно у того, кто вводит руками.
+
+    Объявлен до маршрутов с {transaction_id}: иначе «similar» разбиралось
+    бы как номер операции.
+    """
+    found = await find_similar_transactions(
+        session,
+        on_date=date,
+        transaction_type=type,
+        amount=amount,
+        description=description,
+    )
+    return [
+        SimilarTransaction(
+            id=item.id,
+            date=item.date,
+            description=item.description,
+            amount=item.amount,
+            currency=item.currency,
+            account_name=item.account.name if item.account else "—",
+            category_name=item.category.name if item.category else None,
+            day_order=item.day_order,
+        )
+        for item in found
+    ]
 
 
 @router.post("", response_model=TransactionRead, status_code=201)
