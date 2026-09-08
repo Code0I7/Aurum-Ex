@@ -24,7 +24,16 @@ services:
       AURUM_POSTGRES_HOST: db
       AURUM_POSTGRES_PORT: 5432
       AURUM_CORS_ORIGINS: ${AURUM_CORS_ORIGINS:-}
-      AURUM_DEFAULT_CURRENCY: ${AURUM_DEFAULT_CURRENCY:-USD}
+      AURUM_DEFAULT_CURRENCY: ${AURUM_DEFAULT_CURRENCY:-RUB}
+      # Вход: см. .env.example. Пароль не задан — приложение при первом
+      # открытии само попросит задать его в браузере.
+      AURUM_ADMIN_USERNAME: ${AURUM_ADMIN_USERNAME:-admin}
+      AURUM_ADMIN_PASSWORD: ${AURUM_ADMIN_PASSWORD:-}
+      AURUM_RECOVERY_KEY: ${AURUM_RECOVERY_KEY:-}
+      AURUM_SESSION_TTL_HOURS: ${AURUM_SESSION_TTL_HOURS:-336}
+      AURUM_MAX_FAILED_LOGINS: ${AURUM_MAX_FAILED_LOGINS:-10}
+      AURUM_LOCKOUT_MINUTES: ${AURUM_LOCKOUT_MINUTES:-15}
+      AURUM_SECURE_COOKIES: ${AURUM_SECURE_COOKIES:-false}
       # Free CoinGecko Demo key (coingecko.com/en/api/pricing) — the Crypto
       # tab's price sync 400s with a clear message until this is set.
       AURUM_COINGECKO_API_KEY: ${AURUM_COINGECKO_API_KEY:-}

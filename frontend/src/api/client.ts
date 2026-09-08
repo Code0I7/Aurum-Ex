@@ -1,4 +1,4 @@
-import { clearCredentials, getAuthHeader } from "@/lib/auth";
+import { markSetupRequired, markSignedOut } from "@/lib/auth";
 
 const API_BASE = "/api";
 
@@ -11,20 +11,26 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const authHeader = getAuthHeader();
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(authHeader ? { Authorization: authHeader } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
+    // Сессия живёт в HttpOnly-куке: заголовок Authorization больше не
+    // собирается вручную, браузер прикладывает куку сам — но только если
+    // явно разрешить отправку учётных данных.
+    credentials: "same-origin",
     ...init,
   });
 
   if (response.status === 401) {
-    // Stored credentials are missing/stale (password changed, or Basic Auth
-    // was just turned on) — drop them so LoginGate falls back to the login
-    // screen instead of every request failing silently forever.
-    clearCredentials();
+    // Сессия кончилась или была оборвана (выход на другом устройстве,
+    // смена пароля) — сообщаем LoginGate, чтобы он показал вход сразу, а
+    // не после того, как все запросы на странице по очереди отвалятся.
+    markSignedOut();
+  }
+
+  if (response.status === 428) {
+    // Пароль ещё не задан: установка новая. Показывать надо первичную
+    // настройку, а не форму входа, иначе войти будет некуда.
+    markSetupRequired();
   }
 
   if (!response.ok) {

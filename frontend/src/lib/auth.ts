@@ -1,152 +1,137 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Client-side mirror of the HTTP Basic Auth credentials Aurum's own login
- * screen collects (see components/auth/LoginScreen.tsx), so every fetch can
- * attach `Authorization` itself instead of relying on the browser's own
- * unstyled Basic Auth prompt. nginx's `auth_basic` (see
- * frontend/docker-entrypoint.d/20-basic-auth.sh) is still the actual gate —
- * this only avoids ever triggering that native prompt, by never letting an
- * unauthenticated request happen without us attaching the header ourselves.
+ * Состояние входа на клиенте.
  *
- * Two storage tiers, chosen at login time by the "remember me" checkbox:
- *  - sessionStorage (default): gone as soon as the tab closes.
- *  - localStorage, with an explicit expiry stamped into the stored value:
- *    survives closing the tab/browser, but only for REMEMBER_DAYS — an
- *    unbounded "stay logged in forever" is too much for a finance app.
- * The expiry is only checked when this module loads (i.e. on page load/
- * reload) — a tab left open across the expiry moment without reloading
- * keeps working until its next reload or a 401 forces a fresh check.
+ * Пришло на смену хранению Basic Auth-заголовка в sessionStorage: теперь
+ * сессия живёт в HttpOnly-куке, которую браузер прикладывает сам, а скрипт
+ * на странице прочитать не может. Поэтому здесь нет ни пароля, ни токена —
+ * только ответ сервера на вопрос «кто я сейчас».
+ *
+ * Три состояния, и различать нужно все три:
+ *  - setupComplete = false — пароль ещё не задан, показываем первичную
+ *    настройку. Прятать её за формой входа нельзя: войти будет некуда;
+ *  - authenticated = false — пароль есть, показываем вход;
+ *  - authenticated = true — пускаем в приложение.
  */
-const SESSION_KEY = "aurum:basicAuth";
-const REMEMBER_KEY = "aurum:basicAuth:remember";
-const REMEMBER_DAYS = 30;
-const REMEMBER_MS = REMEMBER_DAYS * 24 * 60 * 60 * 1000;
 
-interface RememberedEntry {
-  header: string;
-  expiresAt: number; // epoch ms
+export interface AuthState {
+  setupComplete: boolean;
+  authenticated: boolean;
+  username: string | null;
+  recoveryAvailable: boolean;
 }
 
-function readRemembered(): string | null {
-  try {
-    const raw = localStorage.getItem(REMEMBER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RememberedEntry>;
-    if (typeof parsed.header !== "string" || typeof parsed.expiresAt !== "number") {
-      localStorage.removeItem(REMEMBER_KEY);
-      return null;
-    }
-    if (Date.now() >= parsed.expiresAt) {
-      localStorage.removeItem(REMEMBER_KEY);
-      return null;
-    }
-    return parsed.header;
-  } catch {
-    return null;
-  }
+interface AuthStateResponse {
+  setup_complete: boolean;
+  authenticated: boolean;
+  username: string | null;
+  recovery_available: boolean;
 }
 
-function readSession(): string | null {
-  try {
-    return sessionStorage.getItem(SESSION_KEY);
-  } catch {
-    return null;
-  }
-}
+const UNKNOWN: AuthState = {
+  setupComplete: true,
+  authenticated: false,
+  username: null,
+  recoveryAvailable: false,
+};
 
-function readStored(): string | null {
-  return readRemembered() ?? readSession();
-}
-
-let currentHeader: string | null = readStored();
+let current: AuthState | null = null;
 const listeners = new Set<() => void>();
 
 function notify(): void {
   listeners.forEach((listener) => listener());
 }
 
-export function getAuthHeader(): string | null {
-  return currentHeader;
+function adopt(payload: AuthStateResponse): AuthState {
+  current = {
+    setupComplete: payload.setup_complete,
+    authenticated: payload.authenticated,
+    username: payload.username,
+    recoveryAvailable: payload.recovery_available,
+  };
+  notify();
+  return current;
 }
 
-// btoa() only handles Latin1 — the UI is bilingual RU/EN, so a Cyrillic
-// password has to survive this, not just ASCII ones.
-function encodeUtf8Base64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // Кука сессии обязана уехать вместе с запросом и вернуться обратно.
+    credentials: "same-origin",
+    body: JSON.stringify(body),
   });
-  return btoa(binary);
-}
-
-export function buildBasicAuthHeader(username: string, password: string): string {
-  return `Basic ${encodeUtf8Base64(`${username}:${password}`)}`;
-}
-
-export function setCredentials(username: string, password: string, remember: boolean): void {
-  currentHeader = buildBasicAuthHeader(username, password);
-  try {
-    if (remember) {
-      const entry: RememberedEntry = { header: currentHeader, expiresAt: Date.now() + REMEMBER_MS };
-      localStorage.setItem(REMEMBER_KEY, JSON.stringify(entry));
-      sessionStorage.removeItem(SESSION_KEY);
-    } else {
-      sessionStorage.setItem(SESSION_KEY, currentHeader);
-      localStorage.removeItem(REMEMBER_KEY);
+  if (!response.ok) {
+    const raw = await response.text();
+    let message = raw || response.statusText;
+    try {
+      const parsed = JSON.parse(raw) as { detail?: unknown };
+      if (typeof parsed.detail === "string") message = parsed.detail;
+    } catch {
+      // тело не JSON — оставляем как есть
     }
-  } catch {
-    // storage unavailable (private browsing, storage disabled) — the header
-    // still works for the rest of this tab's life via the in-memory
-    // variable above, it just won't survive a refresh.
+    throw new Error(message);
   }
+  return (response.status === 204 ? undefined : await response.json()) as T;
+}
+
+/** Спрашивает сервер, кто мы сейчас. Вызывается при загрузке страницы и
+ * после каждого 401 (см. api/client.ts). */
+export async function fetchAuthState(): Promise<AuthState> {
+  try {
+    const response = await fetch("/api/auth/state", { credentials: "same-origin" });
+    if (!response.ok) return current ?? UNKNOWN;
+    return adopt((await response.json()) as AuthStateResponse);
+  } catch {
+    // Бэкенд недоступен — это не повод показывать форму входа: страницы
+    // приложения сами объяснят, что данные не загрузились.
+    return current ?? UNKNOWN;
+  }
+}
+
+export async function login(username: string, password: string): Promise<AuthState> {
+  return adopt(await post<AuthStateResponse>("/auth/login", { username, password }));
+}
+
+export async function completeSetup(username: string, password: string): Promise<AuthState> {
+  return adopt(await post<AuthStateResponse>("/auth/setup", { username, password }));
+}
+
+export async function logout(): Promise<void> {
+  await post<void>("/auth/logout", {});
+  await fetchAuthState();
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await post<void>("/auth/password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+  // Смена пароля обрывает все сессии, включая текущую, — состояние надо
+  // перечитать, чтобы приложение сразу показало форму входа.
+  await fetchAuthState();
+}
+
+export async function recoverPassword(recoveryKey: string, newPassword: string): Promise<void> {
+  await post<void>("/auth/recover", { recovery_key: recoveryKey, new_password: newPassword });
+  await fetchAuthState();
+}
+
+/** Помечает сессию просроченной, не дожидаясь ответа сервера. Дёргается из
+ * обработчика 401, чтобы экран входа появился сразу. */
+export function markSignedOut(): void {
+  if (current && !current.authenticated) return;
+  current = { ...(current ?? UNKNOWN), authenticated: false, username: null };
   notify();
 }
 
-/** Called on any 401 response (see api/client.ts) so a revoked or changed
- * password falls back to the login screen instead of every request failing
- * silently forever. */
-export function clearCredentials(): void {
-  if (currentHeader === null) return;
-  currentHeader = null;
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem(REMEMBER_KEY);
-  } catch {
-    // ignore — nothing to clean up if storage was never usable
-  }
+/** Помечает, что установка ещё не настроена (ответ 428 от закрытого
+ * эндпоинта). */
+export function markSetupRequired(): void {
+  if (current && !current.setupComplete) return;
+  current = { ...(current ?? UNKNOWN), setupComplete: false, authenticated: false };
   notify();
-}
-
-export type CredentialCheck = "ok" | "unauthorized" | "unreachable";
-
-// A request with NO Authorization header at all, hitting an endpoint that
-// replies 401 + WWW-Authenticate: Basic, is exactly what makes some
-// browsers pop their own native Basic Auth dialog even for a plain
-// fetch() — the one thing this whole login screen exists to avoid. A
-// request that already carries *some* Authorization header, even a wrong
-// one, never triggers that. So LoginGate's "is auth even required?" probe
-// (called with header=null) uses this fixed placeholder instead of
-// omitting the header — it's guaranteed wrong, which is exactly what's
-// needed to tell "not configured" (200, header ignored) apart from
-// "configured, please log in" (401).
-const PROBE_HEADER = `Basic ${btoa("__aurum_probe__:__aurum_probe__")}`;
-
-/** Hits a lightweight, always-protected endpoint with the given header (or
- * none) to find out whether Basic Auth is required/satisfied. Used both to
- * skip the login screen entirely when this instance has no auth configured
- * (see LoginGate.tsx), and to validate a login attempt before saving it
- * (see LoginScreen.tsx). */
-export async function checkCredentials(header: string | null): Promise<CredentialCheck> {
-  try {
-    const response = await fetch("/api/accounts", {
-      headers: { Authorization: header ?? PROBE_HEADER },
-    });
-    return response.status === 401 ? "unauthorized" : "ok";
-  } catch {
-    return "unreachable";
-  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -154,6 +139,10 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export function useAuthHeader(): string | null {
-  return useSyncExternalStore(subscribe, () => currentHeader);
+export function useAuthState(): AuthState | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => current,
+    () => current
+  );
 }

@@ -106,8 +106,17 @@ async def _clean_database(test_sessionmaker):
     yield
 
 
+# Пароль тестовой установки. Задаётся через первичную настройку, как это
+# делает живой пользователь, а не подсовыванием готового хеша в базу — так
+# тесты заодно проверяют, что настройка и вход действительно работают.
+TEST_PASSWORD = "test-password-123"
+
+
 @pytest_asyncio.fixture
-async def client(test_sessionmaker) -> AsyncGenerator[AsyncClient, None]:
+async def anon_client(test_sessionmaker) -> AsyncGenerator[AsyncClient, None]:
+    """Клиент без входа — для проверок самой защиты: что закрытый эндпоинт
+    отвечает 401, что первичная настройка отрабатывает один раз, что перебор
+    пароля упирается в блокировку."""
     async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
         async with test_sessionmaker() as session:
             yield session
@@ -117,6 +126,17 @@ async def client(test_sessionmaker) -> AsyncGenerator[AsyncClient, None]:
     async with AsyncClient(transport=transport, base_url="http://test/api") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def client(anon_client: AsyncClient) -> AsyncClient:
+    """Клиент с открытой сессией — то, чем пользуется подавляющее
+    большинство тестов. Проходит первичную настройку и остаётся с кукой
+    сессии: httpx хранит её сам, поэтому дальше запросы идут как из
+    браузера вошедшего пользователя."""
+    resp = await anon_client.post("/auth/setup", json={"username": "admin", "password": TEST_PASSWORD})
+    assert resp.status_code == 201, resp.text
+    return anon_client
 
 
 @pytest_asyncio.fixture
