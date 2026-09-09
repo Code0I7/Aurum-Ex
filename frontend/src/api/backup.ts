@@ -16,7 +16,11 @@ export async function exportBackup(): Promise<void> {
 
   const link = document.createElement("a");
   link.href = url;
-  link.download = `aurum-backup-${date}.json`;
+  // «-ex» в имени: копия из Aurum-Ex не взаимозаменяема с копией из
+  // исходного Aurum — в ней есть таблицы, которых там нет. Одинаковые имена
+  // в папке загрузок рано или поздно приводят к попытке восстановить не то
+  // не туда.
+  link.download = `aurum-ex-backup-${date}.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();

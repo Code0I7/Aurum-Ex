@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ArrowLeftRight, ChevronDown, ChevronRight, GripVertical, Pencil, SquareDivide, Trash2 } from "lucide-react";
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
@@ -10,7 +10,7 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { COLUMNS, type ColumnId, type ColumnLayout } from "@/components/transactions/columns";
 import { groupTransactions } from "@/components/transactions/grouping";
-import { useRowDrag } from "@/components/transactions/useRowDrag";
+import { useRowDrag, type DragUnit, type RowMeta } from "@/components/transactions/useRowDrag";
 import type { Transaction } from "@/types";
 
 interface TransactionsGridProps {
@@ -21,7 +21,9 @@ interface TransactionsGridProps {
   /** Перестановка строки внутри её дня по визуальной позиции. Между днями
    * строка не переносится: дату меняют редактированием даты, а не
    * движением мыши. */
-  onReorder: (transaction: Transaction, visualIndex: number, countInDay: number) => void;
+  /** Переставить операции внутри дня: идентификаторы в порядке дня и
+   *  место, на которое встаёт весь блок. */
+  onReorder: (ids: number[], position: number) => void;
   /** Склеивать ли одинаковые операции одного дня в одну строку — четыре
    * поездки на автобусе показываются как «Автобус ×4». */
   groupRepeats: boolean;
@@ -82,7 +84,6 @@ export function TransactionsGrid({
   // перерисовывается после каждой правки, и индекс раскрыл бы соседа.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const groups = useMemo(() => groupTransactions(items, groupRepeats), [items, groupRepeats]);
-  const { drag, arm, move, end, consumeClickSuppression } = useRowDrag(onReorder);
 
   // Итог по каждому дню — то, что в банковских выписках стоит в шапке дня.
   // Переводы в него не входят: это движение своих же денег между
@@ -99,35 +100,60 @@ export function TransactionsGrid({
     return totals;
   }, [items]);
 
-  // Соседи по дню и счёту — то, внутри чего разрешено перетаскивание.
+  // Соседи по дню — то, внутри чего разрешено перетаскивание. Счёт роли не
+  // играет: в списке счета идут вперемешку, и порядок дня сквозной.
   // Считается один раз на весь список: искать их заново на каждое движение
   // мыши было бы расточительно.
+  //
+  // Единица перетаскивания — видимая строка, а не запись: свёрнутая группа
+  // это одна строка и несколько записей, и двигается она целиком.
+  // Раскрытая группа единицей не считается — там видны сами операции, и
+  // тянут именно их.
   const siblingsByRow = useMemo(() => {
-    const byDay = new Map<string, Transaction[]>();
-    for (const tx of items) {
-      const key = `${tx.date}|${tx.account_id}`;
-      byDay.set(key, [...(byDay.get(key) ?? []), tx]);
+    const byDay = new Map<string, RowMeta[]>();
+    for (const group of groups) {
+      const asOneRow = group.items.length > 1 && !expanded.has(group.key);
+      const units: DragUnit[] = asOneRow
+        ? [{ key: group.key, items: group.items }]
+        : group.items.map((tx) => ({ key: String(tx.id), items: [tx] }));
+      for (const unit of units) {
+        const dayKey = unit.items[0].date;
+        const list = byDay.get(dayKey) ?? [];
+        list.push({ unit, indexInDay: list.length });
+        byDay.set(dayKey, list);
+      }
     }
-    const result = new Map<
-      number,
-      { groupKey: string; indexInDay: number; siblings: { transaction: Transaction; indexInDay: number }[] }
-    >();
-    // Ключ дня и счёта запоминается у каждой строки. Номер строки внутри
-    // дня сам по себе ничего не опознаёт: третья строка есть в каждом дне,
-    // и подсветка места вставки по одному номеру загоралась разом во всём
-    // списке.
-    for (const [groupKey, rows] of byDay) {
-      const meta = rows.map((transaction, indexInDay) => ({ transaction, indexInDay }));
-      meta.forEach((item) =>
-        result.set(item.transaction.id, { groupKey, indexInDay: item.indexInDay, siblings: meta })
-      );
+    // День запоминается у каждой строки. Номер строки внутри дня сам по
+    // себе ничего не опознаёт: третья строка есть в каждом дне, и подсветка
+    // места вставки по одному номеру загоралась разом во всём списке.
+    const result = new Map<string, { dayKey: string; meta: RowMeta; siblings: RowMeta[] }>();
+    for (const [dayKey, list] of byDay) {
+      for (const meta of list) result.set(meta.unit.key, { dayKey, meta, siblings: list });
     }
     return result;
-  }, [items]);
+  }, [groups, expanded]);
 
-  // День и счёт перетаскиваемой строки: только внутри них разрешено
+  // Куда встанет перетаскиваемая строка, в порядке дня.
+  //
+  // Список показан от новых операций к старым, а хранится наоборот, поэтому
+  // позиция блока — это число операций, оказавшихся визуально НИЖЕ него.
+  const handleDrop = useCallback(
+    (row: RowMeta, targetIndex: number, siblings: RowMeta[]) => {
+      const rest = siblings.filter((item) => item.unit.key !== row.unit.key);
+      const at = Math.max(0, Math.min(targetIndex, rest.length));
+      const below = rest.slice(at).reduce((sum, item) => sum + item.unit.items.length, 0);
+      // Внутри блока порядок сохраняется, но серверу он нужен в порядке
+      // дня — от старой операции к новой, — а показан обратный.
+      onReorder([...row.unit.items].reverse().map((tx) => tx.id), below);
+    },
+    [onReorder]
+  );
+
+  const { drag, arm, move, end, consumeClickSuppression } = useRowDrag(handleDrop);
+
+  // День перетаскиваемой строки: только внутри него разрешено
   // переставлять, и только там показывается место вставки.
-  const dragGroupKey = drag ? siblingsByRow.get(drag.id)?.groupKey : undefined;
+  const dragDayKey = drag ? siblingsByRow.get(drag.key)?.dayKey : undefined;
 
   const toggleGroup = (key: string) =>
     setExpanded((prev) => {
@@ -304,11 +330,38 @@ export function TransactionsGrid({
               collapsed ? (
                 <tr
                   key={groupRow.key}
+                  data-row-key={groupRow.key}
+                  // Свёрнутая группа тянется как одна строка — целиком.
+                  // «Автобус ×4» на экране одна строка, а в базе четыре
+                  // записи, и двигать их по очереди нельзя: после первой же
+                  // перестановки нумерация меняется, и остальные уезжают не
+                  // туда.
+                  onPointerDown={(event) => {
+                    if ((event.target as HTMLElement).closest("button, a, input")) return;
+                    const found = siblingsByRow.get(groupRow.key);
+                    if (!found) return;
+                    arm(event, found.meta, found.siblings);
+                  }}
+                  onPointerMove={move}
+                  onPointerUp={end}
                   // Свёрнутая группа подсвечена акцентом и линией слева —
                   // той же, что помечает её раскрытые строки, чтобы связь
                   // между шапкой и содержимым читалась без раскрытия.
-                  className="group cursor-pointer bg-accent/[0.06] hover:bg-accent/10"
-                  onClick={() => toggleGroup(groupRow.key)}
+                  className={cn(
+                    "group cursor-pointer bg-accent/[0.06] hover:bg-accent/10",
+                    drag?.key === groupRow.key && "opacity-40",
+                    drag &&
+                      drag.key !== groupRow.key &&
+                      siblingsByRow.get(groupRow.key)?.dayKey === dragDayKey &&
+                      drag.targetIndex === siblingsByRow.get(groupRow.key)?.meta.indexInDay &&
+                      "border-t-[3px] border-accent bg-accent/10 shadow-[0_-2px_10px_-2px_var(--color-accent)]"
+                  )}
+                  onClick={() => {
+                    // Щелчок после перетаскивания — не щелчок: человек
+                    // двигал группу, а не раскрывал её.
+                    if (consumeClickSuppression()) return;
+                    toggleGroup(groupRow.key);
+                  }}
                 >
                   {columns.map((column, index) => (
                     <td
@@ -328,6 +381,28 @@ export function TransactionsGrid({
                           раскрытой группы стояли ровно. */}
                       {index === 0 ? (
                         <span className="flex items-center gap-1">
+                          {/* Ручка перетаскивания группы. Как у обычной
+                              строки: пальцем за тело тянуть нельзя, свайп
+                              прокрутки неотличим от начала жеста. */}
+                          {(siblingsByRow.get(groupRow.key)?.siblings.length ?? 0) > 1 && (
+                            <button
+                              type="button"
+                              aria-label={t("transactions.dragHandle")}
+                              title={t("transactions.dragHandle")}
+                              onPointerDown={(event) => {
+                                event.stopPropagation();
+                                const found = siblingsByRow.get(groupRow.key);
+                                if (!found) return;
+                                arm(event, found.meta, found.siblings, true);
+                              }}
+                              onPointerMove={move}
+                              onPointerUp={end}
+                              onClick={(event) => event.stopPropagation()}
+                              className="-ml-1 cursor-grab touch-none rounded p-0.5 text-text-muted transition active:cursor-grabbing sm:hidden"
+                            >
+                              <GripVertical size={13} />
+                            </button>
+                          )}
                           {isOpen ? (
                             <ChevronDown size={13} className="shrink-0 text-accent/70" />
                           ) : (
@@ -352,16 +427,16 @@ export function TransactionsGrid({
               ...rows.map((tx) => (
             <tr
               key={tx.id}
-              data-row-id={tx.id}
+              data-row-key={String(tx.id)}
               // Тянуть можно за само тело строки: перетаскивание начнётся,
               // только когда указатель уйдёт с места. Кнопки внутри строки
               // исключены — иначе нажатие на «удалить» превращалось бы в
               // перетаскивание.
               onPointerDown={(event) => {
                 if ((event.target as HTMLElement).closest("button, a, input")) return;
-                const meta = siblingsByRow.get(tx.id);
-                if (!meta) return;
-                arm(event, { transaction: tx, indexInDay: meta.indexInDay }, meta.siblings);
+                const found = siblingsByRow.get(String(tx.id));
+                if (!found) return;
+                arm(event, found.meta, found.siblings);
               }}
               onPointerMove={move}
               onPointerUp={end}
@@ -396,14 +471,13 @@ export function TransactionsGrid({
                 // акцентный цвет в полную силу, свечение вокруг и
                 // подкрашенный фон самой строки — цель должна читаться
                 // боковым зрением, не глазами.
-                drag?.id === tx.id && "opacity-40",
+                drag?.key === String(tx.id) && "opacity-40",
                 drag &&
-                  drag.id !== tx.id &&
-                  // Тот же день и счёт, а не просто тот же номер строки:
-                  // без этой проверки загоралась третья строка каждого дня
-                  // сразу.
-                  siblingsByRow.get(tx.id)?.groupKey === dragGroupKey &&
-                  drag.targetIndex === siblingsByRow.get(tx.id)?.indexInDay &&
+                  drag.key !== String(tx.id) &&
+                  // Тот же день, а не просто тот же номер строки: без этой
+                  // проверки загоралась третья строка каждого дня сразу.
+                  siblingsByRow.get(String(tx.id))?.dayKey === dragDayKey &&
+                  drag.targetIndex === siblingsByRow.get(String(tx.id))?.meta.indexInDay &&
                   "border-t-[3px] border-accent bg-accent/10 shadow-[0_-2px_10px_-2px_var(--color-accent)]"
               )}
             >
@@ -429,15 +503,15 @@ export function TransactionsGrid({
                           Единственная операция дня никуда не двигается, и
                           ручка над ней — обещание, которого приложение не
                           выполняет: нажал, потянул, ничего не произошло. */}
-                      {(siblingsByRow.get(tx.id)?.siblings.length ?? 0) > 1 && (
+                      {(siblingsByRow.get(String(tx.id))?.siblings.length ?? 0) > 1 && (
                       <button
                         type="button"
                         aria-label={t("transactions.dragHandle")}
                         title={t("transactions.dragHandle")}
                         onPointerDown={(event) => {
-                          const meta = siblingsByRow.get(tx.id);
-                          if (!meta) return;
-                          arm(event, { transaction: tx, indexInDay: meta.indexInDay }, meta.siblings, true);
+                          const found = siblingsByRow.get(String(tx.id));
+                          if (!found) return;
+                          arm(event, found.meta, found.siblings, true);
                         }}
                         // Только на узких экранах. Пальцем за тело строки
                         // тянуть нельзя: браузер решает «прокрутка или жест»

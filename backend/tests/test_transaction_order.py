@@ -172,3 +172,151 @@ async def test_transfer_credits_the_destination_account_balance(client: AsyncCli
     by_amount = {item["amount"]: item for item in listing}
     assert by_amount["200.00"]["balance_after"] == "200.00"
     assert by_amount["50.00"]["balance_after"] == "150.00"
+
+
+async def test_day_order_spans_accounts_so_cash_can_be_moved_above_a_card(
+    client: AsyncClient, account_id, categories
+):
+    """Покупку наличными нельзя было поднять выше карточной того же дня.
+
+    Нумерация шла внутри счёта, и у первой операции каждого счёта был один
+    и тот же номер: список сортируется по нему, а он совпадал. Теперь номер
+    сквозной по дню — счета в списке идут вперемешку, и порядок дня должен
+    быть тем, что человек видит.
+    """
+    cash = (await client.post("/accounts", json={"name": "Наличные", "kind": "cash"})).json()
+    groceries = categories["Groceries"]["id"]
+
+    card_spend = (
+        await client.post(
+            "/transactions", json=_txn(account_id, description="Картой", category_id=groceries)
+        )
+    ).json()
+    cash_spend = (
+        await client.post(
+            "/transactions",
+            json=_txn(cash["id"], description="Наличными", category_id=groceries),
+        )
+    ).json()
+
+    # Номера не совпадают: иначе переставлять было бы нечего.
+    assert card_spend["day_order"] != cash_spend["day_order"]
+
+    # Наличная запись поднимается над карточной.
+    resp = await client.post(f"/transactions/{cash_spend['id']}/reorder", json={"position": 0})
+    assert resp.status_code == 200, resp.text
+
+    listing = (await client.get("/transactions")).json()["items"]
+    assert [row["description"] for row in listing] == ["Картой", "Наличными"]
+
+
+async def test_reorder_across_accounts_keeps_each_balance(client: AsyncClient, account_id, categories):
+    """Сквозная нумерация дня не должна трогать балансы: они считаются с
+    разбиением по счёту, и относительный порядок внутри счёта пересчёт
+    сохраняет."""
+    cash = (await client.post("/accounts", json={"name": "Наличные", "kind": "cash"})).json()
+    income = categories["Salary"]["id"]
+    expense = categories["Groceries"]["id"]
+
+    await client.post("/transactions", json=_txn(account_id, type="income", amount="500.00", category_id=income))
+    await client.post("/transactions", json=_txn(account_id, amount="150.00", category_id=expense))
+    cash_spend = (
+        await client.post("/transactions", json=_txn(cash["id"], amount="40.00", category_id=expense))
+    ).json()
+
+    await client.post(f"/transactions/{cash_spend['id']}/reorder", json={"position": 0})
+
+    card = (await client.get("/transactions", params={"account_id": account_id})).json()["items"]
+    assert [row["balance_after"] for row in reversed(card)] == ["500.00", "350.00"]
+    cash_rows = (await client.get("/transactions", params={"account_id": cash["id"]})).json()["items"]
+    assert [row["balance_after"] for row in cash_rows] == ["-40.00"]
+
+
+async def test_a_block_of_rows_moves_as_one(client: AsyncClient, account_id, categories):
+    """Свёрнутая группа «Автобус ×3» — одна строка на экране и три записи в
+    базе. По одной их двигать нельзя: после первой же перестановки
+    нумерация меняется, и остальные уезжают не туда."""
+    groceries = categories["Groceries"]["id"]
+    rides = [
+        (
+            await client.post(
+                "/transactions",
+                json=_txn(account_id, amount="40.00", description="Автобус", category_id=groceries),
+            )
+        ).json()
+        for _ in range(3)
+    ]
+    coffee = (
+        await client.post(
+            "/transactions", json=_txn(account_id, amount="200.00", description="Кофе", category_id=groceries)
+        )
+    ).json()
+
+    # Порядок дня сейчас: автобус, автобус, автобус, кофе.
+    assert coffee["day_order"] == 3
+
+    resp = await client.post(
+        "/transactions/reorder-block",
+        json={"ids": [ride["id"] for ride in rides], "position": 1},
+    )
+    assert resp.status_code == 204, resp.text
+
+    listing = (await client.get("/transactions")).json()["items"]
+    # Показ идёт от новых к старым, поэтому в дне порядок обратный.
+    assert [row["description"] for row in reversed(listing)] == ["Кофе", "Автобус", "Автобус", "Автобус"]
+    assert [row["day_order"] for row in reversed(listing)] == [0, 1, 2, 3]
+
+
+async def test_a_block_keeps_its_own_order(client: AsyncClient, account_id, categories):
+    """Внутри блока порядок сохраняется в том виде, в каком его прислали."""
+    groceries = categories["Groceries"]["id"]
+    first, second = [
+        (
+            await client.post(
+                "/transactions",
+                json=_txn(account_id, amount="40.00", description=f"Поездка {index}", category_id=groceries),
+            )
+        ).json()
+        for index in range(2)
+    ]
+    await client.post(
+        "/transactions", json=_txn(account_id, description="Кофе", category_id=groceries)
+    )
+
+    resp = await client.post(
+        "/transactions/reorder-block", json={"ids": [first["id"], second["id"]], "position": 1}
+    )
+    assert resp.status_code == 204, resp.text
+
+    listing = (await client.get("/transactions")).json()["items"]
+    assert [row["description"] for row in reversed(listing)] == ["Кофе", "Поездка 0", "Поездка 1"]
+
+
+async def test_a_block_from_two_days_is_rejected(client: AsyncClient, account_id, categories):
+    """Между днями записи не переносятся: дату меняют редактированием даты."""
+    groceries = categories["Groceries"]["id"]
+    today = (
+        await client.post("/transactions", json=_txn(account_id, category_id=groceries))
+    ).json()
+    other = (
+        await client.post(
+            "/transactions", json=_txn(account_id, date="2024-08-27", category_id=groceries)
+        )
+    ).json()
+
+    resp = await client.post(
+        "/transactions/reorder-block", json={"ids": [today["id"], other["id"]], "position": 0}
+    )
+    assert resp.status_code == 400
+
+
+async def test_a_block_with_an_unknown_row_is_rejected(client: AsyncClient, account_id, categories):
+    known = (
+        await client.post(
+            "/transactions", json=_txn(account_id, category_id=categories["Groceries"]["id"])
+        )
+    ).json()
+    resp = await client.post(
+        "/transactions/reorder-block", json={"ids": [known["id"], 999_999], "position": 0}
+    )
+    assert resp.status_code == 404

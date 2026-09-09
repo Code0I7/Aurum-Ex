@@ -923,12 +923,15 @@ async def apply_plan(
 
     # --- Операции ---
 
-    day_orders: dict[tuple[int, date_], int] = defaultdict(int)
+    # Номер в пределах дня — сквозной по всем счетам, как и при обычном
+    # вводе (см. services/transaction_service.py, next_day_order). Иначе у
+    # покупки наличными и покупки картой в один день оказался бы один и тот
+    # же номер, и переставить их относительно друг друга стало бы нельзя.
+    day_orders: dict[date_, int] = defaultdict(int)
 
-    def next_order(account: Account, on_date: date_) -> int:
-        key = (account.id, on_date)
-        order = day_orders[key]
-        day_orders[key] = order + 1
+    def next_order(on_date: date_) -> int:
+        order = day_orders[on_date]
+        day_orders[on_date] = order + 1
         return order
 
     def category_for(row: ParsedTransaction) -> Category | None:
@@ -951,7 +954,7 @@ async def apply_plan(
             amount_base=row.amount,
             description=row.description,
             date=row.date,
-            day_order=next_order(account, row.date),
+            day_order=next_order(row.date),
             is_excluded=row.is_excluded,
             participant_id=participants[row.participant].id if row.participant in participants else None,
             **extra,

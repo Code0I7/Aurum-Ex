@@ -16,11 +16,12 @@ id_rsa
 id_ed25519
 
 # Database dumps / exports — pg_dump output or a downloaded
-# "aurum-backup-*.json" from Settings landing in the repo by accident.
+# "aurum-ex-backup-*.json" from Settings landing in the repo by accident.
 # Both contain full financial data and must never be committed.
 *.sql
 *.dump
 *.sqlite3
+aurum-ex-backup-*.json
 aurum-backup-*.json
 
 # Python

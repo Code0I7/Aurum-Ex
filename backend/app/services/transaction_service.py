@@ -32,14 +32,23 @@ from app.models.transaction import Transaction
 CHRONOLOGICAL = (Transaction.date, Transaction.day_order, Transaction.id)
 
 
-async def next_day_order(session: AsyncSession, account_id: int, on_date) -> int:
-    """Следующий номер в пределах дня и счёта.
+async def next_day_order(session: AsyncSession, on_date) -> int:
+    """Следующий номер в пределах дня — по всем счетам сразу.
 
-    Считается по счёту, а не по всей базе: порядок нужен, чтобы построить
-    баланс конкретного счёта, и операции соседних счетов на него не влияют.
+    Раньше нумерация шла внутри счёта: считалось, что порядок нужен только
+    для баланса, а операции соседних счетов на него не влияют. Для баланса
+    это по-прежнему так — он считается оконной функцией с разбиением по
+    счёту, и сквозная нумерация дня ему безразлична.
+
+    Но порядок виден и в самом списке, где счета идут вперемешку. При
+    нумерации по счёту у покупки наличными и покупки картой в один день
+    оказывался один и тот же номер, и поднять наличную выше карточной было
+    нельзя: список сортируется по номеру, а он у них совпадал. Сквозная
+    нумерация дня делает порядок дня тем, что человек видит и может
+    переставить.
     """
     stmt = select(func.coalesce(func.max(Transaction.day_order), -1)).where(
-        Transaction.account_id == account_id, Transaction.date == on_date
+        Transaction.date == on_date
     )
     return int((await session.execute(stmt)).scalar_one()) + 1
 

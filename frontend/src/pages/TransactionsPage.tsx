@@ -160,10 +160,12 @@ export function TransactionsPage() {
    * формулой здесь: раньше кнопки двигали строку по day_order напрямую, и
    * на экране всё уезжало в противоположную сторону.
    */
-  const handleReorder = (transaction: Transaction, visualIndex: number, countInDay: number) => {
-    const position = Math.max(0, countInDay - 1 - visualIndex);
-    if (position === transaction.day_order) return;
-    reorderTransaction.mutate({ id: transaction.id, position });
+  // Идентификаторы приходят уже в порядке дня, а место — тоже в нём:
+  // перевод из показанного порядка в хранимый делает сама таблица, потому
+  // что только она знает, из чего состоит строка (одна операция или
+  // свёрнутая группа) и что стоит ниже неё.
+  const handleReorder = (ids: number[], position: number) => {
+    reorderTransaction.mutate({ ids, position });
   };
 
   const [modalOpen, setModalOpen] = useState(false);

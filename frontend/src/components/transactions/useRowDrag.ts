@@ -33,6 +33,11 @@ import type { Transaction } from "@/types";
  * Переставлять можно только внутри одного дня и одного счёта: день меняют
  * редактированием даты, а порядок операций разных счетов друг на друга не
  * влияет — у каждого своя нумерация.
+ *
+ * Тянется видимая строка, а не запись. Свёрнутая группа («Автобус ×4») —
+ * это одна строка на экране и несколько записей в базе, и переносится она
+ * целиком: по одной записи её двигать нельзя, потому что после первой же
+ * перестановки нумерация меняется и остальные уезжают не туда.
  */
 
 /** Насколько указатель должен уйти, чтобы это считалось перетаскиванием,
@@ -41,15 +46,22 @@ import type { Transaction } from "@/types";
 const DRAG_THRESHOLD_PX = 5;
 
 export interface DragState {
-  /** Идентификатор перетаскиваемой операции. */
-  id: number;
+  /** Ключ перетаскиваемой строки: операции или свёрнутой группы. */
+  key: string;
   /** Визуальная позиция, на которую строка встанет, если отпустить сейчас. */
   targetIndex: number;
 }
 
-interface RowMeta {
-  transaction: Transaction;
-  /** Позиция строки среди операций того же дня и счёта, сверху вниз. */
+/** Видимая строка списка: одна операция или свёрнутая группа целиком. */
+export interface DragUnit {
+  key: string;
+  /** Операции строки в порядке показа — от новых к старым. */
+  items: Transaction[];
+}
+
+export interface RowMeta {
+  unit: DragUnit;
+  /** Позиция строки среди строк того же дня и счёта, сверху вниз. */
   indexInDay: number;
 }
 
@@ -63,7 +75,7 @@ interface Pending {
 }
 
 export function useRowDrag(
-  onReorder: (transaction: Transaction, visualIndex: number, countInDay: number) => void
+  onReorder: (row: RowMeta, visualIndex: number, siblings: RowMeta[]) => void
 ) {
   const [drag, setDrag] = useState<DragState | null>(null);
   // Живые данные перетаскивания держим в ref, а не в состоянии: обработчик
@@ -81,7 +93,7 @@ export function useRowDrag(
     if (!armed) return;
     armed.target.setPointerCapture?.(armed.pointerId);
     session.current = { row: armed.row, siblings: armed.siblings, targetIndex: armed.row.indexInDay };
-    setDrag({ id: armed.row.transaction.id, targetIndex: armed.row.indexInDay });
+    setDrag({ key: armed.row.unit.key, targetIndex: armed.row.indexInDay });
   }, []);
 
   /**
@@ -98,7 +110,7 @@ export function useRowDrag(
       // свайп прокрутки неотличим от начала перетаскивания, и список
       // перемешивался бы при обычном листании.
       if (event.pointerType === "touch" && !immediate) return;
-      // Единственную операцию дня переставлять некуда.
+      // Единственную строку дня переставлять некуда.
       if (siblings.length < 2) return;
       pending.current = {
         row,
@@ -133,17 +145,17 @@ export function useRowDrag(
       // Строку под курсором ищем через элемент в точке, а не по координатам
       // строк: так работает и при прокрутке списка во время перетаскивания.
       const element = document.elementFromPoint(event.clientX, event.clientY);
-      const rowElement = element?.closest<HTMLElement>("[data-row-id]");
+      const rowElement = element?.closest<HTMLElement>("[data-row-key]");
       if (!rowElement) return;
 
-      const overId = Number(rowElement.dataset.rowId);
-      const over = current.siblings.find((item) => item.transaction.id === overId);
+      const overKey = rowElement.dataset.rowKey;
+      const over = current.siblings.find((item) => item.unit.key === overKey);
       // Строка другого дня или счёта — не цель: там своя нумерация.
       if (!over) return;
 
       if (over.indexInDay !== current.targetIndex) {
         current.targetIndex = over.indexInDay;
-        setDrag({ id: current.row.transaction.id, targetIndex: over.indexInDay });
+        setDrag({ key: current.row.unit.key, targetIndex: over.indexInDay });
       }
     },
     [begin]
@@ -159,7 +171,7 @@ export function useRowDrag(
     // открывать правку после него человек не просил.
     suppressClick.current = true;
     if (current.targetIndex === current.row.indexInDay) return;
-    onReorder(current.row.transaction, current.targetIndex, current.siblings.length);
+    onReorder(current.row, current.targetIndex, current.siblings);
   }, [onReorder]);
 
   /** Был ли перетаскиванием тот щелчок, который сейчас придёт. */

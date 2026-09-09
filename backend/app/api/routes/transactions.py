@@ -20,6 +20,7 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionPage,
     TransactionRead,
+    TransactionBlockReorder,
     TransactionReorder,
     SimilarTransaction,
     TransactionSplitInput,
@@ -395,7 +396,7 @@ async def create_transaction(payload: TransactionCreate, session: AsyncSession =
     # чем его набирать, а без него операции одного дня раскладываются
     # произвольно и баланс на графике проваливается ниже нуля там, где
     # этого не было (см. services/transaction_service.py).
-    transaction.day_order = await next_day_order(session, transaction.account_id, transaction.date)
+    transaction.day_order = await next_day_order(session, transaction.date)
     await _apply_currency(session, transaction, payload.currency)
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits:
@@ -423,7 +424,7 @@ async def bulk_create_transactions(
     transactions = []
     for item in payload.items:
         transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits", "items", "currency"}))
-        transaction.day_order = await next_day_order(session, transaction.account_id, transaction.date)
+        transaction.day_order = await next_day_order(session, transaction.date)
         await _apply_currency(session, transaction, item.currency)
         transaction.tags = await _resolve_tags(session, item.tag_ids)
         if item.splits:
@@ -517,33 +518,32 @@ async def update_transaction(
     return refreshed.scalar_one()
 
 
-@router.post("/{transaction_id}/reorder", response_model=TransactionRead)
-async def reorder_transaction(
-    transaction_id: int, payload: TransactionReorder, session: AsyncSession = Depends(get_session)
-) -> Transaction:
-    """Переставляет операцию внутри её дня.
+async def _move_within_day(session: AsyncSession, moved: list[Transaction], position: int) -> None:
+    """Переставляет операции внутри их дня, сохраняя порядок внутри блока.
 
-    Между днями запись не переносится намеренно: дату меняют
+    Между днями записи не переносятся намеренно: дату меняют
     редактированием даты, а не движением мыши — случайное перетаскивание
     строки не должно менять день операции.
 
-    Порядок пересчитывается сплошным рядом 0, 1, 2… у всех операций этого
-    счёта за этот день. Это дороже точечной правки, но избавляет от дыр и
-    дубликатов в нумерации, которые иначе накапливаются и однажды ломают
-    сортировку.
-    """
-    transaction = await session.get(Transaction, transaction_id)
-    if transaction is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+    Внутри дня переставляется всё, независимо от счёта. Раньше порядок был
+    внутри счёта, и покупку наличными нельзя было поднять выше карточной
+    того же дня: в списке счета идут вперемешку, а нумерация у них была
+    своя (см. services/transaction_service.py, next_day_order). Балансу это
+    безразлично — он считается с разбиением по счёту, и относительный
+    порядок внутри счёта пересчёт сохраняет.
 
+    Порядок пересчитывается сплошным рядом 0, 1, 2… у всех операций этого
+    дня. Это дороже точечной правки, но избавляет от дыр и дубликатов в
+    нумерации, которые иначе накапливаются и однажды ломают сортировку.
+
+    Позиция зажимается к краю: бросок мимо списка — это «в начало» или «в
+    конец», а не ошибка.
+    """
     siblings = list(
         (
             await session.execute(
                 select(Transaction)
-                .where(
-                    Transaction.account_id == transaction.account_id,
-                    Transaction.date == transaction.date,
-                )
+                .where(Transaction.date == moved[0].date)
                 .order_by(Transaction.day_order, Transaction.id)
             )
         )
@@ -551,13 +551,51 @@ async def reorder_transaction(
         .all()
     )
 
-    siblings = [row for row in siblings if row.id != transaction_id]
-    position = max(0, min(payload.position, len(siblings)))
-    siblings.insert(position, transaction)
-    for index, row in enumerate(siblings):
+    moved_ids = {row.id for row in moved}
+    rest = [row for row in siblings if row.id not in moved_ids]
+    at = max(0, min(position, len(rest)))
+    for index, row in enumerate(rest[:at] + moved + rest[at:]):
         row.day_order = index
 
     await session.commit()
+
+
+@router.post("/reorder-block", status_code=204)
+async def reorder_transaction_block(
+    payload: TransactionBlockReorder, session: AsyncSession = Depends(get_session)
+) -> None:
+    """Переставляет несколько операций одного дня как одно целое.
+
+    Так двигается свёрнутая группа: на экране это одна строка, в базе —
+    несколько записей, и переставлять их по очереди нельзя. После первой же
+    перестановки нумерация меняется, и остальные уезжают не туда.
+
+    Все операции блока обязаны быть одного дня — иначе непонятно, внутри
+    чего их переставлять. Счёт при этом любой: порядок дня сквозной.
+    """
+    rows = (
+        (await session.execute(select(Transaction).where(Transaction.id.in_(payload.ids)))).scalars().all()
+    )
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(set(payload.ids)):
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    moved = [by_id[transaction_id] for transaction_id in dict.fromkeys(payload.ids)]
+    if len({row.date for row in moved}) > 1:
+        raise HTTPException(status_code=400, detail="All transactions in a block must share one date")
+    await _move_within_day(session, moved, payload.position)
+
+
+@router.post("/{transaction_id}/reorder", response_model=TransactionRead)
+async def reorder_transaction(
+    transaction_id: int, payload: TransactionReorder, session: AsyncSession = Depends(get_session)
+) -> Transaction:
+    """Переставляет одну операцию внутри её дня. Частный случай блока из
+    одной записи — сама перестановка живёт в _move_within_day."""
+    transaction = await session.get(Transaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    await _move_within_day(session, [transaction], payload.position)
     refreshed = await session.execute(select(Transaction).options(*_EAGER).where(Transaction.id == transaction_id))
     return refreshed.scalar_one()
 

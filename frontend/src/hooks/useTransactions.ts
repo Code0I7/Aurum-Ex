@@ -9,7 +9,7 @@ import {
   type TransactionFilters,
 } from "@/api/transactions";
 import { api } from "@/api/client";
-import type { Transaction, TransactionInput } from "@/types";
+import type { TransactionInput } from "@/types";
 
 function useInvalidateAfterTransactionChange() {
   const queryClient = useQueryClient();
@@ -103,8 +103,11 @@ export function useBulkCreateTransactions() {
 export function useReorderTransaction() {
   const invalidate = useInvalidateAfterTransactionChange();
   return useMutation({
-    mutationFn: ({ id, position }: { id: number; position: number }) =>
-      api.post<Transaction>(`/transactions/${id}/reorder`, { position }),
+    // Блоком, а не по одной записи: свёрнутая группа — одна строка на
+    // экране и несколько записей в базе, и переставлять их по очереди
+    // нельзя (после первой же перестановки нумерация меняется).
+    mutationFn: ({ ids, position }: { ids: number[]; position: number }) =>
+      api.post<void>("/transactions/reorder-block", { ids, position }),
     onSuccess: invalidate,
   });
 }

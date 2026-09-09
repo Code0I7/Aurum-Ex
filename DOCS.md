@@ -770,12 +770,12 @@ Backup & Restore uses. Good for scripted off-site backups, or for migrating data
 
 ```bash
 # Export
-curl -u user:pass http://localhost:3000/api/backup/export -o aurum-backup.json
+curl -u user:pass http://localhost:3000/api/backup/export -o aurum-ex-backup.json
 
 # Restore
 curl -u user:pass -X POST http://localhost:3000/api/backup/import \
   -H "Content-Type: application/json" \
-  -d @aurum-backup.json
+  -d @aurum-ex-backup.json
 ```
 
 The payload includes an `aurum_backup_version` field checked on import — a file from an incompatible
