@@ -93,6 +93,41 @@ def days_in_month(year: int, month: int) -> int:
     return calendar.monthrange(year, month)[1]
 
 
+def _roll_up_branches(rows: list[PlanRow], tree) -> None:
+    """Строка родителя показывает всю ветку: себя и всех потомков.
+
+    Так же считают дашборд и отчёты, и человек ждёт того же здесь: план
+    стоит на «Администрации», а «Иван» над ней выглядел пустым, хотя
+    деньги в ветке есть — просто строкой ниже.
+
+    Меняются суммы только для показа. Итоги к этому моменту уже посчитаны
+    по непересекающимся суммам (см. вызывающий код), иначе ветка вошла бы в
+    них дважды.
+
+    Потомок, у которого нет своей строки, ничего не добавляет — его деньги
+    и так уже отнесены к ближайшему предку с планом, то есть учтены в
+    чьей-то строке этой же ветки.
+    """
+    own = {
+        row.category_id: [(cell.planned, cell.actual) for cell in row.months]
+        for row in rows
+        if row.category_id is not None
+    }
+    for row in rows:
+        if row.category_id is None:
+            continue
+        children = [
+            own[child]
+            for child in tree.descendants_of(row.category_id)
+            if child in own
+        ]
+        if not children:
+            continue
+        for index, cell in enumerate(row.months):
+            cell.planned = sum((child[index][0] for child in children), cell.planned)
+            cell.actual = sum((child[index][1] for child in children), cell.actual)
+
+
 def expand_plan(
     plan: Plan,
     year: int,
@@ -248,6 +283,17 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
             entry = row_for(target)
             entry.months[month - 1].actual += amount
 
+    # Ветка обязана иметь вершину. Строка появляется только у категории, к
+    # которой что-то отнесено, и родитель без собственных денег строки не
+    # получал: в таблице оставалась подкатегория с отступом, висящая ни под
+    # чем, — а после сворачивания веток вершине ещё и есть что показать.
+    #
+    # Добавленные так строки пустые, поэтому итоги, считаемые до
+    # сворачивания, не меняются.
+    for category_id in [row for row in rows if row is not None]:
+        for ancestor in tree.ancestors_of(category_id):
+            row_for(ancestor)
+
     ordered = sorted(
         rows.values(),
         # Доходы сверху: год читается как «сколько пришло, потом куда ушло».
@@ -273,8 +319,14 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
             for month in range(1, 13)
         ]
 
+    # Итоги считаются ДО сворачивания ветки, по непересекающимся суммам:
+    # каждая строка держит только то, что отнесено лично к ней, и простое
+    # сложение даёт верный итог. После сворачивания то же сложение задвоило
+    # бы ветку — родитель и ребёнок показывали бы одни и те же деньги.
     income_totals = totals_of(income_rows)
     expense_totals = totals_of(expense_rows)
+
+    _roll_up_branches(ordered, tree)
     # Свободные средства: то, что осталось бы, если бы всё шло по плану, и
     # то, что осталось на самом деле.
     free = [

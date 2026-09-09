@@ -160,7 +160,13 @@ async def test_budget_on_a_branch_sees_a_grandchild(client: AsyncClient, account
 
 async def test_plan_catches_spending_at_the_nearest_ancestor(client: AsyncClient, account_id):
     """План на «Молочном» перехватывает сыр раньше плана на «Продуктах»,
-    потому что он ближе."""
+    потому что он ближе.
+
+    Видно это по итогу, а не по строке «Продуктов»: строка родителя
+    показывает всю ветку и потому повторяет те же 450. Само правило
+    отнесения проверяется тем, что итог остался равен одной трате, а не
+    двум, — иначе сыр посчитался бы и в «Молочном», и в «Продуктах».
+    """
     products, dairy, cheese = await _chain(client, "Продукты", "Молочное", "Сыр")
     await client.post(
         "/plans",
@@ -173,7 +179,11 @@ async def test_plan_catches_spending_at_the_nearest_ancestor(client: AsyncClient
     await _spend(client, account_id, cheese["id"], "450.00")
 
     overview = (await client.get("/plans/overview?year=2026")).json()
+    march = 2
     dairy_row = next(row for row in overview["rows"] if row["name"] == "Молочное")
     products_row = next(row for row in overview["rows"] if row["name"] == "Продукты")
-    assert Decimal(dairy_row["months"][2]["actual"]) == Decimal("450")
-    assert Decimal(products_row["months"][2]["actual"]) == Decimal("0")
+    assert Decimal(dairy_row["months"][march]["actual"]) == Decimal("450")
+    # Родитель показывает ту же ветку целиком.
+    assert Decimal(products_row["months"][march]["actual"]) == Decimal("450")
+    # А в итоге трата ровно одна.
+    assert Decimal(overview["expense_totals"][march]["actual"]) == Decimal("450")

@@ -338,3 +338,101 @@ async def test_a_plan_on_an_income_subcategory_does_not_flip_the_totals(
     assert Decimal(body["income_totals"][january]["planned"]) == Decimal("200000.00")
     assert Decimal(body["expense_totals"][january]["actual"]) == Decimal("0")
     assert Decimal(body["free_totals"][january]["actual"]) == Decimal("200000.00")
+
+
+async def test_a_parent_row_shows_its_whole_branch(client: AsyncClient, account_id, categories):
+    """План стоит на «Администрации», а «Иван» над ней выглядел пустым.
+
+    Деньги в ветке есть — просто строкой ниже: строки держат только то, что
+    отнесено лично к ним, и весь факт уходил в ту строку, у которой план.
+    Дашборд и отчёты в такой ситуации сворачивают ветку, и здесь человек
+    ждёт того же.
+    """
+    salary = categories["Salary"]["id"]
+    ivan = (
+        await client.post(
+            "/categories",
+            json={"name": "Иван", "kind": "income", "color": "#2a78d6", "parent_id": salary},
+        )
+    ).json()
+    admin = (
+        await client.post(
+            "/categories",
+            json={"name": "Администрация", "kind": "income", "color": "#2a78d6", "parent_id": ivan["id"]},
+        )
+    ).json()
+
+    await client.post(
+        "/plans",
+        json={
+            "category_id": admin["id"],
+            "kind": "monthly",
+            "amount": "20000.00",
+            "valid_from": "2026-01-01",
+        },
+    )
+    assert (
+        await client.post(
+            "/transactions",
+            json={
+                "account_id": account_id,
+                "type": "income",
+                "amount": "31480.55",
+                "description": "Зарплата",
+                "date": "2026-08-14",
+                "category_id": admin["id"],
+            },
+        )
+    ).status_code == 201
+
+    body = (await client.get("/plans/overview", params={"year": 2026})).json()
+    rows = {item["category_id"]: item for item in body["rows"]}
+    august = 7
+
+    # Ребёнок держит своё.
+    assert Decimal(rows[admin["id"]]["months"][august]["actual"]) == Decimal("31480.55")
+    # Родитель и прародитель показывают ту же ветку, а не прочерк.
+    assert Decimal(rows[ivan["id"]]["months"][august]["actual"]) == Decimal("31480.55")
+    assert Decimal(rows[salary]["months"][august]["actual"]) == Decimal("31480.55")
+    assert Decimal(rows[ivan["id"]]["months"][august]["planned"]) == Decimal("20000.00")
+
+
+async def test_the_totals_are_not_doubled_by_the_rollup(client: AsyncClient, account_id, categories):
+    """Главное, чем платят за сворачивание: итог обязан остаться верным.
+
+    Родитель и ребёнок показывают одни и те же деньги, поэтому итоговые
+    полосы считаются до сворачивания — по непересекающимся суммам.
+    """
+    salary = categories["Salary"]["id"]
+    ivan = (
+        await client.post(
+            "/categories",
+            json={"name": "Иван", "kind": "income", "color": "#2a78d6", "parent_id": salary},
+        )
+    ).json()
+    await client.post(
+        "/plans",
+        json={
+            "category_id": ivan["id"],
+            "kind": "monthly",
+            "amount": "20000.00",
+            "valid_from": "2026-01-01",
+        },
+    )
+    await client.post(
+        "/transactions",
+        json={
+            "account_id": account_id,
+            "type": "income",
+            "amount": "31480.55",
+            "description": "Зарплата",
+            "date": "2026-08-14",
+            "category_id": ivan["id"],
+        },
+    )
+
+    body = (await client.get("/plans/overview", params={"year": 2026})).json()
+    august = 7
+    assert Decimal(body["income_totals"][august]["actual"]) == Decimal("31480.55")
+    assert Decimal(body["income_totals"][august]["planned"]) == Decimal("20000.00")
+    assert Decimal(body["free_totals"][august]["actual"]) == Decimal("31480.55")
