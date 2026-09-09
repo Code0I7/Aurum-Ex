@@ -126,7 +126,7 @@ def expand_plan(
     return plan.amount * days_in_month(year, month)
 
 
-async def _workdays_by_month(session: AsyncSession, year: int) -> dict[tuple[int, int], int]:
+async def workdays_by_month(session: AsyncSession, year: int) -> dict[tuple[int, int], int]:
     """Отработанные дни по месяцам года.
 
     Участник не различается: если планов у нескольких человек, дни всё
@@ -158,7 +158,7 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
     plans = (await session.execute(select(Plan).where(Plan.is_active.is_(True)))).scalars().all()
     tree = await load_category_tree(session)
     categories = {row.id: row for row in (await session.execute(select(Category))).scalars().all()}
-    workdays = await _workdays_by_month(session, year)
+    workdays = await workdays_by_month(session, year)
 
     start = date_(year, 1, 1)
     end = date_(year, 12, 31)

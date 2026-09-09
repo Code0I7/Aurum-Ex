@@ -1,9 +1,28 @@
 """Monthly category budgets: CRUD for the limits themselves, plus
 get_budget_status(), which compares each limit against actual spend for a
 given month — the data behind the Budget page's progress bars and the
-budget_exceeded proactive alert (services/insights_service.py)."""
+budget_exceeded proactive alert (services/insights_service.py).
+
+Лимит месяца берётся из двух источников, и между ними действует правило
+старшинства: **свой бюджет главнее плана**.
+
+Бюджет и планирование описывали одно и то же разными словами. «По плану 5к
+на еду в декабре» и «лимит на еду 5к» — одна и та же цифра, заведённая
+дважды, и советы при этом продолжали требовать завести бюджет у категории,
+у которой план уже был.
+
+Поэтому категория с планом и без своего бюджета получает строку, выведенную
+из плана. Она даже точнее обычного бюджета: у того один потолок на все
+месяцы, а плановая сумма считается на каждый месяц отдельно — февраль у
+ежедневного плана короче, разовая покупка стоит только в своём месяце.
+
+Заводить бюджет поверх плана не запрещено: свой бюджет просто вытесняет
+плановую строку. Отсюда и отсутствие режимов и предупреждений о
+столкновении — столкновения нет по построению, есть старшинство.
+"""
 import calendar
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -16,7 +35,9 @@ from app.models.budget import Budget
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
 from app.models.transaction import Transaction, TransactionSplit
+from app.models.plan import Plan
 from app.services.category_tree import load_category_tree
+from app.services.plan_service import workdays_by_month, expand_plan
 from app.services.transaction_service import counted_only
 from app.schemas.budget import BudgetCreate, BudgetStatus, BudgetStatusResponse, BudgetUpdate
 
@@ -69,11 +90,72 @@ async def delete_budget(session: AsyncSession, budget_id: int) -> None:
     await session.commit()
 
 
+@dataclass
+class _Line:
+    """Одна строка бюджета: откуда лимит и чей он."""
+
+    category: Category
+    monthly_limit: Decimal
+    # None — строка выведена из плана, своей записи в бюджетах нет.
+    budget_id: int | None
+
+
+async def _plan_lines(
+    session: AsyncSession, year: int, month: int, taken: set[int]
+) -> list[_Line]:
+    """Строки, выведенные из планов на этот месяц.
+
+    Берутся только расходные категории: план на зарплату — это ожидание
+    дохода, а не потолок траты, и полоса «истрачено 96%» для него означала
+    бы обратное тому, что происходит.
+
+    Категории, у которых есть свой бюджет, пропускаются: свой главнее.
+
+    Несколько планов на одну категорию складываются — «связь 700» и
+    «интернет 500» это две записи, а строка одна. Так же они складываются и
+    в самом «Планировании».
+    """
+    plans = (
+        (
+            await session.execute(
+                select(Plan).where(Plan.category_id.is_not(None), Plan.category_id.not_in(taken or {0}))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not plans:
+        return []
+
+    workdays = (await workdays_by_month(session, year)).get((year, month))
+    limits: dict[int, Decimal] = defaultdict(Decimal)
+    for plan in plans:
+        amount = expand_plan(plan, year, month, workdays)
+        if amount:
+            limits[plan.category_id] += amount
+    if not limits:
+        return []
+
+    categories = (
+        (await session.execute(select(Category).where(Category.id.in_(limits)))).scalars().all()
+    )
+    return [
+        _Line(category=category, monthly_limit=limits[category.id], budget_id=None)
+        for category in categories
+        if category.kind is CategoryKind.EXPENSE
+    ]
+
+
 async def get_budget_status(session: AsyncSession, year: int, month: int) -> BudgetStatusResponse:
     start, end = _month_bounds(year, month)
 
     budgets = await list_budgets(session)
-    if not budgets:
+    lines = [
+        _Line(category=budget.category, monthly_limit=budget.monthly_limit, budget_id=budget.id)
+        for budget in budgets
+    ]
+    lines.extend(await _plan_lines(session, year, month, {budget.category_id for budget in budgets}))
+    if not lines:
         return BudgetStatusResponse(year=year, month=month, items=[])
 
     # A budget on a top-level category covers its subcategories too — the
@@ -87,7 +169,7 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
     # видеть сыр, лежащий двумя уровнями ниже, иначе месяц читался бы как
     # 900 потрачено на дашборде и 0 против собственного бюджета.
     tree = await load_category_tree(session)
-    budget_category_ids = [b.category_id for b in budgets]
+    budget_category_ids = [line.category.id for line in lines]
     children_by_parent: dict[int, list[int]] = defaultdict(list)
     for parent_id in budget_category_ids:
         children_by_parent[parent_id] = tree.descendants_of(parent_id)
@@ -129,24 +211,25 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
         spent_by_category[category_id] += amount
 
     items = []
-    for budget in budgets:
-        spent = spent_by_category.get(budget.category_id, Decimal("0")) + sum(
-            (spent_by_category.get(child_id, Decimal("0")) for child_id in children_by_parent[budget.category_id]),
+    for line in lines:
+        spent = spent_by_category.get(line.category.id, Decimal("0")) + sum(
+            (spent_by_category.get(child_id, Decimal("0")) for child_id in children_by_parent[line.category.id]),
             Decimal("0"),
         )
-        percent = float(spent / budget.monthly_limit * 100) if budget.monthly_limit else 0.0
+        percent = float(spent / line.monthly_limit * 100) if line.monthly_limit else 0.0
         items.append(
             BudgetStatus(
-                budget_id=budget.id,
-                category_id=budget.category_id,
-                category_name=budget.category.name,
-                category_color=budget.category.color,
-                category_icon=budget.category.icon,
-                monthly_limit=budget.monthly_limit,
+                budget_id=line.budget_id,
+                source="budget" if line.budget_id is not None else "plan",
+                category_id=line.category.id,
+                category_name=line.category.name,
+                category_color=line.category.color,
+                category_icon=line.category.icon,
+                monthly_limit=line.monthly_limit,
                 spent=spent,
-                remaining=budget.monthly_limit - spent,
+                remaining=line.monthly_limit - spent,
                 percent=percent,
-                is_over_budget=spent > budget.monthly_limit,
+                is_over_budget=spent > line.monthly_limit,
             )
         )
 

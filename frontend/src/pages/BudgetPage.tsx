@@ -36,6 +36,10 @@ export function BudgetPage() {
   }
 
   function openEditModal(item: BudgetStatus) {
+    // Строка из плана сюда не приходит: у неё вместо кнопки правки ссылка в
+    // «Планирование». Проверка на всякий случай — чтобы будущая кнопка не
+    // открыла окно правки того, чего в бюджетах нет.
+    if (item.budget_id === null) return;
     setEditingBudget({
       id: item.budget_id,
       category_id: item.category_id,
@@ -53,7 +57,7 @@ export function BudgetPage() {
       confirmLabel: t("common.delete"),
       tone: "danger",
     });
-    if (ok) deleteBudget.mutate(item.budget_id);
+    if (ok && item.budget_id !== null) deleteBudget.mutate(item.budget_id);
   }
 
   return (

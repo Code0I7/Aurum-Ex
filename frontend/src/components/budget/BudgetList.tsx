@@ -1,4 +1,5 @@
-import { Pencil, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
@@ -28,7 +29,7 @@ export function BudgetList({ items, onEdit, onDelete }: BudgetListProps) {
         const fillPercent = Math.min(100, item.percent);
 
         return (
-          <li key={item.budget_id} className="py-3">
+          <li key={item.source + item.category_id} className="py-3">
             <div className="flex items-center gap-3">
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
@@ -38,28 +39,51 @@ export function BudgetList({ items, onEdit, onDelete }: BudgetListProps) {
               </span>
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
                 {translateCategoryName(item.category_name)}
+                {/* Откуда лимит. У строки из плана своей записи в бюджетах
+                    нет: цифра приходит из «Планирования» и меняется по
+                    месяцам сама. Пометка нужна, чтобы не искать, почему
+                    строку не получается изменить здесь. */}
+                {item.source === "plan" && (
+                  <span className="ml-2 rounded px-1.5 py-0.5 align-middle text-[11px] font-normal text-text-muted ring-1 ring-border">
+                    {t("budget.fromPlan")}
+                  </span>
+                )}
               </span>
               <span className="shrink-0 text-sm tabular-nums text-text-primary">
                 {formatCurrency(spent)} <span className="text-text-muted">/ {formatCurrency(limit)}</span>
               </span>
-              <span className="flex shrink-0 gap-1">
-                <button
-                  type="button"
-                  aria-label={t("common.edit")}
-                  onClick={() => onEdit(item)}
-                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+              {/* Строка из плана правится в «Планировании», а не здесь:
+                  своей записи у неё нет, и кнопка, ведущая в никуда, хуже
+                  её отсутствия. Ссылка ведёт туда, где эта цифра живёт. */}
+              {item.source === "plan" ? (
+                <Link
+                  to="/planning"
+                  aria-label={t("budget.editInPlanning")}
+                  title={t("budget.editInPlanning")}
+                  className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
                 >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  type="button"
-                  aria-label={t("common.delete")}
-                  onClick={() => onDelete(item)}
-                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </span>
+                  <ExternalLink size={15} />
+                </Link>
+              ) : (
+                <span className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    aria-label={t("common.edit")}
+                    onClick={() => onEdit(item)}
+                    className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("common.delete")}
+                    onClick={() => onDelete(item)}
+                    className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </span>
+              )}
             </div>
             <div className="mt-2 flex items-center gap-2 pl-12">
               <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">

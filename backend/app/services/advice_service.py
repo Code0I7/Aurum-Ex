@@ -13,10 +13,10 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.budget import Budget
 from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
+from app.services.budget_service import get_budget_status
 from app.services.transaction_service import counted_only
 from app.schemas.advice import AdviceItem, AdviceResponse
 from app.services.dashboard_service import get_dashboard_summary
@@ -95,12 +95,20 @@ async def _rising_category_advice(session: AsyncSession, year: int, month: int) 
 
 
 async def _unbudgeted_top_category_advice(session: AsyncSession, year: int, month: int) -> AdviceItem | None:
-    """This month's highest-spending expense category that has no budget."""
+    """This month's highest-spending expense category that has no budget.
+
+    Лимит у категории может быть не только своим: категория с планом
+    получает строку бюджета, выведенную из него (см. budget_service). Совет
+    смотрел только в таблицу бюджетов и продолжал требовать завести бюджет
+    там, где план уже был, — то есть просил завести вторую запись про ту же
+    цифру.
+    """
     current_totals = await _category_expense_totals(session, year, month)
     if not current_totals:
         return None
 
-    budgeted_ids = {row[0] for row in (await session.execute(select(Budget.category_id))).all()}
+    status = await get_budget_status(session, year, month)
+    budgeted_ids = {item.category_id for item in status.items}
 
     for cat_id, amount in sorted(current_totals.items(), key=lambda item: item[1], reverse=True):
         if cat_id in budgeted_ids:

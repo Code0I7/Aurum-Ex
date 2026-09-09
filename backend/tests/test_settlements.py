@@ -211,3 +211,55 @@ async def test_transit_is_not_earnings(client: AsyncClient, account_id):
         await client.get("/dashboard/summary", params={"year": 2026, "month": 4, "range": "month"})
     ).json()
     assert money(summary["real_income"]) == Decimal("0")
+
+
+async def test_a_purchase_on_someone_elses_money_keeps_its_category_but_not_the_spending(
+    client: AsyncClient, account_id
+):
+    """Жена дала тысячу на продукты, он сходил и купил.
+
+    Продукты куплены, чек есть, категория проставлена — но потратил он не
+    свои деньги, и в его тратах этой тысячи быть не должно. Иначе выходит,
+    что он купил продуктов себе, а норма сбережений считается по деньгам,
+    которых он не зарабатывал.
+
+    Пара движений: пришло от жены и ушло в магазин, оба «прошло через
+    меня». Баланс счёта при этом меняется в обе стороны честно.
+    """
+    wife = await _counterparty(client, "Жена")
+    groceries = (await client.get("/categories")).json()
+    groceries_id = next(row["id"] for row in groceries if row["name"] == "Groceries")
+
+    await _move(
+        client, account_id, wife, incoming=True, amount="1000.00", settlement="transit", date="2026-04-05"
+    )
+    spend = await client.post(
+        "/transactions",
+        json={
+            "account_id": account_id,
+            "type": "external_out",
+            "amount": "1000.00",
+            "description": "Продукты на деньги жены",
+            "date": "2026-04-05",
+            "counterparty_id": wife,
+            "settlement_kind": "transit",
+            # Категория у внешнего движения разрешена: она нужна, чтобы
+            # найти покупку потом, а не чтобы попасть в отчёт.
+            "category_id": groceries_id,
+        },
+    )
+    assert spend.status_code == 201, spend.text
+    assert spend.json()["category"]["name"] == "Groceries"
+
+    summary = (
+        await client.get("/dashboard/summary", params={"year": 2026, "month": 4, "range": "month"})
+    ).json()
+    assert money(summary["real_income"]) == Decimal("0")
+    assert money(summary["spent"]) == Decimal("0")
+    # И в круге категорий её тоже нет: это не его трата.
+    assert summary["spending_by_category"] == []
+
+    # Зато в списке она находится по категории — ради этого категория там и
+    # стоит.
+    listing = (await client.get("/transactions", params={"category_id": groceries_id})).json()["items"]
+    assert [row["description"] for row in listing] == ["Продукты на деньги жены"]

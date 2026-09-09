@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select } from "@/components/ui/Input";
+import { Input, Label } from "@/components/ui/Input";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { useCategories } from "@/hooks/useCategories";
 import { useCreateBudget, useUpdateBudget } from "@/hooks/useBudgets";
 import { useTranslation } from "@/lib/i18n";
@@ -18,7 +19,7 @@ interface BudgetFormModalProps {
 }
 
 export function BudgetFormModal({ open, onClose, budget, excludeCategoryIds }: BudgetFormModalProps) {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const { data: categories } = useCategories();
   const createBudget = useCreateBudget();
   const updateBudget = useUpdateBudget();
@@ -27,9 +28,12 @@ export function BudgetFormModal({ open, onClose, budget, excludeCategoryIds }: B
   const [monthlyLimit, setMonthlyLimit] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const availableCategories = (categories ?? [])
-    .filter((category) => category.kind === "expense" && !excludeCategoryIds.includes(category.id))
-    .sort((a, b) => translateCategoryName(a.name).localeCompare(translateCategoryName(b.name), language));
+  // Порядок и дерево строит сам выбиратель — здесь только отбор. Своя
+  // сортировка по имени рассыпала бы ветки: подкатегория вставала бы между
+  // чужими корнями.
+  const availableCategories = (categories ?? []).filter(
+    (category) => category.kind === "expense" && !excludeCategoryIds.includes(category.id)
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -73,13 +77,13 @@ export function BudgetFormModal({ open, onClose, budget, excludeCategoryIds }: B
           ) : availableCategories.length === 0 ? (
             <p className="text-sm text-text-muted">{t("budget.form.noCategoriesAvailable")}</p>
           ) : (
-            <Select id="budget-category" required value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-              {availableCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {translateCategoryName(category.name)}
-                </option>
-              ))}
-            </Select>
+            <CategoryPicker
+              id="budget-category"
+              categories={availableCategories}
+              value={categoryId}
+              onChange={setCategoryId}
+              placeholder={t("budget.form.categoryLabel")}
+            />
           )}
         </div>
 

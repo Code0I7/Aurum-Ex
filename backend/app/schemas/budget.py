@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +26,12 @@ class BudgetStatus(BaseModel):
     """One budgeted category's actual spend for a given month, compared
     against its limit."""
 
-    budget_id: int
+    # None у строки, выведенной из плана: своей записи в бюджетах у неё
+    # нет, править и удалять её надо в «Планировании».
+    budget_id: int | None
+    # Откуда взялся лимит. Строка «из плана» ведёт себя иначе: меняется по
+    # месяцам сама и не редактируется здесь.
+    source: Literal["budget", "plan"] = "budget"
     category_id: int
     category_name: str
     category_color: str

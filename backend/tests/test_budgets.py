@@ -164,3 +164,92 @@ async def test_budget_status_counts_a_split_transactions_share(client: AsyncClie
     items = {item["category_id"]: item for item in resp.json()["items"]}
     assert money(items[groceries]["spent"]) == Decimal("100.00")
     assert money(items[sweets]["spent"]) == Decimal("30.00")
+
+
+async def _plan(client: AsyncClient, category_id: int, amount: str, kind: str = "monthly", **extra) -> dict:
+    payload = {
+        "category_id": category_id,
+        "kind": kind,
+        "amount": amount,
+        "valid_from": "2026-01-01",
+        **extra,
+    }
+    resp = await client.post("/plans", json=payload)
+    assert resp.status_code in (200, 201), resp.text
+    return resp.json()
+
+
+async def test_a_planned_category_gets_a_budget_line_without_a_budget(
+    client: AsyncClient, account_id, categories
+):
+    """Бюджет и планирование описывали одно и то же разными словами, и
+    советы требовали завести бюджет там, где план уже был. Категория с
+    планом теперь получает строку бюджета сама."""
+    groceries = categories["Groceries"]["id"]
+    await _plan(client, groceries, "5000.00")
+
+    body = (await client.get("/budgets/status", params={"year": 2026, "month": 3})).json()
+    line = next(item for item in body["items"] if item["category_id"] == groceries)
+    assert line["source"] == "plan"
+    assert line["budget_id"] is None
+    assert Decimal(line["monthly_limit"]) == Decimal("5000.00")
+
+
+async def test_an_own_budget_wins_over_the_plan(client: AsyncClient, categories):
+    """Правило старшинства: свой бюджет вытесняет плановую строку, а не
+    спорит с ней. Поэтому и предупреждать не о чем."""
+    groceries = categories["Groceries"]["id"]
+    await _plan(client, groceries, "5000.00")
+    await client.post("/budgets", json={"category_id": groceries, "monthly_limit": "4000.00"})
+
+    body = (await client.get("/budgets/status", params={"year": 2026, "month": 3})).json()
+    lines = [item for item in body["items"] if item["category_id"] == groceries]
+    assert len(lines) == 1
+    assert lines[0]["source"] == "budget"
+    assert Decimal(lines[0]["monthly_limit"]) == Decimal("4000.00")
+
+
+async def test_a_plan_line_changes_from_month_to_month(client: AsyncClient, categories):
+    """Плановая строка точнее обычного бюджета: у того один потолок на все
+    месяцы, а разовая покупка стоит только в своём."""
+    shopping = categories["Shopping"]["id"]
+    await _plan(client, shopping, "60000.00", kind="one_off", valid_from="2026-05-01")
+
+    may = (await client.get("/budgets/status", params={"year": 2026, "month": 5})).json()
+    assert any(item["category_id"] == shopping for item in may["items"])
+    june = (await client.get("/budgets/status", params={"year": 2026, "month": 6})).json()
+    assert not any(item["category_id"] == shopping for item in june["items"])
+
+
+async def test_income_plans_never_become_budget_lines(client: AsyncClient, categories):
+    """План на зарплату — ожидание дохода, а не потолок траты. Полоса
+    «истрачено 96%» для него означала бы обратное происходящему."""
+    salary = categories["Salary"]["id"]
+    await _plan(client, salary, "80000.00")
+
+    body = (await client.get("/budgets/status", params={"year": 2026, "month": 3})).json()
+    assert not any(item["category_id"] == salary for item in body["items"])
+
+
+async def test_advice_stops_asking_for_a_budget_a_plan_already_covers(
+    client: AsyncClient, account_id, categories
+):
+    """Совет смотрел только в таблицу бюджетов и просил завести вторую
+    запись про ту же цифру."""
+    groceries = categories["Groceries"]["id"]
+    await _plan(client, groceries, "5000.00")
+    await client.post(
+        "/transactions",
+        json={
+            "account_id": account_id,
+            "type": "expense",
+            "amount": "4000.00",
+            "description": "Продукты",
+            "date": "2026-03-10",
+            "category_id": groceries,
+        },
+    )
+
+    advice = (await client.get("/advice", params={"year": 2026, "month": 3})).json()
+    unbudgeted = [item for item in advice["items"] if item["key"] == "unbudgeted_top_category"]
+    assert all(item["params"]["category"] != "Groceries" for item in unbudgeted)

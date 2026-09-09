@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftRight, ChevronDown, ChevronRight, GripVertical, Pencil, SquareDivide, Trash2 } from "lucide-react";
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
@@ -83,6 +83,7 @@ export function TransactionsGrid({
   // Какие группы раскрыты. По ключу группы, а не по индексу: список
   // перерисовывается после каждой правки, и индекс раскрыл бы соседа.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const tableRef = useRef<HTMLTableElement>(null);
   const groups = useMemo(() => groupTransactions(items, groupRepeats), [items, groupRepeats]);
 
   // Итог по каждому дню — то, что в банковских выписках стоит в шапке дня.
@@ -150,6 +151,46 @@ export function TransactionsGrid({
   );
 
   const { drag, arm, move, end, consumeClickSuppression } = useRowDrag(handleDrop);
+
+  // Прокрутка таблицы вбок и её ползунок внизу экрана — два элемента,
+  // показывающих одно и то же положение, поэтому их приходится держать в
+  // согласии вручную. Флаг гасит отдачу: прокрутка одного двигает другой,
+  // а тот сообщал бы о прокрутке обратно, и получалось бы дрожание.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const syncing = useRef(false);
+  const [tableWidth, setTableWidth] = useState(0);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const table = tableRef.current;
+    const box = scrollRef.current;
+    if (!table || !box) return;
+    // Ширина считается наблюдателем, а не при отрисовке: она меняется от
+    // набора колонок, от длины описаний и от размера окна, и каждый из этих
+    // случаев иначе пришлось бы ловить отдельно.
+    const observer = new ResizeObserver(() => {
+      setTableWidth(table.scrollWidth);
+      setOverflows(table.scrollWidth > box.clientWidth + 1);
+    });
+    observer.observe(table);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [columns.length, items.length]);
+
+  const syncFromTable = () => {
+    if (syncing.current) return;
+    syncing.current = true;
+    if (railRef.current && scrollRef.current) railRef.current.scrollLeft = scrollRef.current.scrollLeft;
+    syncing.current = false;
+  };
+
+  const syncFromRail = () => {
+    if (syncing.current) return;
+    syncing.current = true;
+    if (railRef.current && scrollRef.current) scrollRef.current.scrollLeft = railRef.current.scrollLeft;
+    syncing.current = false;
+  };
 
   // День перетаскиваемой строки: только внутри него разрешено
   // переставлять, и только там показывается место вставки.
@@ -270,8 +311,9 @@ export function TransactionsGrid({
   };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-max border-collapse text-sm">
+    <div className="relative">
+      <div ref={scrollRef} className="overflow-x-auto" onScroll={syncFromTable}>
+      <table ref={tableRef} className="w-full min-w-max border-collapse text-sm">
         <thead>
           <tr className="border-b border-gridline text-left">
             {columns.map((column) => (
@@ -562,6 +604,29 @@ export function TransactionsGrid({
           })}
         </tbody>
       </table>
+      </div>
+
+      {/* Ползунок, прилипший к нижнему краю экрана.
+          Прокрутка у таблицы была и раньше, но её полоса — у нижнего края
+          самой таблицы, а таблица длиной в месяц операций уходит далеко за
+          экран. Чтобы добраться до полосы, приходилось прокручивать
+          страницу до конца списка; вместо этого люди тянули страницу вбок,
+          и вкладки с кнопками уезжали за край.
+
+          Снизу, а не сверху: сверху уже висит шапка приложения, и два
+          прилипших элемента спорили бы за место. Появляется только когда
+          таблица действительно шире экрана — полоса прокрутки под тем, что
+          и так помещается, лишь занимает место. */}
+      {overflows && (
+        <div
+          ref={railRef}
+          onScroll={syncFromRail}
+          className="sticky bottom-0 z-10 overflow-x-auto rounded-b-xl border-t border-gridline bg-surface-1/95 backdrop-blur"
+          aria-hidden
+        >
+          <div style={{ width: tableWidth }} className="h-2.5" />
+        </div>
+      )}
     </div>
   );
 }

@@ -634,7 +634,10 @@ export interface BudgetInput {
 }
 
 export interface BudgetStatus {
-  budget_id: number;
+  // null у строки, выведенной из плана: своей записи в бюджетах нет,
+  // править и удалять её надо в «Планировании».
+  budget_id: number | null;
+  source: "budget" | "plan";
   category_id: number;
   category_name: string;
   category_color: string;

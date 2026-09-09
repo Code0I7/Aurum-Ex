@@ -556,6 +556,30 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               </Select>
               <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementHint")}</p>
             </div>
+
+            {/* Категория у движения с человеком. Раньше её здесь не было
+                вовсе, и покупку на чужие деньги нельзя было ни на что
+                повесить — оставалось писать «продукты» в описание.
+                Необязательна: у «занял до зарплаты» ей взяться неоткуда.
+
+                В траты и в круг категорий такая запись по-прежнему не
+                попадает — она и не трата: деньги были не свои. Категория
+                здесь — чтобы найти покупку потом и увидеть её в списке
+                рядом с остальными продуктовыми. */}
+            <div>
+              <Label htmlFor="settlement-category">{t("transactions.form.categoryLabel")}</Label>
+              <CategoryPicker
+                id="settlement-category"
+                categories={relevantCategories}
+                value={categoryRows[0]?.category_id ?? ""}
+                onChange={(value) =>
+                  setCategoryRows((prev) => [{ ...(prev[0] ?? emptySplitRow()), category_id: value }])
+                }
+                placeholder={t("transactions.form.noCategory")}
+                emptyLabel={t("transactions.form.noCategory")}
+              />
+              <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementCategoryHint")}</p>
+            </div>
           </div>
         ) : form.type === "transfer" ? (
           <div>
