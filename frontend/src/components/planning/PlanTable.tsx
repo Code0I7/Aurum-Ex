@@ -97,7 +97,6 @@ function valueOf(cell: PlanMonthCell, mode: Mode): number {
 }
 
 function BodyRow({ row, mode }: { row: PlanRow; mode: Mode }) {
-  const { t } = useTranslation();
   const total =
     mode === "planned"
       ? Number(row.planned_total)
@@ -107,24 +106,21 @@ function BodyRow({ row, mode }: { row: PlanRow; mode: Mode }) {
 
   return (
     <tr className="border-b border-border/40">
-      {/* Путь целиком, а не имя листа: план на подкатегории встаёт в
-          таблицу рядом с корневыми строками, и «Иван» сам по себе не
-          говорит, чей это доход и где он лежит.
+      {/* Вложенность отступом, как на вкладке категорий, а не путём в
+          каждой строке: «Продукты · Молочное · Сыр» в узкой колонке
+          обрезается ровно на том конце, который и нужен. Путь остаётся
+          подсказкой при наведении.
 
-          Строка без плана помечена: таблица показывает не только
-          запланированное, но и всё, где были настоящие деньги, — иначе
-          незапланированная трата была бы не видна именно там, где её и
-          нужно заметить. Но человек, не заводивший ни одного плана, видит
-          список строк, которых не создавал, и без пометки не понимает,
-          откуда они. */}
+          Отступ — только у этой ячейки. Числа стоят в своих ячейках и с
+          места не двигаются: сдвиг всей строки развалил бы колонку месяцев,
+          по которой таблицу и читают сверху вниз. */}
       <th
         className="sticky left-0 z-10 truncate bg-surface-1 py-2 pr-3 text-left font-normal"
         title={row.path}
+        style={{ paddingLeft: row.depth * 14 }}
       >
-        {translateCategoryName(row.path)}
-        {!row.has_plan && (
-          <span className="ml-2 text-xs text-text-muted">{t("planning.noPlanRow")}</span>
-        )}
+        {row.depth > 0 && <span className="mr-1 text-text-muted">└</span>}
+        {translateCategoryName(row.name)}
       </th>
       {row.months.map((cell) => (
         <Cell key={cell.month} value={valueOf(cell, mode)} mode={mode} isIncome={row.kind === "income"} />

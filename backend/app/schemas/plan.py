@@ -76,12 +76,12 @@ class MonthCellOut(BaseModel):
 class PlanRowOut(BaseModel):
     category_id: int | None
     name: str
-    # «Зарплата · Иван» — путь до корня ветки: имена подкатегорий не
-    # уникальны, и строка плана на подкатегории встаёт рядом с корневыми.
+    # «Зарплата · Иван» — путь до корня ветки, для подсказки при
+    # наведении: имена подкатегорий не уникальны.
     path: str
+    # Глубина в дереве: 0 — корень. По ней рисуется отступ.
+    depth: int
     kind: CategoryKind
-    # False — строка появилась из-за настоящих денег, а не из-за плана.
-    has_plan: bool
     months: list[MonthCellOut]
     planned_total: Decimal
     actual_total: Decimal

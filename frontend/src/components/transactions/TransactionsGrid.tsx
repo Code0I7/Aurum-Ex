@@ -3,6 +3,7 @@ import { ArrowLeftRight, ChevronDown, ChevronRight, GripVertical, Pencil, Square
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
 import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
+import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
 import { formatWorkCost, rateForDate } from "@/lib/hours";
 import { useHourlyRates } from "@/hooks/usePlans";
@@ -237,12 +238,30 @@ export function TransactionsGrid({
         );
 
       case "category": {
+        // Значок берётся у выбранной категории, а не у корня ветки: у
+        // «Продукты · Молочное · Сыр» родительские значки ничего не
+        // добавляют, а колонка от трёх иконок подряд превращается в
+        // мельтешение. Значок один и стоит перед путём.
         if (tx.splits.length > 0) {
+          // У разбивки значка нет: категорий несколько, и любая
+          // выбранная означала бы, что остальные менее важны.
           return tx.splits
             .map((split) => (split.category ? translateCategoryName(split.category.name) : "?"))
             .join(" + ");
         }
-        return tx.category ? categoryPath(tx.category, categories) : "—";
+        if (!tx.category) return "—";
+        const CategoryIcon = getCategoryIcon(tx.category.icon);
+        return (
+          <span className="flex items-center gap-1.5">
+            <CategoryIcon
+              size={13}
+              className="shrink-0"
+              style={{ color: tx.category.color }}
+              aria-hidden
+            />
+            <span className="truncate">{categoryPath(tx.category, categories)}</span>
+          </span>
+        );
       }
 
       case "account":

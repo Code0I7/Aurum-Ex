@@ -874,10 +874,10 @@ export interface PlanMonthCell {
 }
 
 export interface PlanRow {
-  /** «Зарплата · Иван» — путь до корня ветки. */
+  /** «Зарплата · Иван» — путь до корня ветки, для подсказки. */
   path: string;
-  /** false — строка появилась из-за настоящих денег, а не из-за плана. */
-  has_plan: boolean;
+  /** Глубина в дереве: 0 — корень. По ней рисуется отступ. */
+  depth: number;
   category_id: number | null;
   name: string;
   kind: CategoryKind;

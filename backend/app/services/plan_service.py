@@ -71,20 +71,13 @@ class PlanRow:
 
     category_id: int | None
     name: str
-    # Путь до корня ветки: «Зарплата · Иван». Имена подкатегорий не
-    # уникальны, а строка плана на подкатегории встаёт в таблицу рядом с
-    # корневыми — без пути «Иван» ничего не говорит о том, где он лежит.
+    # Путь до корня ветки: «Зарплата · Иван». Показывается подсказкой при
+    # наведении — в самой строке стоит короткое имя с отступом по глубине,
+    # потому что путь целиком в каждой строке делает колонку нечитаемой.
     path: str
+    # Глубина в дереве категорий: 0 — корень. Отступ рисуется по ней.
+    depth: int
     kind: CategoryKind
-    # Стоит ли на этой категории хоть один план.
-    #
-    # Строка появляется в таблице и без плана: незапланированная трата — это
-    # ровно то, что планирование должно показывать, и прятать её значило бы
-    # показывать вместо года его удобную половину. Но человек, не заводивший
-    # ни одного плана, видит таблицу, полную строк, которых он не создавал, —
-    # и справедливо не понимает, откуда они. Признак нужен, чтобы интерфейс
-    # мог их различать.
-    has_plan: bool = False
     months: list[MonthCell] = field(default_factory=list)
 
     @property
@@ -212,15 +205,14 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
                 # спрятать его значило бы недосчитать итог.
                 name=category.name if category else "—",
                 path=path_of(category_id) if category else "—",
+                depth=len(tree.ancestors_of(category_id)) if category else 0,
                 kind=category.kind if category else CategoryKind.EXPENSE,
                 months=[MonthCell(year=year, month=month) for month in range(1, 13)],
             )
         return rows[category_id]
 
     for (category_id, month), amount in planned.items():
-        entry = row_for(category_id)
-        entry.has_plan = True
-        entry.months[month - 1].planned += amount
+        row_for(category_id).months[month - 1].planned += amount
 
     # Категории, на которых вообще стоит хоть один план: по ним решается,
     # к какой строке отнести факт.
@@ -259,7 +251,12 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
     ordered = sorted(
         rows.values(),
         # Доходы сверху: год читается как «сколько пришло, потом куда ушло».
-        key=lambda row: (row.kind is not CategoryKind.INCOME, row.name),
+        #
+        # Внутри — по полному пути, а не по имени: так подкатегория встаёт
+        # сразу под своим родителем, и отступ в таблице совпадает с
+        # порядком строк. Сортировка по имени раскидывала ветку по всему
+        # списку, и отступ читался как случайный.
+        key=lambda row: (row.kind is not CategoryKind.INCOME, row.path),
     )
 
     income_rows = [row for row in ordered if row.kind is CategoryKind.INCOME]

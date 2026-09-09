@@ -234,7 +234,7 @@ async def test_valid_to_before_valid_from_is_rejected(client: AsyncClient):
     assert resp.status_code == 422
 
 
-async def test_a_row_carries_its_full_path_and_whether_it_is_planned(
+async def test_a_row_carries_its_path_and_its_depth(
     client: AsyncClient, account_id, categories
 ):
     """План на подкатегории встаёт в таблицу рядом с корневыми строками.
@@ -242,10 +242,9 @@ async def test_a_row_carries_its_full_path_and_whether_it_is_planned(
     Без пути «Иван» ничего не говорит о том, чей это доход и где он
     лежит, — а имена подкатегорий не уникальны.
 
-    Второе: строка появляется в таблице и без плана, потому что
-    незапланированная трата — ровно то, что планирование должно
-    показывать. Но человек, не заводивший ни одного плана, видит список
-    строк, которых не создавал, и должен их отличать.
+    Глубина отдаётся отдельно: в самой строке стоит короткое имя с
+    отступом по ней, как на вкладке категорий, а путь остаётся подсказкой
+    при наведении.
     """
     salary = categories["Salary"]["id"]
     ivan = (
@@ -271,8 +270,8 @@ async def test_a_row_carries_its_full_path_and_whether_it_is_planned(
     # Пока плана нет — строка есть, но помечена как «только факт».
     before = (await client.get("/plans/overview", params={"year": 2026})).json()
     row = next(item for item in before["rows"] if item["category_id"] == salary)
-    assert row["has_plan"] is False
     assert row["path"] == "Salary"
+    assert row["depth"] == 0
 
     assert (
         await client.post(
@@ -288,8 +287,11 @@ async def test_a_row_carries_its_full_path_and_whether_it_is_planned(
 
     after = (await client.get("/plans/overview", params={"year": 2026})).json()
     planned = next(item for item in after["rows"] if item["category_id"] == ivan["id"])
-    assert planned["has_plan"] is True
     assert planned["path"] == "Salary · Иван"
+    assert planned["depth"] == 1
+    # В строке — короткое имя: путь целиком в узкой колонке обрезается ровно
+    # на том конце, который и нужен.
+    assert planned["name"] == "Иван"
 
 
 async def test_a_plan_on_an_income_subcategory_does_not_flip_the_totals(
