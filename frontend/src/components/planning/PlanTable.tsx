@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency, getMonthLabels } from "@/lib/format";
 import { getLanguage } from "@/lib/i18n";
+import { translateCategoryName } from "@/lib/categoryLabels";
 import type { PlanMonthCell, PlanOverview, PlanRow } from "@/types";
 
 interface PlanTableProps {
@@ -96,6 +97,7 @@ function valueOf(cell: PlanMonthCell, mode: Mode): number {
 }
 
 function BodyRow({ row, mode }: { row: PlanRow; mode: Mode }) {
+  const { t } = useTranslation();
   const total =
     mode === "planned"
       ? Number(row.planned_total)
@@ -105,7 +107,25 @@ function BodyRow({ row, mode }: { row: PlanRow; mode: Mode }) {
 
   return (
     <tr className="border-b border-border/40">
-      <th className="sticky left-0 z-10 truncate bg-surface-1 py-2 pr-3 text-left font-normal">{row.name}</th>
+      {/* Путь целиком, а не имя листа: план на подкатегории встаёт в
+          таблицу рядом с корневыми строками, и «Иван» сам по себе не
+          говорит, чей это доход и где он лежит.
+
+          Строка без плана помечена: таблица показывает не только
+          запланированное, но и всё, где были настоящие деньги, — иначе
+          незапланированная трата была бы не видна именно там, где её и
+          нужно заметить. Но человек, не заводивший ни одного плана, видит
+          список строк, которых не создавал, и без пометки не понимает,
+          откуда они. */}
+      <th
+        className="sticky left-0 z-10 truncate bg-surface-1 py-2 pr-3 text-left font-normal"
+        title={row.path}
+      >
+        {translateCategoryName(row.path)}
+        {!row.has_plan && (
+          <span className="ml-2 text-xs text-text-muted">{t("planning.noPlanRow")}</span>
+        )}
+      </th>
       {row.months.map((cell) => (
         <Cell key={cell.month} value={valueOf(cell, mode)} mode={mode} isIncome={row.kind === "income"} />
       ))}

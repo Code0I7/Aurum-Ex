@@ -66,7 +66,9 @@ async def read_plan_overview(
             PlanRowOut(
                 category_id=row.category_id,
                 name=row.name,
+                path=row.path,
                 kind=row.kind,
+                has_plan=row.has_plan,
                 months=[_cell(cell) for cell in row.months],
                 planned_total=row.planned_total,
                 actual_total=row.actual_total,

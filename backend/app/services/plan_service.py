@@ -71,7 +71,20 @@ class PlanRow:
 
     category_id: int | None
     name: str
+    # Путь до корня ветки: «Зарплата · Иван». Имена подкатегорий не
+    # уникальны, а строка плана на подкатегории встаёт в таблицу рядом с
+    # корневыми — без пути «Иван» ничего не говорит о том, где он лежит.
+    path: str
     kind: CategoryKind
+    # Стоит ли на этой категории хоть один план.
+    #
+    # Строка появляется в таблице и без плана: незапланированная трата — это
+    # ровно то, что планирование должно показывать, и прятать её значило бы
+    # показывать вместо года его удобную половину. Но человек, не заводивший
+    # ни одного плана, видит таблицу, полную строк, которых он не создавал, —
+    # и справедливо не понимает, откуда они. Признак нужен, чтобы интерфейс
+    # мог их различать.
+    has_plan: bool = False
     months: list[MonthCell] = field(default_factory=list)
 
     @property
@@ -182,6 +195,14 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
     rows: dict[int | None, PlanRow] = {}
 
 
+    def path_of(category_id: int) -> str:
+        # ancestors_of идёт снизу вверх; для подписи нужен порядок сверху.
+        chain = [
+            categories[row].name for row in reversed(tree.ancestors_of(category_id)) if row in categories
+        ]
+        chain.append(categories[category_id].name)
+        return " · ".join(chain)
+
     def row_for(category_id: int | None) -> PlanRow:
         if category_id not in rows:
             category = categories.get(category_id) if category_id is not None else None
@@ -190,13 +211,16 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
                 # План без категории — «прочее»: он есть, деньги обещаны, и
                 # спрятать его значило бы недосчитать итог.
                 name=category.name if category else "—",
+                path=path_of(category_id) if category else "—",
                 kind=category.kind if category else CategoryKind.EXPENSE,
                 months=[MonthCell(year=year, month=month) for month in range(1, 13)],
             )
         return rows[category_id]
 
     for (category_id, month), amount in planned.items():
-        row_for(category_id).months[month - 1].planned += amount
+        entry = row_for(category_id)
+        entry.has_plan = True
+        entry.months[month - 1].planned += amount
 
     # Категории, на которых вообще стоит хоть один план: по ним решается,
     # к какой строке отнести факт.
