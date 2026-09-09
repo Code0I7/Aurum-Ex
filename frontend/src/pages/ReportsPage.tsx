@@ -16,17 +16,13 @@ import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/date
 import { useSessionState } from "@/hooks/useSessionState";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
-import {
-  buildHierarchicalCategories,
-  categoryOptionPrefix,
-  translateCategoryName,
-} from "@/lib/categoryLabels";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import type { Transaction } from "@/types";
 
 const PAGE_SIZE = 20;
 
 export function ReportsPage() {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const now = new Date();
   const RANGE_OPTIONS: Array<{ value: RangePreset; label: string }> = [
     { value: "all", label: t("reports.rangeAll") },
@@ -82,14 +78,11 @@ export function ReportsPage() {
   // Hierarchical within each group (a subcategory right under its own
   // parent, indented) — a bare "Sweets" option next to top-level categories
   // reads as if it were one itself.
-  const expenseCategories = buildHierarchicalCategories(
-    categories?.filter((category) => category.kind === "expense") ?? [],
-    language
-  );
-  const incomeCategories = buildHierarchicalCategories(
-    categories?.filter((category) => category.kind === "income") ?? [],
-    language
-  );
+  // Расходы и доходы одним списком с заголовками разделов: дерево
+  // выстраивает сам выбиратель, ему нужен только вид для подписи.
+  const filterCategories = (categories ?? [])
+    .filter((category) => category.kind === "expense" || category.kind === "income")
+    .map((category) => ({ ...category, group: t(category.kind === "expense" ? "reports.expenseGroup" : "reports.incomeGroup") }));
   const totalPages = transactions ? Math.max(1, Math.ceil(transactions.total / PAGE_SIZE)) : 1;
 
   function handleEdit(transaction: Transaction) {
@@ -111,35 +104,16 @@ export function ReportsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-xs flex-1">
           <Label htmlFor="report-category">{t("reports.categoryLabel")}</Label>
-          <Select
+          <CategoryPicker
             id="report-category"
-            value={categoryId ?? ""}
-            onChange={(event) => {
-              setCategoryId(Number(event.target.value));
+            categories={filterCategories}
+            value={categoryId ? String(categoryId) : ""}
+            onChange={(value) => {
+              setCategoryId(Number(value));
               setPage(1);
             }}
-          >
-            {expenseCategories.length > 0 && (
-              <optgroup label={t("reports.expenseGroup")}>
-                {expenseCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {categoryOptionPrefix(category.depth)}
-                    {translateCategoryName(category.name)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {incomeCategories.length > 0 && (
-              <optgroup label={t("reports.incomeGroup")}>
-                {incomeCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {categoryOptionPrefix(category.depth)}
-                    {translateCategoryName(category.name)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </Select>
+            placeholder={t("reports.categoryLabel")}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <PillSelector

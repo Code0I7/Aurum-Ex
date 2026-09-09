@@ -28,11 +28,7 @@ import { useTags } from "@/hooks/useTags";
 import type { TransactionSort } from "@/api/transactions";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
-import {
-  buildHierarchicalCategories,
-  categoryOptionPrefix,
-  translateCategoryName,
-} from "@/lib/categoryLabels";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import type { Transaction, TransactionType } from "@/types";
 
 
@@ -54,7 +50,7 @@ function parseYearParam(value: string | null, fallback: number): number {
 }
 
 export function TransactionsPage() {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const now = new Date();
   // Deep-linked from the Dashboard's "All transactions" link, which carries
   // the month/year the user was already looking at (?year=&month=) so this
@@ -216,14 +212,12 @@ export function TransactionsPage() {
   // Grouped by kind and hierarchical within each group (a subcategory right
   // under its own parent, indented) — a bare "Sweets" option next to
   // top-level categories reads as if it were one itself.
-  const expenseCategoryOptions = buildHierarchicalCategories(
-    (categories ?? []).filter((category) => category.kind === "expense"),
-    language
-  );
-  const incomeCategoryOptions = buildHierarchicalCategories(
-    (categories ?? []).filter((category) => category.kind === "income"),
-    language
-  );
+  const filterCategories = (categories ?? [])
+    .filter((category) => category.kind === "expense" || category.kind === "income")
+    .map((category) => ({
+      ...category,
+      group: t(category.kind === "expense" ? "reports.expenseGroup" : "reports.incomeGroup"),
+    }));
 
   function openCreateModal() {
     setEditingTransaction(null);
@@ -386,36 +380,17 @@ export function TransactionsPage() {
             </option>
           ))}
         </Select>
-        <Select
+        <CategoryPicker
+          categories={filterCategories}
           value={categoryId}
-          onChange={(event) => {
-            setCategoryId(event.target.value);
+          onChange={(value) => {
+            setCategoryId(value);
             setPage(1);
           }}
           className="sm:w-56"
-        >
-          <option value="">{t("transactions.allCategories")}</option>
-          {expenseCategoryOptions.length > 0 && (
-            <optgroup label={t("reports.expenseGroup")}>
-              {expenseCategoryOptions.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {categoryOptionPrefix(category.depth)}
-                  {translateCategoryName(category.name)}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {incomeCategoryOptions.length > 0 && (
-            <optgroup label={t("reports.incomeGroup")}>
-              {incomeCategoryOptions.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {categoryOptionPrefix(category.depth)}
-                  {translateCategoryName(category.name)}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </Select>
+          placeholder={t("transactions.allCategories")}
+          emptyLabel={t("transactions.allCategories")}
+        />
         {tags && tags.length > 0 && (
           <Select
             value={tagId}

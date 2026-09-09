@@ -3,6 +3,8 @@ import { Plus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
+import { Combobox } from "@/components/ui/Combobox";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { ItemsEditor } from "@/components/transactions/ItemsEditor";
 import {
   useCounterparties,
@@ -19,7 +21,6 @@ import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransacti
 import { useTranslation } from "@/lib/i18n";
 import {
   buildHierarchicalCategories,
-  categoryOptionPrefix,
   translateCategoryName,
 } from "@/lib/categoryLabels";
 import { fetchSimilarTransactions } from "@/api/transactions";
@@ -228,6 +229,18 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const topLevelCategories = relevantCategories.filter((category) => !category.indented);
   const baseChildCategories = kindCategories.filter((category) => category.parent_id === Number(form.category_id));
   const categorySelectOptions = splitMode ? topLevelCategories : relevantCategories;
+  // Пункты разбиения: сама выбранная категория плюс её прямые дети.
+  // Собирается здесь, а не в разметке, чтобы список строился один раз на
+  // все строки разбиения, а не заново на каждую.
+  const splitCategoryOptions = form.category_id
+    ? [
+        { value: form.category_id, label: t("transactions.form.splitDirectOption") },
+        ...baseChildCategories.map((category) => ({
+          value: String(category.id),
+          label: translateCategoryName(category.name),
+        })),
+      ]
+    : [];
 
   function toggleSplitMode() {
     setSplitMode((prev) => {
@@ -558,19 +571,14 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               </button>
             </div>
 
-            <Select
+            <CategoryPicker
               id="category"
+              categories={categorySelectOptions}
               value={form.category_id}
-              onChange={(event) => handleBaseCategoryChange(event.target.value)}
-            >
-              <option value="">{t("transactions.form.noCategory")}</option>
-              {categorySelectOptions.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {categoryOptionPrefix(category.depth)}
-                  {translateCategoryName(category.name)}
-                </option>
-              ))}
-            </Select>
+              onChange={handleBaseCategoryChange}
+              placeholder={t("transactions.form.noCategory")}
+              emptyLabel={t("transactions.form.noCategory")}
+            />
 
             {splitMode && (
               <div className="mt-2 space-y-2">
@@ -584,25 +592,17 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                 {splitRows.map((row) => (
                   <div key={row.key} className="space-y-1.5 rounded-lg border border-border bg-surface-1 p-2">
                     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-                      <Select
-                        aria-label={t("transactions.form.splitCategoryPlaceholder")}
+                      <Combobox
                         className="sm:flex-1"
+                        // Сама выбранная категория первым пунктом, а следом
+                        // её подкатегории: «остальное сюда же» — самая
+                        // частая строка разбиения.
+                        options={splitCategoryOptions}
                         value={row.category_id}
                         disabled={!form.category_id}
-                        onChange={(event) => updateSplitRow(row.key, { category_id: event.target.value })}
-                      >
-                        <option value="" disabled>
-                          {t("transactions.form.splitCategoryPlaceholder")}
-                        </option>
-                        {form.category_id && (
-                          <option value={form.category_id}>{t("transactions.form.splitDirectOption")}</option>
-                        )}
-                        {baseChildCategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {translateCategoryName(category.name)}
-                          </option>
-                        ))}
-                      </Select>
+                        onChange={(value) => updateSplitRow(row.key, { category_id: value })}
+                        placeholder={t("transactions.form.splitCategoryPlaceholder")}
+                      />
                       <div className="flex items-center gap-1.5">
                         <Input
                           type="number"

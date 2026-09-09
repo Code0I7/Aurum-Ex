@@ -23,17 +23,18 @@
 и «Магазин у дома ` (опечатка) в списке выглядят одинаково, а стоят за ними
 триста покупок и ноль.
 """
+from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.models.account import Bank
 from app.models.counterparty import Counterparty
-from app.models.enums import UnitKind
+from app.models.enums import TransactionType, UnitKind
 from app.models.participant import Participant
 from app.models.store import Store
 from app.models.transaction import Transaction
@@ -50,6 +51,7 @@ from app.schemas.directories import (
     StoreRead,
     StoreUpdate,
 )
+from app.services.transaction_service import counted_only
 
 router = APIRouter(tags=["directories"])
 
@@ -101,12 +103,43 @@ async def _usage_counts(session: AsyncSession, column) -> dict[int, int]:
     return {item_id: count for item_id, count in rows}
 
 
-def _with_usage(items, usage: dict[int, int], schema):
+async def _spend_by_store(session: AsyncSession) -> dict[int, tuple[Decimal, Decimal]]:
+    """Сколько потрачено в каждом магазине: за всё время и за скользящий год.
+
+    Скользящий год, а не календарный — как и в товарах: в январе
+    календарный показывал бы траты за две недели и выглядел бы падением
+    там, где его нет.
+
+    Считаются только расходы: перевод на карту магазина деньгами в нём не
+    является, а возврат уменьшать сумму не должен — покупка всё равно была.
+    """
+    year_ago = date.today() - timedelta(days=365)
+    rows = (
+        await session.execute(
+            select(
+                Transaction.store_id,
+                func.sum(Transaction.amount),
+                func.sum(case((Transaction.date >= year_ago, Transaction.amount), else_=0)),
+            )
+            .where(
+                Transaction.store_id.is_not(None),
+                Transaction.type == TransactionType.EXPENSE,
+                counted_only(),
+            )
+            .group_by(Transaction.store_id)
+        )
+    ).all()
+    return {store_id: (Decimal(total or 0), Decimal(year or 0)) for store_id, total, year in rows}
+
+
+def _with_usage(items, usage: dict[int, int], schema, extra: dict[int, dict] | None = None):
     # model_validate, а не распаковка __dict__: у объекта модели там лежит
     # ещё и служебное состояние SQLAlchemy, на котором конструктор схемы
     # спотыкается.
     return [
-        schema.model_validate(item).model_copy(update={"usage": usage.get(item.id, 0)})
+        schema.model_validate(item).model_copy(
+            update={"usage": usage.get(item.id, 0), **((extra or {}).get(item.id) or {})}
+        )
         for item in items
     ]
 
@@ -172,7 +205,13 @@ async def list_stores(include_archived: bool = False, session: AsyncSession = De
     if not include_archived:
         stmt = stmt.where(Store.is_archived.is_(False))
     items = list((await session.execute(stmt)).scalars().all())
-    return _with_usage(items, await _usage_counts(session, Transaction.store_id), StoreRead)
+    spend = await _spend_by_store(session)
+    return _with_usage(
+        items,
+        await _usage_counts(session, Transaction.store_id),
+        StoreRead,
+        {store_id: {"spent_total": total, "spent_year": year} for store_id, (total, year) in spend.items()},
+    )
 
 
 @router.post("/stores", response_model=StoreRead, status_code=201)

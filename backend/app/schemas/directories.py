@@ -3,6 +3,8 @@
 Банки описаны в schemas/account.py — они там нужны вложенными в счёт, и
 разносить их пришлось бы через импорт по кругу.
 """
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import ParticipantKind
@@ -61,6 +63,13 @@ class StoreRead(StoreBase):
     # вслепую: две почти одинаковые строки в списке выглядят одинаково,
     # а стоят за ними триста покупок и ноль.
     usage: int = 0
+    # Сколько денег ушло в этот магазин: за всё время и за скользящий год.
+    #
+    # Число покупок рядом ничего не объясняет: сорок заходов в булочную и
+    # четыре заказа на маркетплейсе выглядят так, будто дело в булочной.
+    # Суммы переворачивают картину — ради этого столбец и нужен.
+    spent_total: Decimal = Decimal("0")
+    spent_year: Decimal = Decimal("0")
 
 class CounterpartyBase(BaseModel):
     name: str = Field(min_length=1, max_length=150)

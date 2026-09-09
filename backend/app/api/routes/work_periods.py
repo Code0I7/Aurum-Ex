@@ -94,15 +94,17 @@ async def delete_work_period(period_id: int, session: AsyncSession = Depends(get
 
 
 class HourlyRates(BaseModel):
-    """Ставка за час по годам и в среднем.
+    """Ставка за час по месяцам и в среднем.
 
-    По годам, а не одной цифрой: за четыре года заработок меняется втрое.
-    И не по месяцам: помесячно цифра оказывается шумом — доход приходит
-    рывками, а часы в исходной таблице были годовыми.
+    Ставка месяца — это скользящее окно в три месяца, заканчивающееся им
+    самим: одного месяца мало, потому что аванс и зарплата разъезжаются, а
+    календарный год смазывает рост заработка и упирается в январь, где
+    окно состоит из одного дня (см. services/hourly_service.py).
     """
 
-    # Ключ — год строкой: интерфейс отрезает его от даты операции напрямую.
-    years: dict[str, str]
+    # Ключ — «год-месяц» строкой: интерфейс отрезает его от даты операции
+    # напрямую, без разбора даты и без часовых поясов.
+    months: dict[str, str]
     # None, когда часов не введено вовсе: выдумывать ставку хуже, чем
     # промолчать.
     overall: str | None
@@ -111,4 +113,4 @@ class HourlyRates(BaseModel):
 @router.get("/hourly-rates", response_model=HourlyRates)
 async def read_hourly_rates(session: AsyncSession = Depends(get_session)) -> HourlyRates:
     rates = await get_hourly_rates(session)
-    return HourlyRates(years=rates["years"], overall=rates["overall"])
+    return HourlyRates(months=rates["months"], overall=rates["overall"])

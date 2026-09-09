@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { HelpBadge } from "@/components/ui/HelpBadge";
 import { Input, Label } from "@/components/ui/Input";
 import { suggestProducts } from "@/api/products";
-import { useUnits } from "@/hooks/useProducts";
+import { useCreateProduct, useUnits } from "@/hooks/useProducts";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import type { Product, TransactionItemInput, Unit } from "@/types";
@@ -103,7 +103,14 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                 <div className="min-w-0 flex-1">
                   <ProductNameField
                     value={item.name}
-                    onChange={(name) => update(index, { name })}
+                    bound={item.product_id != null}
+                    // Единица и категория строки переезжают в заводимый
+                    // товар: человек их только что указал, и спрашивать
+                    // второй раз в справочнике незачем.
+                    unitId={item.unit_id ?? null}
+                    categoryId={item.category_id ?? null}
+                    onCreated={(product) => update(index, { name: product.name, product_id: product.id })}
+                    onChange={(name) => update(index, { name, product_id: null })}
                     onPick={(product) =>
                       update(index, {
                         name: product.name,
@@ -211,14 +218,24 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
  */
 function ProductNameField({
   value,
+  bound,
+  unitId,
+  categoryId,
   onChange,
   onPick,
+  onCreated,
 }: {
   value: string;
+  /** Уже привязан к товару из справочника. */
+  bound: boolean;
+  unitId: number | null;
+  categoryId: number | null;
   onChange: (value: string) => void;
   onPick: (product: Product) => void;
+  onCreated: (product: Product) => void;
 }) {
   const { t } = useTranslation();
+  const createProduct = useCreateProduct();
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
@@ -241,6 +258,29 @@ function ProductNameField({
     };
   }, [value]);
 
+  const name = value.trim();
+  // Предложение завести товар — когда набранное имя ни с чем не совпало.
+  // Регулярные покупки почти всегда впервые вписываются здесь, в чеке, а
+  // не в справочнике: уходить за этим на другую страницу посреди ввода
+  // операции никто не станет, и товар просто не заводится никогда.
+  const canCreate =
+    !bound &&
+    name.length >= 2 &&
+    !createProduct.isPending &&
+    !suggestions.some((product) => product.name.toLowerCase() === name.toLowerCase());
+
+  async function create() {
+    const product = await createProduct.mutateAsync({
+      name,
+      unit_id: unitId,
+      category_id: categoryId,
+      barcode: null,
+      notes: null,
+    });
+    onCreated(product);
+    setOpen(false);
+  }
+
   return (
     <div className="relative">
       <Input
@@ -255,7 +295,7 @@ function ProductNameField({
         // сработать — blur снимает список раньше.
         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
       />
-      {open && suggestions.length > 0 && (
+      {open && (suggestions.length > 0 || canCreate) && (
         <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-surface-1 shadow-md">
           {suggestions.map((product) => (
             <li key={product.id}>
@@ -274,6 +314,23 @@ function ProductNameField({
               </button>
             </li>
           ))}
+          {canCreate && (
+            <li className={suggestions.length > 0 ? "border-t border-border" : undefined}>
+              <button
+                type="button"
+                // pointerdown, а не click: поле теряет фокус раньше, чем
+                // click успевает дойти, и подсказка закрывается пустой.
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  void create();
+                }}
+                className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm text-series-1 hover:bg-surface-2"
+              >
+                <Plus size={13} className="shrink-0" />
+                <span className="truncate">{t("items.createProduct", { name })}</span>
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>

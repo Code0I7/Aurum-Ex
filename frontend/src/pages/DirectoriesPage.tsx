@@ -20,6 +20,7 @@ import {
 } from "@/hooks/useDirectories";
 import { UnitsCard } from "@/components/directories/UnitsCard";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
+import { formatCurrency } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 
 interface Entry {
@@ -28,6 +29,9 @@ interface Entry {
   is_archived: boolean;
   /** Сколько операций ссылается на запись. */
   usage: number;
+  /** Сколько денег ушло в эту запись — есть только у магазинов. */
+  spent_total?: number | string;
+  spent_year?: number | string;
 }
 
 /**
@@ -266,6 +270,16 @@ function DirectorySection({
                       {entry.usage > 0 && (
                         <span className="ml-2 text-xs text-text-muted">
                           {t("directories.usage", { count: entry.usage })}
+                        </span>
+                      )}
+                      {/* Потрачено — под именем, а не рядом: на телефоне
+                          сумма в одну строку с названием магазина
+                          вытесняет само название. */}
+                      {Number(entry.spent_total ?? 0) > 0 && (
+                        <span className="mt-0.5 block text-xs tabular-nums text-text-muted">
+                          {t("directories.spent", { total: formatCurrency(entry.spent_total ?? 0) })}
+                          {Number(entry.spent_year ?? 0) > 0 &&
+                            ` · ${t("directories.spentYear", { year: formatCurrency(entry.spent_year ?? 0) })}`}
                         </span>
                       )}
                     </span>
