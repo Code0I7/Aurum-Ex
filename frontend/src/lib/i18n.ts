@@ -63,6 +63,10 @@ const ru = {
   "nav.group.directories": "Справочники",
 
   "debts.people": "Люди",
+  "debts.transitPassed": "Прошло через меня",
+  "debts.transitHeld": "Ещё не передано",
+  "debts.transitHeldHint": "Чужие деньги, лежащие на счёте. Тратить их нельзя.",
+  "debts.transitAdvancedHint": "Передано вперёд из своих — приход ещё не пришёл.",
   "debts.credits": "Кредиты",
   "debts.owedToMe": "Мне должны",
   "debts.owedByMe": "Я должен",
@@ -1036,6 +1040,10 @@ const en: Record<keyof typeof ru, string> = {
   "nav.group.directories": "Reference",
 
   "debts.people": "People",
+  "debts.transitPassed": "Passed through me",
+  "debts.transitHeld": "Not passed on yet",
+  "debts.transitHeldHint": "Someone else’s money sitting on the account. Not yours to spend.",
+  "debts.transitAdvancedHint": "Paid forward from your own — the incoming leg has not arrived.",
   "debts.credits": "Credits",
   "debts.owedToMe": "Owed to me",
   "debts.owedByMe": "I owe",

@@ -5,6 +5,7 @@ import type {
   CreditTermsInput,
   Settlement,
   SettlementSummary,
+  TransitSummary,
 } from "@/types";
 
 export function fetchSettlements() {
@@ -13,6 +14,10 @@ export function fetchSettlements() {
 
 export function fetchSettlementSummary() {
   return api.get<SettlementSummary>("/settlements/summary");
+}
+
+export function fetchTransitSummary() {
+  return api.get<TransitSummary>("/settlements/transit");
 }
 
 export function fetchCredits() {

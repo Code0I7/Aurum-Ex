@@ -12,7 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.services.currency_service import quantize_money
-from app.services.settlement_service import get_settlements, get_settlement_summary
+from app.services.settlement_service import (
+    get_settlements,
+    get_settlement_summary,
+    get_transit_summary,
+)
 
 
 def _money(amount) -> str:
@@ -47,6 +51,16 @@ class SettlementSummary(BaseModel):
     owed_by_me: str
 
 
+class TransitSummary(BaseModel):
+    """Деньги, прошедшие через счёт насквозь. В расчёты с людьми не входят
+    (см. services/settlement_service.py), но чужое, лежащее на карте прямо
+    сейчас, человек должен видеть."""
+
+    passed_through: str
+    # Может быть отрицательным: передал вперёд, ещё не получив.
+    held: str
+
+
 @router.get("", response_model=list[SettlementRead])
 async def list_settlements(session: AsyncSession = Depends(get_session)) -> list[SettlementRead]:
     return [
@@ -63,6 +77,14 @@ async def list_settlements(session: AsyncSession = Depends(get_session)) -> list
         )
         for item in await get_settlements(session)
     ]
+
+
+@router.get("/transit", response_model=TransitSummary)
+async def read_transit_summary(session: AsyncSession = Depends(get_session)) -> TransitSummary:
+    totals = await get_transit_summary(session)
+    return TransitSummary(
+        passed_through=_money(totals["passed_through"]), held=_money(totals["held"])
+    )
 
 
 @router.get("/summary", response_model=SettlementSummary)

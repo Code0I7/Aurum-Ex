@@ -178,27 +178,6 @@ async def test_reserve_never_pushes_available_below_zero(client: AsyncClient, ac
     assert money(account["available"]) == Decimal("0")
 
 
-async def test_transit_moves_the_turnover_but_never_the_debt(client: AsyncClient, account_id):
-    """Деньги прошли через счёт: получил от одного, передал другому.
-
-    Это не подарок и не заём. Долга не возникает ни в одну сторону — иначе
-    касса на общий подарок превращалась бы в чьё-то обязательство, — но в
-    обороте с человеком движение остаётся: от него деньги действительно
-    приходили.
-    """
-    ivan = await _counterparty(client, "Иван")
-    olga = await _counterparty(client, "Ольга")
-    await _move(client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit")
-    await _move(client, account_id, olga, incoming=False, amount="5000.00", settlement="transit")
-
-    rows = {row["name"]: row for row in (await client.get("/settlements")).json()}
-    assert money(rows["Иван"]["received"]) == Decimal("5000.00")
-    assert money(rows["Ольга"]["given"]) == Decimal("5000.00")
-    # Ни один не должен, и ни одному не должны.
-    assert money(rows["Иван"]["balance"]) == Decimal("0")
-    assert money(rows["Ольга"]["balance"]) == Decimal("0")
-
-
 async def test_transit_is_not_earnings(client: AsyncClient, account_id):
     """Транзит меняет баланс счёта, но заработком не становится: иначе
     ставка за час и норма сбережений считались бы по чужим деньгам."""
@@ -263,3 +242,61 @@ async def test_a_purchase_on_someone_elses_money_keeps_its_category_but_not_the_
     # стоит.
     listing = (await client.get("/transactions", params={"category_id": groceries_id})).json()["items"]
     assert [row["description"] for row in listing] == ["Продукты на деньги жены"]
+
+
+async def test_transit_stays_out_of_the_turnover_with_a_person(client: AsyncClient, account_id):
+    """Получил от Ивана и передал Ольге — между мной и каждым из них не
+    произошло ничего.
+
+    Раньше транзит попадал в оборот, и читалось неправильное: Иван
+    числился дающим, Ольга берущей, будто один щедрый, а вторая просила.
+    Деньги при этом просто полежали на счёте и ушли дальше.
+    """
+    ivan = await _counterparty(client, "Иван")
+    olga = await _counterparty(client, "Ольга")
+    await _move(client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit")
+    await _move(client, account_id, olga, incoming=False, amount="5000.00", settlement="transit")
+
+    rows = (await client.get("/settlements")).json()
+    # Строк нет вовсе: человек, с которым были только транзиты, в расчётах
+    # не участвовал. Нулевая строка была бы шумом.
+    assert rows == []
+
+
+async def test_transit_still_shows_up_as_its_own_figure(client: AsyncClient, account_id):
+    """Молчать о транзите нельзя: чужая тысяча на карте — реальные деньги,
+    которые нельзя тратить."""
+    ivan = await _counterparty(client, "Иван")
+    olga = await _counterparty(client, "Ольга")
+    await _move(client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit")
+    await _move(client, account_id, olga, incoming=False, amount="3200.00", settlement="transit")
+
+    body = (await client.get("/settlements/transit")).json()
+    assert money(body["passed_through"]) == Decimal("3200.00")
+    assert money(body["held"]) == Decimal("1800.00")
+
+
+async def test_transit_does_not_swallow_a_real_debt_with_the_same_person(
+    client: AsyncClient, account_id
+):
+    """Один и тот же человек и одалживает, и передаёт транзитом. Пропускать
+    надо операцию, а не человека."""
+    ivan = await _counterparty(client, "Иван")
+    await _move(client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit")
+    await _move(client, account_id, ivan, incoming=False, amount="2000.00", settlement="loan_out")
+
+    rows = (await client.get("/settlements")).json()
+    assert len(rows) == 1
+    assert money(rows[0]["given"]) == Decimal("2000.00")
+    assert money(rows[0]["received"]) == Decimal("0")
+    assert money(rows[0]["balance"]) == Decimal("2000.00")
+
+
+async def test_money_passed_on_before_it_arrived_reads_as_negative(client: AsyncClient, account_id):
+    """Передал вперёд из своих — это не ошибка и не выпрямляется в ноль:
+    минус здесь означает «мне должны вернуть»."""
+    olga = await _counterparty(client, "Ольга")
+    await _move(client, account_id, olga, incoming=False, amount="1000.00", settlement="transit")
+
+    body = (await client.get("/settlements/transit")).json()
+    assert money(body["held"]) == Decimal("-1000.00")

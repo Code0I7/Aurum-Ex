@@ -567,6 +567,14 @@ export interface Settlement {
   last_date: string | null;
 }
 
+/** Деньги, прошедшие через счёт насквозь. В расчёты с людьми не входят:
+ *  между мной и каждым из них не произошло ничего. */
+export interface TransitSummary {
+  passed_through: string;
+  /** Может быть отрицательным: передал вперёд, ещё не получив. */
+  held: string;
+}
+
 export interface SettlementSummary {
   owed_to_me: string;
   owed_by_me: string;

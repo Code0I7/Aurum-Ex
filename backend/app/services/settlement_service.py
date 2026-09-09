@@ -23,7 +23,7 @@
 from collections import defaultdict
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.counterparty import Counterparty
@@ -86,6 +86,21 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
         party = counterparties.get(counterparty_id)
         if party is None:
             continue
+
+        # Транзит в расчёты с человеком не входит вовсе — ни в долг, ни в
+        # оборот.
+        #
+        # В долг он не входил и раньше: деньги, прошедшие насквозь, никому
+        # ничего не должны. Но он попадал в оборот, и от этого читалось
+        # неправильное: получил от Ивана тысячу и передал её Ольге —
+        # Иван числится дающим, Ольга берущей, будто один щедрый, а
+        # вторая просила. На самом деле между ними и мной не происходило
+        # ничего: деньги полежали на счёте и ушли дальше.
+        #
+        # Сколько всего прошло и сколько чужого лежит сейчас, показывается
+        # отдельно — см. get_transit_summary.
+        if settlement == SettlementKind.TRANSIT:
+            continue
         entry = totals.setdefault(counterparty_id, SettlementTotals(party))
         entry.operations += 1
         if entry.last_date is None or tx_date > entry.last_date:
@@ -140,6 +155,41 @@ async def get_settlement_summary(session: AsyncSession) -> dict[str, Decimal]:
         "owed_to_me": sum((item.balance for item in settlements if item.balance > 0), Decimal("0")),
         "owed_by_me": -sum((item.balance for item in settlements if item.balance < 0), Decimal("0")),
     }
+
+
+async def get_transit_summary(session: AsyncSession) -> dict[str, Decimal]:
+    """Деньги, прошедшие через счёт насквозь.
+
+    В расчёты с людьми они не входят (см. get_settlements), но и молчать о
+    них нельзя: чужая тысяча, полежавшая на карте неделю, — это реальные
+    деньги, которые нельзя тратить, и человек должен видеть, сколько их.
+
+    Считается двумя числами:
+
+      * **прошло через меня** — сколько уже ушло дальше. Отвечает на «какой
+        оборот прошёл мимо меня за всё время»;
+      * **ещё не передано** — разница между полученным и отданным, то есть
+        чужое, лежащее на счёте прямо сейчас.
+
+    Второе может уйти в минус — значит, передал вперёд из своих, ещё не
+    получив. Это не ошибка и не выпрямляется в ноль: минус здесь и означает
+    «мне должны вернуть», просто человек не пометил это займом.
+    """
+    rows = (
+        await session.execute(
+            select(Transaction.type, func.coalesce(func.sum(Transaction.amount_base), 0))
+            .where(
+                Transaction.settlement_kind == SettlementKind.TRANSIT,
+                Transaction.type.in_([TransactionType.EXTERNAL_IN, TransactionType.EXTERNAL_OUT]),
+                counted_only(),
+            )
+            .group_by(Transaction.type)
+        )
+    ).all()
+    by_type = {tx_type: Decimal(amount) for tx_type, amount in rows}
+    received = by_type.get(TransactionType.EXTERNAL_IN, Decimal("0"))
+    passed_on = by_type.get(TransactionType.EXTERNAL_OUT, Decimal("0"))
+    return {"passed_through": passed_on, "held": received - passed_on}
 
 
 async def get_reserved_by_account(session: AsyncSession) -> dict[int, Decimal]:

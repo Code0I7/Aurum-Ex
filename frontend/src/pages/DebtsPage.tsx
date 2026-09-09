@@ -7,7 +7,13 @@ import { SettlementTable } from "@/components/debts/SettlementTable";
 import { CreditList } from "@/components/debts/CreditList";
 import { CreditTermsModal } from "@/components/debts/CreditTermsModal";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useCredits, useCreditSummary, useSettlements, useSettlementSummary } from "@/hooks/useDebts";
+import {
+  useCredits,
+  useCreditSummary,
+  useSettlements,
+  useSettlementSummary,
+  useTransitSummary,
+} from "@/hooks/useDebts";
 import { HelpBadge } from "@/components/ui/HelpBadge";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
@@ -28,6 +34,7 @@ export function DebtsPage() {
   const { t } = useTranslation();
   const { data: settlements, isLoading: settlementsLoading } = useSettlements();
   const { data: settlementSummary } = useSettlementSummary();
+  const { data: transit } = useTransitSummary();
   const { data: credits, isLoading: creditsLoading } = useCredits();
   const { data: creditSummary } = useCreditSummary();
   const { data: accounts } = useAccounts(false);
@@ -82,6 +89,33 @@ export function DebtsPage() {
           }
         />
       </div>
+
+      {/* Транзит стоит отдельно от долгов, а не рядом с ними в таблице
+          людей: между мной и человеком, через которого прошли деньги, не
+          произошло ничего, и строка в расчётах читалась бы как щедрость
+          одного и просьба другого. Но чужая тысяча, лежащая на карте, —
+          реальные деньги, которые нельзя тратить.
+
+          Карточка появляется только когда транзиты вообще были: у
+          большинства их нет, и пустая строка объясняла бы понятие, которым
+          человек не пользуется. */}
+      {transit && (Number(transit.passed_through) !== 0 || Number(transit.held) !== 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SummaryCard
+            label={t("debts.transitPassed")}
+            value={transit.passed_through}
+            tone="neutral"
+          />
+          <SummaryCard
+            label={t("debts.transitHeld")}
+            value={transit.held}
+            tone="neutral"
+            // Минус означает «передал вперёд из своих»: не ошибка, но и не
+            // то же самое, что чужие деньги на счёте.
+            hint={Number(transit.held) < 0 ? t("debts.transitAdvancedHint") : t("debts.transitHeldHint")}
+          />
+        </div>
+      )}
 
       {/* Кредиты выше расчётов с людьми: их статистически единицы, а
           строк с людьми — десятки, и короткий список не должен ждать
@@ -144,12 +178,19 @@ function SummaryCard({
 }: {
   label: string;
   value: string;
-  tone: "positive" | "negative";
+  tone: "positive" | "negative" | "neutral";
   hint?: string;
 }) {
   // Ноль не красится: красный ноль читается как проблема, которой нет.
+  // Транзит не красится вовсе: это не прибыль и не потеря, а чужие деньги,
+  // и любой цвет здесь означал бы оценку, которой у них нет.
   const isZero = Number(value) === 0;
-  const color = isZero ? "text-text-secondary" : tone === "positive" ? "text-success" : "text-danger";
+  const color =
+    isZero || tone === "neutral"
+      ? "text-text-secondary"
+      : tone === "positive"
+        ? "text-success"
+        : "text-danger";
 
   return (
     <div className="rounded-lg border border-border bg-surface-1 p-4">

@@ -5,6 +5,7 @@ import {
   fetchCreditSummary,
   fetchSettlements,
   fetchSettlementSummary,
+  fetchTransitSummary,
   saveCreditTerms,
 } from "@/api/debts";
 import type { CreditTermsInput } from "@/types";
@@ -25,6 +26,10 @@ export function useSettlements() {
 
 export function useSettlementSummary() {
   return useQuery({ queryKey: ["settlements", "summary"], queryFn: fetchSettlementSummary });
+}
+
+export function useTransitSummary() {
+  return useQuery({ queryKey: ["settlements", "transit"], queryFn: fetchTransitSummary });
 }
 
 export function useCredits() {
