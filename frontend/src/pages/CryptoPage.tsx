@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CryptoAddModal } from "@/components/crypto/CryptoAddModal";
 import { CryptoHoldingsTable } from "@/components/crypto/CryptoHoldingsTable";
@@ -165,10 +166,12 @@ export function CryptoPage() {
               <RefreshCw size={16} className={refresh.isPending ? "animate-spin" : undefined} />
               {refresh.isPending ? t("crypto.refreshing") : t("crypto.refreshButton")}
             </Button>
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus size={16} />
-              {t("crypto.addButton")}
-            </Button>
+            <PageActions>
+              <Button onClick={() => setAddOpen(true)}>
+                <Plus size={16} />
+                {t("crypto.addButton")}
+              </Button>
+            </PageActions>
           </div>
         </CardHeader>
         <CardContent>

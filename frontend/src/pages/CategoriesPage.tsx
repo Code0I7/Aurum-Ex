@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { CategoryFormModal } from "@/components/categories/CategoryFormModal";
@@ -72,10 +73,16 @@ export function CategoriesPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("category.incomeSectionTitle")}</CardTitle>
-          <Button onClick={() => openCreateModal("income")}>
-            <Plus size={16} />
-            {t("common.add")}
-          </Button>
+          {/* Здесь действий два — доходная категория и расходная, — и в
+              шапке они подписаны по виду. Просто «Добавить» дважды рядом
+              не сказало бы, что чем отличается: на странице это объясняли
+              заголовки разделов, а в шапке заголовков нет. */}
+          <PageActions>
+            <Button variant="secondary" onClick={() => openCreateModal("income")}>
+              <Plus size={16} />
+              {t("transactions.income")}
+            </Button>
+          </PageActions>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -94,10 +101,12 @@ export function CategoriesPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("category.expenseSectionTitle")}</CardTitle>
-          <Button onClick={() => openCreateModal("expense")}>
-            <Plus size={16} />
-            {t("common.add")}
-          </Button>
+          <PageActions>
+            <Button onClick={() => openCreateModal("expense")}>
+              <Plus size={16} />
+              {t("transactions.expense")}
+            </Button>
+          </PageActions>
         </CardHeader>
         <CardContent>
           {isLoading ? (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { PageActionsProvider } from "@/components/layout/PageActions";
 import { Topbar } from "@/components/layout/Topbar";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useAppSettings } from "@/hooks/useSettings";
@@ -42,6 +43,9 @@ export default function App() {
   }, [settings]);
 
   return (
+    // Слот главного действия объявлен выше и шапки, и страниц: шапка его
+    // предоставляет, страница заполняет.
+    <PageActionsProvider>
     <div className="flex min-h-screen bg-surface-0">
       <Sidebar
         collapsed={collapsed}
@@ -83,5 +87,6 @@ export default function App() {
         </main>
       </div>
     </div>
+    </PageActionsProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PillSelector } from "@/components/layout/PillSelector";
 import { useSessionState } from "@/hooks/useSessionState";
@@ -85,10 +86,12 @@ export function ProductsPage() {
             <CardTitle>{t("nav.products")}</CardTitle>
             <p className="mt-1 text-xs text-text-muted">{t("product.subtitle")}</p>
           </div>
-          <Button onClick={openCreate}>
-            <Plus size={16} />
-            {t("common.add")}
-          </Button>
+          <PageActions>
+            <Button onClick={openCreate}>
+              <Plus size={16} />
+              {t("common.add")}
+            </Button>
+          </PageActions>
         </CardHeader>
         <CardContent>
           {isLoading ? (

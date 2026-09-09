@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { NAV_ITEMS } from "@/lib/navigation";
+import { PageActionsOutlet } from "@/components/layout/PageActions";
 import { HelpBadge } from "@/components/ui/HelpBadge";
 import { useTranslation } from "@/lib/i18n";
 
@@ -23,13 +24,17 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
       >
         <Menu size={20} />
       </button>
-      <h1 className="flex items-center gap-2 text-lg font-semibold text-text-primary">
+      <h1 className="flex min-w-0 items-center gap-2 truncate text-lg font-semibold text-text-primary">
         {activeItem ? t(activeItem.labelKey) : "Aurum-Ex"}
         {/* Место для объяснения одно на всё приложение — у названия
             вкладки. Разделы, где пояснять нечего, кружка просто не имеют, и
             заголовок от этого не съезжает. */}
         {activeItem?.hintKey && <HelpBadge hintKey={activeItem.hintKey} />}
       </h1>
+
+      {/* Главное действие вкладки. Шапка прилипшая, поэтому кнопка
+          доступна на любой глубине списка — см. PageActions. */}
+      <PageActionsOutlet className="ml-auto flex shrink-0 items-center gap-2" />
     </header>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { MonthSelector } from "@/components/layout/MonthSelector";
@@ -74,10 +75,12 @@ export function BudgetPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("nav.budget")}</CardTitle>
-          <Button onClick={openCreateModal}>
-            <Plus size={16} />
-            {t("common.add")}
-          </Button>
+          <PageActions>
+            <Button onClick={openCreateModal}>
+              <Plus size={16} />
+              {t("common.add")}
+            </Button>
+          </PageActions>
         </CardHeader>
         <CardContent>
           {isLoading ? (

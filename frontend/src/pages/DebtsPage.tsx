@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { SettlementTable } from "@/components/debts/SettlementTable";
@@ -82,6 +83,28 @@ export function DebtsPage() {
         />
       </div>
 
+      {/* Кредиты выше расчётов с людьми: их статистически единицы, а
+          строк с людьми — десятки, и короткий список не должен ждать
+          конца длинного. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("debts.credits")}</CardTitle>
+          <PageActions>
+            <Button onClick={openCreate} disabled={candidates.length === 0}>
+              <Plus size={16} />
+              {t("debts.addCredit")}
+            </Button>
+          </PageActions>
+        </CardHeader>
+        <CardContent>
+          {creditsLoading ? (
+            <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
+          ) : (
+            <CreditList items={credits ?? []} onEdit={openEdit} />
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-1.5">
@@ -99,23 +122,6 @@ export function DebtsPage() {
                 <p className="mt-3 text-xs text-text-muted">{t("debts.turnoverHint")}</p>
               )}
             </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("debts.credits")}</CardTitle>
-          <Button onClick={openCreate} disabled={candidates.length === 0}>
-            <Plus size={16} />
-            {t("debts.addCredit")}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {creditsLoading ? (
-            <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
-          ) : (
-            <CreditList items={credits ?? []} onEdit={openEdit} />
           )}
         </CardContent>
       </Card>

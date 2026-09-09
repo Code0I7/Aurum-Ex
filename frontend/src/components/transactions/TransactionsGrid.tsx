@@ -254,12 +254,22 @@ export function TransactionsGrid({
         // поездки по 35 ₽ читаются как 140 ₽, иначе группировка скрывала бы
         // ровно то число, ради которого в список и смотрят.
         const amount = group ? group.total : tx.amount;
+        // Расход красным, приход зелёным. Раньше цвет был только у прихода,
+        // а расход шёл тем же приглушённым серым, что и остальной текст
+        // строки: на сером фоне число терялось ровно там, где список и
+        // читают — глазами по колонке сумм.
+        //
+        // Перевод остаётся серым намеренно: свои деньги переложены с одного
+        // счёта на другой, ни потери, ни прибавления не произошло, и красный
+        // говорил бы неправду.
+        const isSpend = tx.type === "expense" || tx.type === "external_out";
         return (
           <span
             className={cn(
               "tabular-nums",
               tx.is_excluded && "line-through opacity-60",
-              tx.type === "income" && "text-success"
+              (tx.type === "income" || tx.type === "external_in") && "text-success",
+              isSpend && "text-danger"
             )}
           >
             {sign}

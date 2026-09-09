@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { MonthSelector } from "@/components/layout/MonthSelector";
 import { YearSelector } from "@/components/layout/YearSelector";
+import { PageActions } from "@/components/layout/PageActions";
 import { ColumnPicker } from "@/components/transactions/ColumnPicker";
 import { TransactionsGrid } from "@/components/transactions/TransactionsGrid";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
@@ -323,10 +324,15 @@ export function TransactionsPage() {
               {t("transactions.importButton")}
             </Button>
           </Link>
-          <Button onClick={openCreateModal} className="flex-1 sm:w-auto">
-            <Plus size={16} />
-            {t("transactions.addButton")}
-          </Button>
+          {/* В шапку уходит только «Добавить». Импорт выписки и перенос
+              таблицы остаются здесь: они разовые, и тащить их наверх значит
+              менять свалку внизу на свалку вверху. */}
+          <PageActions>
+            <Button onClick={openCreateModal}>
+              <Plus size={16} />
+              {t("transactions.addButton")}
+            </Button>
+          </PageActions>
         </div>
       </div>
 

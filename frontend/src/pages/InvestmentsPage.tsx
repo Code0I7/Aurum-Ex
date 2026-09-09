@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pencil, Plus } from "lucide-react";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { HoldingList } from "@/components/investments/HoldingList";
@@ -70,10 +71,14 @@ export function InvestmentsPage() {
             <CardTitle>{t("nav.investments")}</CardTitle>
             <p className="mt-1 text-xs text-text-muted">{t("investments.subtitle")}</p>
           </div>
-          <Button onClick={() => setFormOpen(true)} disabled={(portfolios ?? []).length === 0}>
-            <Plus size={16} />
-            {t("common.add")}
-          </Button>
+          {/* Только главное действие. «Создать портфель» ниже — это
+              подсказка пустого экрана, а не постоянная кнопка. */}
+          <PageActions>
+            <Button onClick={() => setFormOpen(true)} disabled={(portfolios ?? []).length === 0}>
+              <Plus size={16} />
+              {t("common.add")}
+            </Button>
+          </PageActions>
         </CardHeader>
         <CardContent className="space-y-4">
           {(portfolios ?? []).length === 0 ? (

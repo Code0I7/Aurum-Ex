@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PlanTable } from "@/components/planning/PlanTable";
@@ -79,10 +80,12 @@ export function PlanningPage() {
                 ›
               </button>
             </div>
-            <Button onClick={openCreate}>
-              <Plus size={16} />
-              {t("common.add")}
-            </Button>
+            <PageActions>
+              <Button onClick={openCreate}>
+                <Plus size={16} />
+                {t("common.add")}
+              </Button>
+            </PageActions>
           </div>
         </CardHeader>
         <CardContent>
