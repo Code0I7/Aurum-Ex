@@ -512,6 +512,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                   {t("transactions.form.settlementLoan")}
                 </option>
                 <option value="repayment">{t("transactions.form.settlementRepayment")}</option>
+                {/* Транзит: деньги прошли через счёт и ушли дальше. Не
+                    подарок — считается так же, но называется честно:
+                    «получено подарками 50 000» врёт, если это была касса на
+                    общий подарок. */}
+                <option value="transit">{t("transactions.form.settlementTransit")}</option>
               </Select>
               <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementHint")}</p>
             </div>

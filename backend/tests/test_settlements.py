@@ -176,3 +176,38 @@ async def test_reserve_never_pushes_available_below_zero(client: AsyncClient, ac
 
     account = next(row for row in (await client.get("/accounts")).json() if row["id"] == account_id)
     assert money(account["available"]) == Decimal("0")
+
+
+async def test_transit_moves_the_turnover_but_never_the_debt(client: AsyncClient, account_id):
+    """Деньги прошли через счёт: получил от одного, передал другому.
+
+    Это не подарок и не заём. Долга не возникает ни в одну сторону — иначе
+    касса на общий подарок превращалась бы в чьё-то обязательство, — но в
+    обороте с человеком движение остаётся: от него деньги действительно
+    приходили.
+    """
+    ivan = await _counterparty(client, "Иван")
+    olga = await _counterparty(client, "Ольга")
+    await _move(client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit")
+    await _move(client, account_id, olga, incoming=False, amount="5000.00", settlement="transit")
+
+    rows = {row["name"]: row for row in (await client.get("/settlements")).json()}
+    assert money(rows["Иван"]["received"]) == Decimal("5000.00")
+    assert money(rows["Ольга"]["given"]) == Decimal("5000.00")
+    # Ни один не должен, и ни одному не должны.
+    assert money(rows["Иван"]["balance"]) == Decimal("0")
+    assert money(rows["Ольга"]["balance"]) == Decimal("0")
+
+
+async def test_transit_is_not_earnings(client: AsyncClient, account_id):
+    """Транзит меняет баланс счёта, но заработком не становится: иначе
+    ставка за час и норма сбережений считались бы по чужим деньгам."""
+    ivan = await _counterparty(client, "Иван")
+    await _move(
+        client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit", date="2026-04-12"
+    )
+
+    summary = (
+        await client.get("/dashboard/summary", params={"year": 2026, "month": 4, "range": "month"})
+    ).json()
+    assert money(summary["real_income"]) == Decimal("0")

@@ -14,7 +14,7 @@ export type AccountNature = "asset" | "liability";
 export type ParticipantKind = "person" | "pet";
 // Возвратность расчёта с внешним человеком: подарок долга не создаёт, заём
 // создаёт. Ставится на операции, а не на контрагенте.
-export type SettlementKind = "gift" | "loan_out" | "loan_in" | "repayment";
+export type SettlementKind = "gift" | "loan_out" | "loan_in" | "repayment" | "transit";
 export type CategoryKind = "income" | "expense";
 // external_in / external_out — деньги от другого человека и ему же: меняют
 // баланс, но заработком не считаются.

@@ -65,12 +65,32 @@ class SettlementKind(str, enum.Enum):
     back. A wife handing over grocery money and a friend borrowing until
     payday look identical on a bank statement but mean opposite things:
     only the second belongs in "who owes whom". Set per movement, never per
-    counterparty — the same person both gifts and borrows."""
+    counterparty — the same person both gifts and borrows.
+
+    Хранится строкой без ограничения в базе (native_enum=False и без
+    CHECK), поэтому новый вид не требует миграции — но требует решения, как
+    он ведёт себя в долгах (см. services/settlement_service.py).
+    """
 
     GIFT = "gift"  # безвозвратно, в долги не попадает
     LOAN_OUT = "loan_out"  # я дал в долг — мне должны
     LOAN_IN = "loan_in"  # я занял — я должен
     REPAYMENT = "repayment"  # погашение ранее возникшего долга
+    # Деньги прошли через меня: получил от одного, передал другому.
+    #
+    # Отдельно от подарка, хотя считается так же — долга не создаёт. Разница
+    # в смысле: «получено подарками 50 000» — число, которое врёт о жизни,
+    # если это была касса на общий подарок или сбор на поездку. Такие деньги
+    # никогда не были ни доходом, ни щедростью — они полежали на счёте и
+    # ушли дальше.
+    #
+    # Не отдельный тип операции: транзит — это всегда ДВА движения, приход и
+    # расход, часто в разные дни. Типом пришлось бы заводить пару transit_in
+    # и transit_out, буква в букву повторяющую external_in и external_out, —
+    # а тип операции держит на себе всю арифметику: знак в балансе, попадание
+    # в заработок и траты, отчёты, бюджеты, планы, капитал. Вопрос же здесь
+    # ровно тот, на который отвечает этот перечень: вернётся ли.
+    TRANSIT = "transit"
 
 
 class AssetClass(str, enum.Enum):
