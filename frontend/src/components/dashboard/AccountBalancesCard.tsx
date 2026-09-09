@@ -1,4 +1,7 @@
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import { useReservations } from "@/hooks/useGoals";
@@ -106,6 +109,12 @@ export function AccountBalancesCard({ accounts }: { accounts: DashboardAccountBa
  *
  * Сверх остатка отрезки не рисуются: отложить больше, чем лежит на счёте,
  * нельзя, и доля считается от самого остатка.
+ *
+ * Соседние цели разделяются вырезом цветом карточки, а не оттенком:
+ * оттенок по номеру означал бы, что отрезок меняет цвет от появления
+ * соседней цели, — а вырез стоит там же, где граница, и от соседей не
+ * зависит. Раньше вырез был в один пиксель на полосе в полтора, и три цели
+ * подряд читались как одна золотая заливка.
  */
 function AccountBar({
   balance,
@@ -116,29 +125,91 @@ function AccountBar({
   segments: AccountReservation[];
   freeLabel: string;
 }) {
+  const [hover, setHover] = useState<{ label: string; amount: number; x: number; y: number } | null>(null);
+
   if (segments.length === 0 || balance <= 0) return null;
 
   const reserved = segments.reduce((sum, item) => sum + Number(item.amount), 0);
   const free = Math.max(0, balance - reserved);
 
+  function follow(label: string, amount: number) {
+    return (event: React.PointerEvent) => setHover({ label, amount, x: event.clientX, y: event.clientY });
+  }
+
   return (
-    <span className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-surface-2" role="presentation">
+    <>
       <span
-        className="block h-full bg-success/70 transition-[width]"
-        style={{ width: `${(free / balance) * 100}%` }}
-        title={`${freeLabel}: ${formatCurrency(free)}`}
-      />
-      {segments.map((item) => (
+        className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-surface-2"
+        role="presentation"
+        onPointerLeave={() => setHover(null)}
+        onPointerCancel={() => setHover(null)}
+      >
         <span
-          key={item.goal_id}
-          // Золотом, а не цветом цели: цвет у целей не задаётся, а
-          // придумывать его по номеру значило бы, что один и тот же
-          // отрезок меняет цвет при добавлении соседней цели.
-          className="block h-full border-l border-surface-1 bg-accent transition-[width] hover:brightness-125"
-          style={{ width: `${(Number(item.amount) / balance) * 100}%` }}
-          title={`${item.goal_name}: ${formatCurrency(item.amount)}`}
+          className="block h-full bg-success/70 transition-[width,filter] hover:brightness-125"
+          style={{ width: `${(free / balance) * 100}%` }}
+          onPointerEnter={follow(freeLabel, free)}
+          onPointerMove={follow(freeLabel, free)}
+          onPointerDown={follow(freeLabel, free)}
         />
-      ))}
-    </span>
+        {segments.map((item, index) => (
+          <span
+            key={item.goal_id}
+            // Золотом, а не цветом цели: цвет у целей не задаётся, а
+            // придумывать его по номеру значило бы, что один и тот же
+            // отрезок меняет цвет при добавлении соседней цели.
+            className="block h-full border-l-2 border-surface-1 bg-accent transition-[width,filter] hover:brightness-125"
+            style={{
+              width: `${(Number(item.amount) / balance) * 100}%`,
+              // Совсем маленькая цель иначе исчезает целиком под вырезом:
+              // отрезок, которого не видно, хуже неточной ширины.
+              minWidth: index === segments.length - 1 ? undefined : "5px",
+            }}
+            onPointerEnter={follow(item.goal_name, Number(item.amount))}
+            onPointerMove={follow(item.goal_name, Number(item.amount))}
+            onPointerDown={follow(item.goal_name, Number(item.amount))}
+          />
+        ))}
+      </span>
+
+      {/* Своя подсказка вместо браузерной. Нативный title появляется через
+          секунду, системным шрифтом и всегда снизу справа — на полосе
+          высотой в два пикселя это значит, что до подписи нужно ещё
+          дождаться. Рамка та же, что у подсказок графиков: одно оформление
+          на все всплывающие подписи. */}
+      {hover ? <BarTooltip {...hover} /> : null}
+    </>
+  );
+}
+
+/** Подсказка у курсора. Рисуется порталом в body: полоса лежит в карточке
+ *  со своим переполнением, и обычный absolute обрезался бы её краем. */
+function BarTooltip({ label, amount, x, y }: { label: string; amount: number; x: number; y: number }) {
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Размер меряется после отрисовки: до неё неизвестно, сколько места
+  // займёт название цели, а от него зависит, поместится ли подсказка
+  // справа от курсора.
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (node) setBox({ width: node.offsetWidth, height: node.offsetHeight });
+  }, [label, amount]);
+
+  const GAP = 12;
+  const left = box && x + GAP + box.width > window.innerWidth ? x - GAP - box.width : x + GAP;
+  const top = box && y - box.height - GAP < 0 ? y + GAP : y - (box?.height ?? 0) - GAP;
+
+  return createPortal(
+    <div
+      ref={ref}
+      style={{ left, top, opacity: box ? 1 : 0 }}
+      className="pointer-events-none fixed z-[70]"
+    >
+      <ChartTooltipBox className="whitespace-nowrap text-xs">
+        <p className="text-text-muted">{label}</p>
+        <p className="font-medium tabular-nums text-text-primary">{formatCurrency(amount)}</p>
+      </ChartTooltipBox>
+    </div>,
+    document.body
   );
 }

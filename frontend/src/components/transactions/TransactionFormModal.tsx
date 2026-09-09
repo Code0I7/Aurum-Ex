@@ -48,6 +48,34 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Дата последней заведённой операции — на время сеанса.
+ *
+ * Заносят историю пачками: сегодня вспомнил неделю назад, завтра — ещё
+ * три дня. Подставлять сегодняшнее число каждый раз значит заставлять
+ * человека выбирать одну и ту же прошлую дату по десять раз подряд.
+ *
+ * Именно сеанс, а не настройка: назавтра приложение должно снова
+ * открываться на сегодняшнем дне, иначе запись «на автомате» уедет в
+ * прошлое, и человек этого не заметит. */
+const LAST_DATE_KEY = "aurum:last-transaction-date";
+
+function rememberedDate(): string {
+  try {
+    return sessionStorage.getItem(LAST_DATE_KEY) || todayIso();
+  } catch {
+    // Приватное окно или отключённое хранилище — просто сегодня.
+    return todayIso();
+  }
+}
+
+function rememberDate(date: string): void {
+  try {
+    sessionStorage.setItem(LAST_DATE_KEY, date);
+  } catch {
+    // Не запомнилось — не беда, поле останется заполненным вручную.
+  }
+}
+
 const EMPTY_FORM = {
   type: "expense" as TransactionType,
   account_id: "",
@@ -177,7 +205,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           : accounts?.[0]
             ? String(accounts[0].id)
             : "";
-      setForm({ ...EMPTY_FORM, account_id: preferred });
+      // Дата — та, что выбрали в прошлый раз за этот сеанс. Остальное
+      // пустое: счёт подставляется из настроек, сумма и описание у каждой
+      // операции свои.
+      setForm({ ...EMPTY_FORM, account_id: preferred, date: rememberedDate() });
       setTags([]);
       setItems([]);
       setCategoryRows([emptySplitRow()]);
@@ -287,6 +318,11 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     } else if (transaction && transaction.splits.length > 0) {
       splits = [];
     }
+
+    // Дата запоминается до конца сеанса — следующая операция откроется на
+    // ней же. Запоминается при отправке, а не при наборе: набранное и
+    // брошенное число выбором не было.
+    rememberDate(form.date);
 
     const payload: TransactionInput = {
       type: form.type,

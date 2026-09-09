@@ -17,6 +17,17 @@ import { useTranslation } from "@/lib/i18n";
  * отступом — путь целиком в каждой строке был бы нечитаем, — а при поиске
  * наоборот полный путь: найденный «Сыр» без родителя не отвечает, тот ли
  * это сыр.
+ *
+ * Два исключения, и оба про одно и то же — риск выбрать не ту категорию:
+ *
+ *  * **в закрытом поле всегда полный путь.** «Зарплата» у Ивана и
+ *    «Зарплата» у Ольги — разные категории с одинаковым именем, и поле,
+ *    показывающее только лист, не даёт проверить, что выбрано;
+ *  * **одинаковые имена в списке тоже разворачиваются в путь.** Отступ
+ *    показывает вложенность, но не родителя: две «Зарплаты» на одной
+ *    глубине выглядят одинаково, а их родители могут быть за экраном.
+ *    Уникальные имена при этом остаются короткими — разворачивать их
+ *    значило бы засорять список ради случая, которого нет.
  */
 
 export interface PickableCategory {
@@ -57,14 +68,25 @@ export function CategoryPicker({
 }: CategoryPickerProps) {
   const { language } = useTranslation();
 
-  const options = useMemo(
-    () =>
-      buildHierarchicalCategories(categories, language).map((category) => {
+  const options = useMemo(() => {
+    const ordered = buildHierarchicalCategories(categories, language);
+    // Имена, встречающиеся больше одного раза: только их и нужно
+    // разворачивать в полный путь.
+    const seen = new Map<string, number>();
+    for (const category of ordered) {
+      const name = translateCategoryName(category.name);
+      seen.set(name, (seen.get(name) ?? 0) + 1);
+    }
+    return ordered.map((category) => {
         const Icon = getCategoryIcon(category.icon);
+        const name = translateCategoryName(category.name);
+        const path = categoryPath(category, categories);
         return {
           value: String(category.id),
-          label: translateCategoryName(category.name),
-          search: categoryPath(category, categories),
+          label: (seen.get(name) ?? 0) > 1 ? path : name,
+          // Полный путь для закрытого поля и для поиска — там короткого
+          // имени всегда мало.
+          search: path,
           depth: category.depth,
           group: category.group,
           icon: (
@@ -77,10 +99,9 @@ export function CategoryPicker({
               style={category.color ? { color: category.color } : undefined}
             />
           ),
-        };
-      }),
-    [categories, language]
-  );
+      };
+    });
+  }, [categories, language]);
 
   return (
     <Combobox
@@ -92,6 +113,9 @@ export function CategoryPicker({
       emptyLabel={emptyLabel}
       disabled={disabled}
       className={className}
+      // В закрытом поле — полный путь. Именно там ошибка и не видна:
+      // выбрал «Зарплату» Ольги, а в поле написано просто «Зарплата».
+      selectedLabel="search"
     />
   );
 }

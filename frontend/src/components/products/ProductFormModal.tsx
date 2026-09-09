@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useCreateProduct, useUnits, useUpdateProduct } from "@/hooks/useProducts";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { useCategories } from "@/hooks/useCategories";
 import { useTranslation } from "@/lib/i18n";
 import type { Product } from "@/types";
@@ -84,21 +85,14 @@ export function ProductFormModal({ open, onClose, product }: ProductFormModalPro
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="product-category">{t("product.category")}</Label>
-            <select
+            <CategoryPicker
               id="product-category"
+              categories={(categories ?? []).filter((category) => category.kind === "expense")}
               value={form.category_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-            >
-              <option value="">{t("product.noCategory")}</option>
-              {(categories ?? [])
-                .filter((category) => category.kind === "expense")
-                .map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-            </select>
+              onChange={(value) => setForm((prev) => ({ ...prev, category_id: value }))}
+              placeholder={t("product.noCategory")}
+              emptyLabel={t("product.noCategory")}
+            />
           </div>
           <div>
             <Label htmlFor="product-unit">{t("product.unit")}</Label>

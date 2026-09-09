@@ -6,7 +6,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
 import { useCreateRecurring, useUpdateRecurring } from "@/hooks/useRecurring";
 import { useTranslation } from "@/lib/i18n";
-import { translateCategoryName } from "@/lib/categoryLabels";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import type { RecurringFrequency, RecurringTransaction, TransactionType } from "@/types";
 
 interface RecurringFormModalProps {
@@ -223,18 +223,14 @@ export function RecurringFormModal({ open, onClose, recurring }: RecurringFormMo
         ) : (
           <div>
             <Label htmlFor="recurring-category">{t("transactions.form.categoryLabel")}</Label>
-            <Select
+            <CategoryPicker
               id="recurring-category"
+              categories={relevantCategories}
               value={form.category_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
-            >
-              <option value="">{t("transactions.form.noCategory")}</option>
-              {relevantCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {translateCategoryName(category.name)}
-                </option>
-              ))}
-            </Select>
+              onChange={(value) => setForm((prev) => ({ ...prev, category_id: value }))}
+              placeholder={t("transactions.form.noCategory")}
+              emptyLabel={t("transactions.form.noCategory")}
+            />
           </div>
         )}
 

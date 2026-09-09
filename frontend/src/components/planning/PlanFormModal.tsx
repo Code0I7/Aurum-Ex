@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
@@ -92,20 +93,18 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label htmlFor="plan-category">{t("planning.category")}</Label>
-          <select
+          {/* Тот же выбиратель, что и в операции: дерево, поиск и полный
+              путь в закрытом поле. Раньше вложенность изображалась одним
+              тире перед именем, и «Зарплата» Ивана с «Зарплатой» Ольги в
+              списке были неотличимы. */}
+          <CategoryPicker
             id="plan-category"
+            categories={categories ?? []}
             value={form.category_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, category_id: event.target.value }))}
-            className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-          >
-            <option value="">{t("planning.noCategory")}</option>
-            {(categories ?? []).map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.parent_id ? "— " : ""}
-                {category.name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setForm((prev) => ({ ...prev, category_id: value }))}
+            placeholder={t("planning.noCategory")}
+            emptyLabel={t("planning.noCategory")}
+          />
         </div>
 
         <div>

@@ -56,6 +56,10 @@ interface ComboboxProps {
   /** С какого числа пунктов показывать поиск. Для коротких списков поле
    *  поиска — лишний шаг. */
   searchFrom?: number;
+  /** Что писать в закрытом поле: короткую подпись или расширенную из
+   *  `search`. Для категорий — расширенную: «Зарплата» без родителя не
+   *  отвечает, чья это зарплата. */
+  selectedLabel?: "label" | "search";
 }
 
 /** Нормализация для поиска: регистр и «ё» не должны мешать найти. */
@@ -86,6 +90,7 @@ export function Combobox({
   disabled,
   className,
   searchFrom = 8,
+  selectedLabel = "label",
 }: ComboboxProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -202,7 +207,9 @@ export function Combobox({
       >
         {selected?.icon}
         <span className={cn("min-w-0 flex-1 truncate", !selected && "text-text-muted")}>
-          {selected ? selected.label : (value === "" && emptyLabel) || placeholder}
+          {selected
+            ? (selectedLabel === "search" && selected.search) || selected.label
+            : (value === "" && emptyLabel) || placeholder}
         </span>
         <ChevronDown size={14} className="shrink-0 text-text-muted" />
       </button>

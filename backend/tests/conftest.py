@@ -97,6 +97,29 @@ async def test_sessionmaker(_test_database) -> AsyncGenerator[async_sessionmaker
     await engine.dispose()
 
 
+# Очистка между тестами: DELETE в порядке зависимостей плюс сброс всех
+# счётчиков одним запросом.
+#
+# Раньше здесь было 35 отдельных TRUNCATE ... RESTART IDENTITY CASCADE — по
+# одному на таблицу. На пустых таблицах это стоило 830 мс на тест: TRUNCATE
+# берёт исключительную блокировку, переписывает файл и правит системный
+# каталог, и делает это 35 раз подряд. Весь набор из-за одного этого шёл
+# семь минут.
+#
+# DELETE на таблице в десяток строк дешевле в разы: 71 мс на ту же работу
+# вместе с засевом. Порядок — обратный порядку зависимостей (тот же, что был
+# у TRUNCATE), поэтому CASCADE не нужен: дети удаляются раньше родителей.
+#
+# Счётчики сбрасываются отдельным запросом по всем последовательностям
+# схемы, а не по списку таблиц: RESTART IDENTITY делал ровно это, а тесты
+# полагаются на предсказуемые идентификаторы.
+_RESET_SEQUENCES = text(
+    "SELECT setval(c.oid::regclass, 1, false) FROM pg_class c "
+    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE c.relkind = 'S' AND n.nspname = 'public'"
+)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_database(test_sessionmaker):
     """Wipe every table and reseed the default categories/account/app
@@ -104,7 +127,8 @@ async def _clean_database(test_sessionmaker):
     one and never have to guess at auto-incremented IDs from prior runs."""
     async with test_sessionmaker() as session:
         for table in reversed(Base.metadata.sorted_tables):
-            await session.execute(text(f'TRUNCATE TABLE "{table.name}" RESTART IDENTITY CASCADE'))
+            await session.execute(text(f'DELETE FROM "{table.name}"'))
+        await session.execute(_RESET_SEQUENCES)
         await session.commit()
         await seed_default_categories(session)
         # Валюты и единицы засеваются и здесь: без них установка неполная,
