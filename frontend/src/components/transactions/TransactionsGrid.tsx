@@ -365,8 +365,12 @@ export function TransactionsGrid({
                       <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
                         {formatDayHeading(groupRow.head.date)}
                       </span>
+                      {/* Итог дня теми же цветами, что и суммы в строках:
+                          потрачено красным, получено зелёным. Серым он
+                          сливался с датой рядом, хотя это и есть главное
+                          число разделителя. */}
                       {totals && totals.spent > 0 && (
-                        <span className="text-xs tabular-nums text-text-muted">
+                        <span className="text-xs tabular-nums text-danger">
                           −{formatCurrency(totals.spent, groupRow.head.currency)}
                         </span>
                       )}
