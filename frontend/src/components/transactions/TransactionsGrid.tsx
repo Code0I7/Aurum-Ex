@@ -108,13 +108,26 @@ export function TransactionsGrid({
       const key = `${tx.date}|${tx.account_id}`;
       byDay.set(key, [...(byDay.get(key) ?? []), tx]);
     }
-    const result = new Map<number, { indexInDay: number; siblings: { transaction: Transaction; indexInDay: number }[] }>();
-    for (const rows of byDay.values()) {
+    const result = new Map<
+      number,
+      { groupKey: string; indexInDay: number; siblings: { transaction: Transaction; indexInDay: number }[] }
+    >();
+    // Ключ дня и счёта запоминается у каждой строки. Номер строки внутри
+    // дня сам по себе ничего не опознаёт: третья строка есть в каждом дне,
+    // и подсветка места вставки по одному номеру загоралась разом во всём
+    // списке.
+    for (const [groupKey, rows] of byDay) {
       const meta = rows.map((transaction, indexInDay) => ({ transaction, indexInDay }));
-      meta.forEach((item) => result.set(item.transaction.id, { indexInDay: item.indexInDay, siblings: meta }));
+      meta.forEach((item) =>
+        result.set(item.transaction.id, { groupKey, indexInDay: item.indexInDay, siblings: meta })
+      );
     }
     return result;
   }, [items]);
+
+  // День и счёт перетаскиваемой строки: только внутри них разрешено
+  // переставлять, и только там показывается место вставки.
+  const dragGroupKey = drag ? siblingsByRow.get(drag.id)?.groupKey : undefined;
 
   const toggleGroup = (key: string) =>
     setExpanded((prev) => {
@@ -384,7 +397,13 @@ export function TransactionsGrid({
                 // подкрашенный фон самой строки — цель должна читаться
                 // боковым зрением, не глазами.
                 drag?.id === tx.id && "opacity-40",
-                drag && drag.id !== tx.id && drag.targetIndex === siblingsByRow.get(tx.id)?.indexInDay &&
+                drag &&
+                  drag.id !== tx.id &&
+                  // Тот же день и счёт, а не просто тот же номер строки:
+                  // без этой проверки загоралась третья строка каждого дня
+                  // сразу.
+                  siblingsByRow.get(tx.id)?.groupKey === dragGroupKey &&
+                  drag.targetIndex === siblingsByRow.get(tx.id)?.indexInDay &&
                   "border-t-[3px] border-accent bg-accent/10 shadow-[0_-2px_10px_-2px_var(--color-accent)]"
               )}
             >
