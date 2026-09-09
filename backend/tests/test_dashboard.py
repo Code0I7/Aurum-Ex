@@ -132,10 +132,12 @@ async def test_split_transaction_rolls_up_into_one_slice_with_a_children_breakdo
 ):
     """A hypermarket receipt split between Groceries and one of its own
     subcategories (Sweets) must show up as a single Groceries slice on the
-    donut with the full 100.00 total — a split's categories always share one
-    parent (see routes/transactions.py's _build_splits), so it never
-    fragments into separate top-level slices — but the slice must expose a
-    children breakdown so the Groceries/Sweets split is still visible."""
+    donut with the full 100.00 total — the split stays inside one branch, so
+    it rolls up into one slice — but the slice must expose a children
+    breakdown so the Groceries/Sweets split is still visible.
+
+    Разбивка по разным веткам, наоборот, даёт по доле в каждый свой корень:
+    это проверяется в test_transactions.py."""
     groceries = categories["Groceries"]["id"]
     sweets_resp = await client.post(
         "/categories", json={"name": "Sweets", "kind": "expense", "color": "#7a869a", "parent_id": groceries}

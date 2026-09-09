@@ -3,7 +3,6 @@ import { Plus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
-import { Combobox } from "@/components/ui/Combobox";
 import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { ItemsEditor } from "@/components/transactions/ItemsEditor";
 import {
@@ -102,8 +101,16 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [splitMode, setSplitMode] = useState(false);
-  const [splitRows, setSplitRows] = useState<SplitRowState[]>([emptySplitRow(), emptySplitRow()]);
+  // Категории операции одним списком. Одна строка — обычная операция с
+  // одной категорией; две и больше — разбивка, и тогда у каждой строки
+  // своя сумма.
+  //
+  // Раньше это были два режима с переключателем: «одна категория» и
+  // «несколько». Переключатель заодно требовал сначала выбрать категорию
+  // верхнего уровня, а доли разрешал только внутри неё — то есть ноутбук
+  // и клавиатуру из одного чека разложить было нельзя. Режимов больше нет:
+  // добавил строку — стало разбиение, убрал — снова одна категория.
+  const [categoryRows, setCategoryRows] = useState<SplitRowState[]>([emptySplitRow()]);
   const [error, setError] = useState<string | null>(null);
   const { data: participants } = useParticipants();
   const { data: stores } = useStores();
@@ -117,22 +124,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     if (!open) return;
     if (transaction) {
       const hasSplits = transaction.splits.length > 0;
-      // A split's categories always share one parent (see
-      // routes/transactions.py's _build_splits) — derive that shared base
-      // from whichever split's category is still live. If every split's
-      // category was since deleted, there's nothing to derive from; the
-      // base field is left blank and the user has to pick one again.
-      const baseCategory = hasSplits ? transaction.splits.find((split) => split.category)?.category : null;
       setForm({
         type: transaction.type,
         account_id: String(transaction.account_id),
-        category_id: hasSplits
-          ? baseCategory
-            ? String(baseCategory.parent_id ?? baseCategory.id)
-            : ""
-          : transaction.category_id
-            ? String(transaction.category_id)
-            : "",
+        category_id: !hasSplits && transaction.category_id ? String(transaction.category_id) : "",
         transfer_account_id: transaction.transfer_account_id ? String(transaction.transfer_account_id) : "",
         amount: transaction.amount,
         description: transaction.description ?? "",
@@ -156,8 +151,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           note: item.note,
         })),
       );
-      setSplitMode(hasSplits);
-      setSplitRows(
+      setCategoryRows(
         hasSplits
           ? transaction.splits.map((split) => ({
               key: String(split.id),
@@ -165,7 +159,12 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               amount: split.amount,
               note: split.note ?? "",
             }))
-          : [emptySplitRow(), emptySplitRow()]
+          : [
+              {
+                ...emptySplitRow(),
+                category_id: transaction.category_id ? String(transaction.category_id) : "",
+              },
+            ]
       );
     } else {
       // Счёт по умолчанию — «основная карта» из настроек. Первый в
@@ -181,8 +180,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       setForm({ ...EMPTY_FORM, account_id: preferred });
       setTags([]);
       setItems([]);
-      setSplitMode(false);
-      setSplitRows([emptySplitRow(), emptySplitRow()]);
+      setCategoryRows([emptySplitRow()]);
     }
     setError(null);
   }, [open, transaction, accounts]);
@@ -204,62 +202,41 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const { data: settings } = useAppSettings();
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
 
-  function updateSplitRow(key: string, patch: Partial<SplitRowState>) {
-    setSplitRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  function updateCategoryRow(key: string, patch: Partial<SplitRowState>) {
+    setCategoryRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   }
 
-  function addSplitRow() {
-    setSplitRows((prev) => [...prev, emptySplitRow()]);
-  }
-
-  function removeSplitRow(key: string) {
-    setSplitRows((prev) => (prev.length <= 2 ? prev : prev.filter((row) => row.key !== key)));
-  }
-
-  const isSplitEditingNow = form.type !== "transfer" && splitMode;
-  const isSettlement = SETTLEMENT_TYPES.includes(form.type);
-  const splitAllocatedCents = splitRows.reduce((sum, row) => sum + toCents(row.amount), 0);
-  const splitRemainingCents = toCents(form.amount) - splitAllocatedCents;
-
-  // The category select becomes the split's "base" category while
-  // splitting — restricted to top-level categories — and each split row can
-  // only pick that base itself or one of its direct children (see
-  // routes/transactions.py's _build_splits: a split's categories always
-  // share one parent).
-  const topLevelCategories = relevantCategories.filter((category) => !category.indented);
-  const baseChildCategories = kindCategories.filter((category) => category.parent_id === Number(form.category_id));
-  const categorySelectOptions = splitMode ? topLevelCategories : relevantCategories;
-  // Пункты разбиения: сама выбранная категория плюс её прямые дети.
-  // Собирается здесь, а не в разметке, чтобы список строился один раз на
-  // все строки разбиения, а не заново на каждую.
-  const splitCategoryOptions = form.category_id
-    ? [
-        { value: form.category_id, label: t("transactions.form.splitDirectOption") },
-        ...baseChildCategories.map((category) => ({
-          value: String(category.id),
-          label: translateCategoryName(category.name),
-        })),
-      ]
-    : [];
-
-  function toggleSplitMode() {
-    setSplitMode((prev) => {
-      const next = !prev;
-      if (next) {
-        const current = relevantCategories.find((category) => String(category.id) === form.category_id);
-        if (current?.parent_id) {
-          setForm((f) => ({ ...f, category_id: String(current.parent_id) }));
-        }
-        setSplitRows([emptySplitRow(), emptySplitRow()]);
-      }
-      return next;
+  function addCategoryRow() {
+    setCategoryRows((prev) => {
+      // Первой строке при переходе к разбивке проставляется остаток: чаще
+      // всего вторая доля — это «а вот столько было на другое», и остальное
+      // остаётся на первой. Уже введённую вручную сумму не трогаем.
+      const allocated = prev.reduce((sum, row) => sum + toCents(row.amount), 0);
+      const rest = toCents(form.amount) - allocated;
+      const filled =
+        prev.length === 1 && !prev[0].amount && rest > 0
+          ? [{ ...prev[0], amount: (rest / 100).toFixed(2) }]
+          : prev;
+      return [...filled, emptySplitRow()];
     });
   }
 
-  function handleBaseCategoryChange(value: string) {
-    setForm((prev) => ({ ...prev, category_id: value }));
-    if (splitMode) setSplitRows([emptySplitRow(), emptySplitRow()]);
+  function removeCategoryRow(key: string) {
+    setCategoryRows((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((row) => row.key !== key);
+      // Осталась одна строка — это снова обычная операция с одной
+      // категорией, и сумма доли теряет смысл: она равна сумме операции.
+      return next.length === 1 ? [{ ...next[0], amount: "", note: "" }] : next;
+    });
   }
+
+  const isSettlement = SETTLEMENT_TYPES.includes(form.type);
+  // Разбивка — это просто «строк больше одной». Отдельного признака нет:
+  // два источника правды про одно и то же расходились бы при каждой правке.
+  const isSplit = form.type !== "transfer" && categoryRows.length > 1;
+  const splitAllocatedCents = categoryRows.reduce((sum, row) => sum + toCents(row.amount), 0);
+  const splitRemainingCents = toCents(form.amount) - splitAllocatedCents;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -282,13 +259,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     // update, and create a normal single-category transaction. [] -> clears
     // splits that used to be there (the user turned split mode off, or
     // switched the transaction to a transfer, which can't carry splits).
+    // undefined — оставить разбивку операции как была (при правке) и
+    // записать обычную операцию с одной категорией. [] — стереть разбивку,
+    // которая там была: строк снова одна, или операция стала переводом.
     let splits: TransactionSplitInput[] | undefined;
-    if (isSplitEditingNow) {
-      if (!form.category_id) {
-        setError(t("transactions.form.errorSplitNoBaseCategory"));
-        return;
-      }
-      const filledRows = splitRows.filter((row) => row.category_id || row.amount);
+    const singleCategory = categoryRows.length === 1 ? categoryRows[0].category_id : "";
+    if (isSplit) {
+      const filledRows = categoryRows.filter((row) => row.category_id || row.amount);
       if (filledRows.length < 2) {
         setError(t("transactions.form.errorSplitMinRows"));
         return;
@@ -317,8 +294,8 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       category_id:
         form.type === "transfer" || (splits && splits.length > 0)
           ? null
-          : form.category_id
-            ? Number(form.category_id)
+          : singleCategory
+            ? Number(singleCategory)
             : null,
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
       amount: form.amount,
@@ -426,7 +403,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             onChange={(event) => {
               const nextType = event.target.value as TransactionType;
               setForm((prev) => ({ ...prev, type: nextType, category_id: "" }));
-              if (nextType === "transfer" || SETTLEMENT_TYPES.includes(nextType)) setSplitMode(false);
+              // Категории расхода и дохода не пересекаются: оставить
+              // выбранное значило бы отправить чужую категорию.
+              setCategoryRows([emptySplitRow()]);
             }}
           >
             <option value="expense">{t("transactions.form.typeExpense")}</option>
@@ -560,88 +539,73 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           </div>
         ) : (
           <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="category">{t("transactions.form.categoryLabel")}</Label>
-              <button
-                type="button"
-                className="mb-1 text-xs text-series-1 hover:underline"
-                onClick={toggleSplitMode}
-              >
-                {splitMode ? t("transactions.form.splitToggleOff") : t("transactions.form.splitToggle")}
-              </button>
-            </div>
+            <Label htmlFor="category">{t("transactions.form.categoryLabel")}</Label>
 
-            <CategoryPicker
-              id="category"
-              categories={categorySelectOptions}
-              value={form.category_id}
-              onChange={handleBaseCategoryChange}
-              placeholder={t("transactions.form.noCategory")}
-              emptyLabel={t("transactions.form.noCategory")}
-            />
-
-            {splitMode && (
-              <div className="mt-2 space-y-2">
-                {!form.category_id ? (
-                  <p className="text-xs text-text-muted">{t("transactions.form.splitHint")}</p>
-                ) : baseChildCategories.length === 0 ? (
-                  <p className="text-xs text-text-muted">{t("transactions.form.splitNoChildren")}</p>
-                ) : (
-                  <p className="text-xs text-text-muted">{t("transactions.form.splitHint")}</p>
-                )}
-                {splitRows.map((row) => (
-                  <div key={row.key} className="space-y-1.5 rounded-lg border border-border bg-surface-1 p-2">
-                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-                      <Combobox
-                        className="sm:flex-1"
-                        // Сама выбранная категория первым пунктом, а следом
-                        // её подкатегории: «остальное сюда же» — самая
-                        // частая строка разбиения.
-                        options={splitCategoryOptions}
-                        value={row.category_id}
-                        disabled={!form.category_id}
-                        onChange={(value) => updateSplitRow(row.key, { category_id: value })}
-                        placeholder={t("transactions.form.splitCategoryPlaceholder")}
-                      />
-                      <div className="flex items-center gap-1.5">
+            {/* Один список: одна строка — обычная категория, две и больше —
+                разбивка. Ветки категорий не ограничены ничем: ноутбук и
+                клавиатура из одного чека лежат в разных ветках, и это
+                обычная покупка, а не исключение. */}
+            <div className="space-y-2">
+              {categoryRows.map((row, index) => (
+                <div key={row.key} className={isSplit ? "space-y-1.5 rounded-lg border border-border bg-surface-1 p-2" : undefined}>
+                  <div className="flex items-center gap-1.5">
+                    <CategoryPicker
+                      id={index === 0 ? "category" : undefined}
+                      className="min-w-0 flex-1"
+                      categories={relevantCategories}
+                      value={row.category_id}
+                      onChange={(value) => updateCategoryRow(row.key, { category_id: value })}
+                      placeholder={t("transactions.form.noCategory")}
+                      // Пустой выбор доступен только у единственной строки:
+                      // доля разбивки без категории — это просто потерянные
+                      // деньги в отчёте.
+                      emptyLabel={isSplit ? undefined : t("transactions.form.noCategory")}
+                    />
+                    {isSplit && (
+                      <>
                         <Input
                           type="number"
                           step="0.01"
                           min="0.01"
-                          className="w-24"
+                          className="w-24 shrink-0"
                           placeholder={t("transactions.form.amountLabel")}
                           value={row.amount}
-                          onChange={(event) => updateSplitRow(row.key, { amount: event.target.value })}
+                          onChange={(event) => updateCategoryRow(row.key, { amount: event.target.value })}
                         />
                         <button
                           type="button"
                           aria-label={t("transactions.form.splitRemoveRow")}
-                          onClick={() => removeSplitRow(row.key)}
-                          disabled={splitRows.length <= 2}
-                          className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-30"
+                          onClick={() => removeCategoryRow(row.key)}
+                          className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
                         >
                           <X size={15} />
                         </button>
-                      </div>
-                    </div>
+                      </>
+                    )}
+                  </div>
+                  {isSplit && (
                     <Input
                       className="text-xs"
                       placeholder={t("transactions.form.splitNotePlaceholder")}
                       value={row.note}
-                      onChange={(event) => updateSplitRow(row.key, { note: event.target.value })}
+                      onChange={(event) => updateCategoryRow(row.key, { note: event.target.value })}
                     />
-                  </div>
-                ))}
+                  )}
+                </div>
+              ))}
 
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={addSplitRow}
-                    className="flex items-center gap-1 rounded-md py-1 text-xs text-series-1 hover:underline"
-                  >
-                    <Plus size={14} />
-                    {t("transactions.form.splitAddRow")}
-                  </button>
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={addCategoryRow}
+                  className="flex items-center gap-1 rounded-md py-1 text-xs text-series-1 hover:underline"
+                >
+                  <Plus size={14} />
+                  {t("transactions.form.splitAddRow")}
+                </button>
+                {/* Остаток — только при разбивке: у одной категории он
+                    всегда ноль по построению, и строка была бы шумом. */}
+                {isSplit && (
                   <p className={`text-xs ${splitRemainingCents === 0 ? "text-success" : "text-text-muted"}`}>
                     {splitRemainingCents > 0
                       ? t("transactions.form.splitRemainingLabel", {
@@ -653,9 +617,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                           })
                         : t("transactions.form.splitFullyAllocatedLabel")}
                   </p>
-                </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         )}
 

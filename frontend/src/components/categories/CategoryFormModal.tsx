@@ -3,9 +3,9 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { CategoryColorPicker } from "@/components/categories/CategoryColorPicker";
+import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { CategoryIconPicker } from "@/components/categories/CategoryIconPicker";
 import { useCategories, useCreateCategory, useUpdateCategory } from "@/hooks/useCategories";
-import { translateCategoryName } from "@/lib/categoryLabels";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Category, CategoryKind } from "@/types";
 
@@ -96,14 +96,17 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
       }
     }
 
-    const result: Array<{ item: Category; depth: number }> = [];
+    // Плоский список без отступов: дерево и порядок строит сам выбиратель
+    // (buildHierarchicalCategories), и держать вторую такую же раскладку
+    // здесь значило бы чинить одну и ту же ошибку дважды.
+    const result: Category[] = [];
     function walk(parentId: number | null, depth: number) {
       const level = all
         .filter((item) => item.parent_id === parentId && item.kind === form.kind)
         .sort((a, b) => a.name.localeCompare(b.name));
       for (const item of level) {
         if (!forbidden.has(item.id) && depth + 1 + branchHeight <= MAX_CATEGORY_DEPTH) {
-          result.push({ item, depth });
+          result.push(item);
         }
         walk(item.id, depth + 1);
       }
@@ -198,22 +201,19 @@ export function CategoryFormModal({ open, onClose, category, defaultKind }: Cate
 
         <div>
           <Label htmlFor="category-parent">{t("category.form.parentLabel")}</Label>
-          <Select
+          {/* Тот же выбиратель, что и в операции: со значками, отступами
+              по вложенности и поиском по полному пути. Раньше здесь стоял
+              нативный список, где дерево изображалось неразрывными
+              пробелами, а искать в сотне подкатегорий приходилось
+              глазами. */}
+          <CategoryPicker
             id="category-parent"
+            categories={parentCandidates}
             value={form.parent_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, parent_id: event.target.value }))}
-          >
-            <option value="">{t("category.form.noParent")}</option>
-            {parentCandidates.map(({ item, depth }) => (
-              <option key={item.id} value={item.id}>
-                {/* Неразрывные пробелы: обычные схлопываются в <option>, и
-                    дерево превратилось бы в плоский список. */}
-                {"  ".repeat(depth)}
-                {depth > 0 ? "└ " : ""}
-                {translateCategoryName(item.name)}
-              </option>
-            ))}
-          </Select>
+            onChange={(value) => setForm((prev) => ({ ...prev, parent_id: value }))}
+            placeholder={t("category.form.noParent")}
+            emptyLabel={t("category.form.noParent")}
+          />
         </div>
 
         <div>

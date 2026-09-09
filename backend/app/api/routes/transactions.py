@@ -29,7 +29,6 @@ from app.schemas.transaction import (
 )
 from app.models.product import Product
 from app.schemas.product import TransactionItemInput
-from app.services.category_tree import load_category_tree
 from app.services.currency_service import get_base_currency, to_base
 from app.services.product_service import resolve_item_category
 from app.services.transaction_service import (
@@ -157,30 +156,32 @@ async def _build_items(
 async def _build_splits(
     session: AsyncSession, splits: list[TransactionSplitInput], transaction_type: TransactionType
 ) -> list[TransactionSplit]:
-    """A split's whole point is dividing one purchase's total across the
-    *subcategories of one parent* (a hypermarket receipt: part groceries ->
-    Sweets, part -> Alcohol) — not across unrelated top-level categories, or
-    the numbers would roll up into two different parents and the "spent X on
-    Groceries, split between Sweets/Alcohol" picture the feature exists for
-    falls apart. Each split may point at that parent category itself (an
-    unspecified-subcategory line) or at any one of its direct children —
-    enforced by requiring every split's own top-level ancestor
-    (parent_id, or its own id if it has none) to agree.
+    """Разбивка делит сумму одной операции между несколькими категориями:
+    в одном чеке ноутбук и клавиатура, в одной покупке продукты и бытовая
+    химия.
+
+    Категории могут быть какими угодно и из любых веток.
+
+    Раньше здесь стояло требование общего корня: разбивка задумывалась как
+    деление покупки между подкатегориями одного родителя (чек гипермаркета:
+    часть в «Сладкое», часть в «Алкоголь»), а разные корни отклонялись —
+    считалось, что иначе «потрачено X на продукты, из них столько-то на
+    сладкое» перестанет складываться.
+
+    Требование убрано, потому что описывало не жизнь, а удобную половину
+    жизни. В одном чеке лежат вещи из разных веток — это норма, а не
+    исключение, и приложение заставляло либо врать категорией, либо
+    заводить две операции на одну покупку. Отчёты от этого не страдают:
+    каждая доля и так учитывается в своей категории и сама сворачивается в
+    свой корень; просто корней у одной операции теперь может быть больше
+    одного.
+
+    Остаётся то, что действительно обязано выполняться: категория
+    подходит виду операции, долей не меньше двух, и в сумме они дают сумму
+    операции ровно (см. schemas/transaction.py, split_rule_violation).
     """
-    # Корень ветки, а не родитель на один шаг: с произвольной вложенностью
-    # у «Продукты → Молочное → Сыр» родитель — молочное, и разбивка чека
-    # между сыром и хлебом отклонялась бы как «разные ветки».
-    tree = await load_category_tree(session)
-    top_level_ids: set[int] = set()
     for split in splits:
-        category = await _ensure_category_matches_type(session, split.category_id, transaction_type)
-        assert category is not None  # split.category_id is required (not Optional) on the schema
-        top_level_ids.add(tree.top_level_of(category.id))
-    if len(top_level_ids) > 1:
-        raise HTTPException(
-            status_code=400,
-            detail="All split categories must be the same parent category or its direct subcategories",
-        )
+        await _ensure_category_matches_type(session, split.category_id, transaction_type)
     return [TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in splits]
 
 

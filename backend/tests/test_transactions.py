@@ -412,10 +412,8 @@ async def _subcategory(client: AsyncClient, parent_id: int, name: str) -> int:
 
 async def test_create_split_transaction_across_categories(client: AsyncClient, account_id, categories):
     """The hypermarket-receipt case: one purchase, part everyday groceries,
-    part sweets — a split's categories must share one parent (see
-    _build_splits), so both lines here are Groceries itself and one of its
-    own subcategories. category_id stays empty on the row itself, and its
-    splits carry the categorization instead."""
+    part sweets. category_id stays empty on the row itself, and its splits
+    carry the categorization instead."""
     groceries = categories["Groceries"]["id"]
     sweets = await _subcategory(client, groceries, "Sweets")
     resp = await client.post(
@@ -439,11 +437,14 @@ async def test_create_split_transaction_across_categories(client: AsyncClient, a
     assert splits["Sweets"]["note"] == "candy and snacks"
 
 
-async def test_create_split_rejects_categories_from_different_parents(client: AsyncClient, account_id, categories):
-    """The whole point of a split is dividing one purchase across the
-    subcategories of ONE parent — Groceries and Shopping are two unrelated
-    top-level categories, so mixing them must be rejected even though both
-    are individually valid expense categories."""
+async def test_split_categories_may_come_from_different_branches(client: AsyncClient, account_id, categories):
+    """Ноутбук и продукты в одном чеке.
+
+    Раньше это отклонялось: разбивка требовала общего корня у всех долей.
+    Требование описывало не жизнь, а удобную её половину — в одном чеке
+    лежат вещи из разных веток, и приложение заставляло либо врать
+    категорией, либо заводить две операции на одну покупку.
+    """
     groceries = categories["Groceries"]["id"]
     shopping = categories["Shopping"]["id"]
     resp = await client.post(
@@ -458,14 +459,16 @@ async def test_create_split_rejects_categories_from_different_parents(client: As
             ],
         ),
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 201, resp.text
+    splits = {s["category"]["name"]: money(s["amount"]) for s in resp.json()["splits"]}
+    assert splits == {"Groceries": Decimal("70.00"), "Shopping": Decimal("30.00")}
 
 
-async def test_create_split_rejects_two_different_parents_subcategories(client: AsyncClient, account_id, categories):
-    groceries = categories["Groceries"]["id"]
-    shopping = categories["Shopping"]["id"]
-    sweets = await _subcategory(client, groceries, "Sweets")
-    electronics = await _subcategory(client, shopping, "Electronics")
+async def test_split_may_mix_subcategories_of_unrelated_branches(client: AsyncClient, account_id, categories):
+    """Тот же случай на два уровня глубже: сладкое из продуктов и
+    электроника из покупок — по-прежнему одна покупка."""
+    sweets = await _subcategory(client, categories["Groceries"]["id"], "Sweets")
+    electronics = await _subcategory(client, categories["Shopping"]["id"], "Electronics")
     resp = await client.post(
         "/transactions",
         json=_txn(
@@ -478,7 +481,39 @@ async def test_create_split_rejects_two_different_parents_subcategories(client: 
             ],
         ),
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 201, resp.text
+
+
+async def test_split_across_branches_lands_in_each_own_report_row(
+    client: AsyncClient, account_id, categories
+):
+    """Главное, ради чего запрет и стоял: отчёты не должны перепутаться.
+    Каждая доля учитывается в своей категории и сворачивается в свой
+    корень — просто корней у одной операции теперь может быть больше
+    одного."""
+    groceries = categories["Groceries"]["id"]
+    shopping = categories["Shopping"]["id"]
+    assert (
+        await client.post(
+            "/transactions",
+            json=_txn(
+                account_id,
+                amount="100.00",
+                date="2026-03-10",
+                category_id=None,
+                splits=[
+                    {"category_id": groceries, "amount": "70.00"},
+                    {"category_id": shopping, "amount": "30.00"},
+                ],
+            ),
+        )
+    ).status_code == 201
+
+    resp = await client.get("/dashboard/summary", params={"year": 2026, "month": 3, "range": "month"})
+    assert resp.status_code == 200, resp.text
+    by_category = {row["name"]: money(row["amount"]) for row in resp.json()["spending_by_category"]}
+    assert by_category.get("Groceries") == Decimal("70.00")
+    assert by_category.get("Shopping") == Decimal("30.00")
 
 
 async def test_create_split_rejects_category_id_alongside_splits(client: AsyncClient, account_id, categories):
