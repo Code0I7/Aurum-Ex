@@ -307,3 +307,18 @@ async def test_one_misfiled_row_does_not_flip_a_whole_category(client: AsyncClie
     # Подкатегория наследует вид родителя: одна ветка не может быть наполовину
     # доходной.
     assert categories["Прочие расходы - Переводы"]["kind"] == "expense"
+
+
+def test_a_row_without_a_comment_stays_without_a_description():
+    """Пусто остаётся пустым.
+
+    Заглушка «Без описания» стояла в импорте, пока описание было
+    обязательным полем: у половины строк исходной таблицы комментария нет,
+    и иначе импорт не проходил. Поле стало необязательным в beta.4, а
+    заглушка осталась — и превратилась в две с половиной сотни строк
+    текста, который ничего не сообщает, зато попадает и в поиск, и в
+    проверку повторов.
+    """
+    plan = build_plan(csv_of(row(comment="")))
+    assert len(plan.expenses) == 1
+    assert plan.expenses[0].description is None
