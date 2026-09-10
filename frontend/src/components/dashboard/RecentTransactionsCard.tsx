@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
+import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { useTranslation } from "@/lib/i18n";
 import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
 import { useTransactions } from "@/hooks/useTransactions";
@@ -38,8 +39,6 @@ export function RecentTransactionsCard({ year, month }: RecentTransactionsCardPr
             {data.items.map((tx) => {
               const isSplit = tx.splits.length > 0;
               const Icon = getCategoryIcon(tx.category?.icon);
-              const isTransfer = tx.type === "transfer";
-              const isExpense = tx.type === "expense";
               const color = tx.category?.color ?? "var(--text-muted)";
               const categoryLabel = isSplit
                 ? tx.splits.map((split) => (split.category ? translateCategoryName(split.category.name) : "?")).join(" + ")
@@ -63,10 +62,10 @@ export function RecentTransactionsCard({ year, month }: RecentTransactionsCardPr
                   </span>
                   <span
                     className={`shrink-0 text-sm font-medium tabular-nums ${
-                      isTransfer ? "text-text-muted" : isExpense ? "text-text-primary" : "text-success"
+                      amountColorClass(tx.type)
                     }`}
                   >
-                    {isTransfer ? "" : isExpense ? "-" : "+"}
+                    {amountSign(tx.type)}
                     {formatCurrency(Number(tx.amount))}
                   </span>
                 </li>

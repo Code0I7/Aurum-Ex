@@ -9,6 +9,7 @@ import { formatWorkCost, rateForDate } from "@/lib/hours";
 import { useHourlyRates } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { COLUMNS, type ColumnId, type ColumnLayout } from "@/components/transactions/columns";
 import { groupTransactions } from "@/components/transactions/grouping";
 import { useRowDrag, type DragUnit, type RowMeta } from "@/components/transactions/useRowDrag";
@@ -286,7 +287,9 @@ export function TransactionsGrid({
         return tx.account.name;
 
       case "amount": {
-        const sign = tx.type === "income" || tx.type === "external_in" ? "+" : tx.type === "transfer" ? "" : "−";
+        // Знак и цвет — из общего модуля: раньше эта развилка жила
+        // в каждом списке своя, и списки разошлись.
+        const sign = amountSign(tx.type);
         // У свёрнутой группы показывается сумма по всем её операциям: четыре
         // поездки по 35 ₽ читаются как 140 ₽, иначе группировка скрывала бы
         // ровно то число, ради которого в список и смотрят.
@@ -299,14 +302,14 @@ export function TransactionsGrid({
         // Перевод остаётся серым намеренно: свои деньги переложены с одного
         // счёта на другой, ни потери, ни прибавления не произошло, и красный
         // говорил бы неправду.
-        const isSpend = tx.type === "expense" || tx.type === "external_out";
         return (
           <span
             className={cn(
               "tabular-nums",
               tx.is_excluded && "line-through opacity-60",
-              (tx.type === "income" || tx.type === "external_in") && "text-success",
-              isSpend && "text-danger"
+              // Перевод без своего цвета: строка сетки уже окрашена,
+              // и серый у одной колонки выбивался бы из ряда.
+              amountColorClass(tx.type, "")
             )}
           >
             {sign}

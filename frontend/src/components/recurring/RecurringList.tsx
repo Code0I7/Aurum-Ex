@@ -1,6 +1,7 @@
 import { ArrowLeftRight, CalendarCheck, Pencil, Trash2 } from "lucide-react";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, getIntlLocale } from "@/lib/format";
+import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { RecurringTransaction } from "@/types";
@@ -30,7 +31,6 @@ export function RecurringList({ items, onPost, onEdit, onDelete, isPosting }: Re
     <ul className="divide-y divide-gridline">
       {items.map((item) => {
         const isTransfer = item.type === "transfer";
-        const isExpense = item.type === "expense";
         const Icon = isTransfer ? ArrowLeftRight : getCategoryIcon(item.category_icon);
         const color = isTransfer ? "var(--text-muted)" : item.category_color ?? "var(--text-muted)";
 
@@ -61,10 +61,10 @@ export function RecurringList({ items, onPost, onEdit, onDelete, isPosting }: Re
 
             <span
               className={`shrink-0 text-sm font-medium tabular-nums ${
-                isTransfer ? "text-text-muted" : isExpense ? "text-text-primary" : "text-success"
+                amountColorClass(item.type)
               }`}
             >
-              {isTransfer ? "" : isExpense ? "-" : "+"}
+              {amountSign(item.type)}
               {formatCurrency(item.amount)}
             </span>
 

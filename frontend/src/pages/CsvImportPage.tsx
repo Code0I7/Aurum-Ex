@@ -10,6 +10,7 @@ import { useBulkCreateTransactions } from "@/hooks/useTransactions";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import { DATE_FORMATS, parseAmount, parseCsv, parseDateWithFormat, type DateFormat } from "@/lib/csv";
 import { formatCurrency } from "@/lib/format";
+import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { ApiError } from "@/api/client";
 import { useTranslation } from "@/lib/i18n";
 import type { TransactionInput } from "@/types";
@@ -362,10 +363,10 @@ export function CsvImportPage() {
                             </td>
                             <td
                               className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums ${
-                                item.type === "expense" ? "text-text-primary" : "text-success"
+                                amountColorClass(item.type)
                               }`}
                             >
-                              {item.type === "expense" ? "-" : "+"}
+                              {amountSign(item.type)}
                               {formatCurrency(item.amount)}
                             </td>
                           </tr>

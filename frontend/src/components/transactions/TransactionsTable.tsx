@@ -1,6 +1,7 @@
 import { ArrowLeftRight, CalendarSearch, Pencil, SquareDivide, Trash2 } from "lucide-react";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
+import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { useTranslation } from "@/lib/i18n";
 import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
 import { useCategories } from "@/hooks/useCategories";
@@ -33,7 +34,6 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
       <ul className="divide-y divide-gridline">
         {items.map((tx) => {
           const isTransfer = tx.type === "transfer";
-          const isExpense = tx.type === "expense";
           const isSplit = tx.splits.length > 0;
           const Icon = isTransfer ? ArrowLeftRight : isSplit ? SquareDivide : getCategoryIcon(tx.category?.icon);
           const color = isTransfer || isSplit ? "var(--text-muted)" : tx.category?.color ?? "var(--text-muted)";
@@ -62,12 +62,14 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                 </span>
               </span>
 
+              {/* Знак и цвет берутся из общего модуля, а не решаются здесь.
+                  Раньше решались: всё, что не перевод и не расход, шло
+                  зелёным плюсом, и переданный человеку подарок выглядел
+                  как заработок. */}
               <span
-                className={`shrink-0 text-sm font-medium tabular-nums ${
-                  isTransfer ? "text-text-muted" : isExpense ? "text-text-primary" : "text-success"
-                }`}
+                className={`shrink-0 text-sm font-medium tabular-nums ${amountColorClass(tx.type)}`}
               >
-                {isTransfer ? "" : isExpense ? "-" : "+"}
+                {amountSign(tx.type)}
                 {formatCurrency(tx.amount)}
               </span>
 
