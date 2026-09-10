@@ -392,6 +392,15 @@ export interface AssetUpdateInput {
   risk_level?: RiskLevel;
 }
 
+/** Одна точка истории: сколько актив стоил на эту дату. По этим точкам
+ *  строится график капитала, поэтому правка цены историю не затирает — она
+ *  добавляет новую точку. */
+export interface AssetValuation {
+  id: number;
+  value: string;
+  as_of_date: string;
+}
+
 export interface AssetValuationInput {
   value: string;
   as_of_date: string;

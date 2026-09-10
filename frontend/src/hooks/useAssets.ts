@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addAssetValuation, createAsset, deleteAsset, fetchAssets, updateAsset } from "@/api/assets";
+import {
+  addAssetValuation,
+  createAsset,
+  deleteAsset,
+  deleteAssetValuation,
+  fetchAssets,
+  fetchAssetValuations,
+  updateAsset,
+} from "@/api/assets";
 import type { AssetInput, AssetUpdateInput, AssetValuationInput } from "@/types";
 
 function useInvalidateNetWorth() {
@@ -35,6 +43,30 @@ export function useAddAssetValuation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: AssetValuationInput }) => addAssetValuation(id, input),
     onSuccess: invalidate,
+  });
+}
+
+/** История переоценок одного актива. Запрашивается только при открытой
+ *  правке: на списке активов она не нужна, а запрос на каждый актив стоил бы
+ *  дороже пользы. */
+export function useAssetValuations(id: number | null) {
+  return useQuery({
+    queryKey: ["assets", id, "valuations"],
+    queryFn: () => fetchAssetValuations(id as number),
+    enabled: id !== null,
+  });
+}
+
+export function useDeleteAssetValuation() {
+  const invalidate = useInvalidateNetWorth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, valuationId }: { id: number; valuationId: number }) =>
+      deleteAssetValuation(id, valuationId),
+    onSuccess: (_data, variables) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["assets", variables.id, "valuations"] });
+    },
   });
 }
 

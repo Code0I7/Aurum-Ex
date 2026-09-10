@@ -98,7 +98,19 @@ export function Combobox({
   const [active, setActive] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<{ left: number; top: number; width: number; drop: "down" | "up" } | null>(null);
+  const [box, setBox] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    drop: "down" | "up";
+    /** Сколько места есть под список. Меньше высоты экрана, когда открыта
+     *  клавиатура. */
+    room: number;
+    /** Насколько видимая часть страницы сдвинута вверх при открытой
+     *  клавиатуре: у fixed-элемента отсчёт от неё, а не от окна. */
+    viewportTop: number;
+    viewportHeight: number;
+  } | null>(null);
 
   const items = useMemo(() => {
     const all = emptyLabel !== undefined ? [{ value: "", label: emptyLabel }, ...options] : options;
@@ -110,24 +122,51 @@ export function Combobox({
 
   // Положение списка считается от кнопки в момент открытия и пересчитывается
   // при прокрутке: портал живёт в body и о своей кнопке сам не знает.
+  //
+  // Размеры берутся у видимой части страницы (visualViewport), а не у окна.
+  // window.innerHeight при открытой клавиатуре не меняется: браузер считает
+  // окно прежним, просто накрывает его нижнюю часть. Из-за этого список
+  // «внизу есть куда» раскрывался прямо под клавиатуру — а искать в нём
+  // нечего, потому что его не видно. Оттуда же и высота: список обрезается
+  // по тому, что реально осталось на экране.
   useLayoutEffect(() => {
     if (!open) return;
     function place() {
       const trigger = triggerRef.current;
       if (!trigger) return;
+      const view = window.visualViewport;
+      const viewportTop = view?.offsetTop ?? 0;
+      const viewportHeight = view?.height ?? window.innerHeight;
       const rect = trigger.getBoundingClientRect();
-      const below = window.innerHeight - rect.bottom;
+      const below = viewportTop + viewportHeight - rect.bottom;
+      const above = rect.top - viewportTop;
       // Вниз, пока внизу есть куда: список у нижнего края экрана иначе
       // раскрывался бы за его пределы и был бы недоступен.
-      const drop = below < 240 && rect.top > below ? "up" : "down";
-      setBox({ left: rect.left, top: drop === "down" ? rect.bottom + 4 : rect.top - 4, width: rect.width, drop });
+      const drop = below < 240 && above > below ? "up" : "down";
+      setBox({
+        left: rect.left,
+        top: drop === "down" ? rect.bottom + 4 : rect.top - 4,
+        width: rect.width,
+        drop,
+        // Восемь точек оставляем на воздух у края: список, упирающийся в
+        // клавиатуру вплотную, читается как обрезанный по ошибке.
+        room: Math.max(120, (drop === "down" ? below : above) - 8),
+        viewportTop,
+        viewportHeight,
+      });
     }
     place();
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
+    // Клавиатура не вызывает ни resize окна, ни прокрутку — только эти два
+    // события у видимой части. Без них список остаётся там, где его открыли.
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
     return () => {
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
     };
   }, [open]);
 
@@ -221,7 +260,9 @@ export function Combobox({
               style={{
                 left: box.left,
                 width: box.width,
-                ...(box.drop === "down" ? { top: box.top } : { bottom: window.innerHeight - box.top }),
+                ...(box.drop === "down"
+                  ? { top: box.top }
+                  : { bottom: box.viewportTop + box.viewportHeight - box.top }),
               }}
               className="fixed z-[60] overflow-hidden rounded-lg border border-border bg-surface-1 shadow-xl"
               onKeyDown={onKeyDown}
@@ -239,7 +280,14 @@ export function Combobox({
                 </div>
               ) : null}
 
-              <div className="max-h-64 overflow-y-auto py-1">
+              {/* Высота — по тому, что реально осталось на экране, но не
+                  больше обычной: полный список на пол-экрана читается хуже
+                  короткого. Поиск занимает свою строку, поэтому вычитается
+                  из доступного места. */}
+              <div
+                className="overflow-y-auto py-1"
+                style={{ maxHeight: Math.min(256, box.room - (withSearch ? 40 : 0)) }}
+              >
                 {items.length === 0 ? (
                   <p className="px-3 py-4 text-center text-xs text-text-muted">{t("common.nothingFound")}</p>
                 ) : (

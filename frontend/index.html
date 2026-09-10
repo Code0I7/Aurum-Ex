@@ -14,7 +14,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum-Ex" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-content: при открытии клавиатуры браузер
+         сжимает саму страницу, а не накрывает её сверху. Без этого поле
+         ввода уезжает под клавиатуру, человек тянет страницу, чтобы его
+         увидеть, клавиатура закрывается — и всё по новой. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#08080a" />
     <title>Aurum-Ex — Личные финансы</title>
     <script>

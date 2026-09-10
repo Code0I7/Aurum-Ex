@@ -155,11 +155,18 @@ export function TransactionsGrid({
 
   // Прокрутка таблицы вбок и её ползунок внизу экрана — два элемента,
   // показывающих одно и то же положение, поэтому их приходится держать в
-  // согласии вручную. Флаг гасит отдачу: прокрутка одного двигает другой,
-  // а тот сообщал бы о прокрутке обратно, и получалось бы дрожание.
+  // согласии вручную.
+  //
+  // Эхо гасится сравнением с последним записанным значением, а не флагом на
+  // время обработчика. Флаг не работал: браузер сообщает о прокрутке
+  // асинхронно, к тому моменту флаг уже снят, и на телефоне выходило вот
+  // что. Палец бросает таблицу с разгона, мы двигаем ползунок, ползунок
+  // сообщает о своей прокрутке — и мы возвращаем таблицу туда, где она была
+  // в начале кадра, обрывая инерцию. Медленное движение инерции не даёт,
+  // поэтому и работало.
   const scrollRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
-  const syncing = useRef(false);
+  const written = useRef({ table: -1, rail: -1 });
   const [tableWidth, setTableWidth] = useState(0);
   const [overflows, setOverflows] = useState(false);
 
@@ -180,17 +187,28 @@ export function TransactionsGrid({
   }, [columns.length, items.length]);
 
   const syncFromTable = () => {
-    if (syncing.current) return;
-    syncing.current = true;
-    if (railRef.current && scrollRef.current) railRef.current.scrollLeft = scrollRef.current.scrollLeft;
-    syncing.current = false;
+    const box = scrollRef.current;
+    const rail = railRef.current;
+    if (!box || !rail) return;
+    // Это наше же эхо от записи в таблицу — отвечать на него нечем.
+    if (Math.abs(box.scrollLeft - written.current.table) < 1) {
+      written.current.table = -1;
+      return;
+    }
+    written.current.rail = box.scrollLeft;
+    rail.scrollLeft = box.scrollLeft;
   };
 
   const syncFromRail = () => {
-    if (syncing.current) return;
-    syncing.current = true;
-    if (railRef.current && scrollRef.current) scrollRef.current.scrollLeft = railRef.current.scrollLeft;
-    syncing.current = false;
+    const box = scrollRef.current;
+    const rail = railRef.current;
+    if (!box || !rail) return;
+    if (Math.abs(rail.scrollLeft - written.current.rail) < 1) {
+      written.current.rail = -1;
+      return;
+    }
+    written.current.table = rail.scrollLeft;
+    box.scrollLeft = rail.scrollLeft;
   };
 
   // День перетаскиваемой строки: только внутри него разрешено

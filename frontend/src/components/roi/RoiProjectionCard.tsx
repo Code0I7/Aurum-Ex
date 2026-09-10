@@ -26,9 +26,19 @@ export function RoiProjectionCard({ rows }: Props) {
     earned: Math.round(Math.max(0, row.total - row.contributed)),
   }));
 
-  // На длинном горизонте показываем не каждый год: тридцать строк таблицы
-  // никто не читает, а опорные точки — читают.
-  const milestones = rows.filter((row, index) => index === 0 || row.year % 5 === 0 || index === rows.length - 1);
+  // Каждый год, пока горизонт короткий. Прореживание по пятилеткам стояло
+  // на любом горизонте, и на пяти годах таблица показывала первый, пятый и
+  // всё — то есть ровно то, что и так видно по краям графика, а середина
+  // пропадала.
+  //
+  // Дальше десяти лет читать построчно нечего: тридцать строк никто не
+  // разглядывает, а опорные точки — разглядывают. Первый и последний год
+  // остаются всегда: с них начинают и на них смотрят.
+  const EVERY_YEAR_UP_TO = 10;
+  const milestones =
+    rows.length <= EVERY_YEAR_UP_TO
+      ? rows
+      : rows.filter((row, index) => index === 0 || row.year % 5 === 0 || index === rows.length - 1);
 
   return (
     <Card>

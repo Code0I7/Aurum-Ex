@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -103,6 +103,40 @@ async def list_asset_valuations(asset_id: int, session: AsyncSession = Depends(g
         select(AssetValuation).where(AssetValuation.asset_id == asset_id).order_by(AssetValuation.as_of_date)
     )
     return list(result.scalars().all())
+
+
+@router.delete("/{asset_id}/valuations/{valuation_id}", status_code=204)
+async def delete_asset_valuation(
+    asset_id: int, valuation_id: int, session: AsyncSession = Depends(get_session)
+) -> None:
+    """Убирает одну точку из истории переоценок.
+
+    Нужна ровно для ошибок ввода. Обычная правка цены историю не меняет и не
+    должна: актив стоил столько-то тогда и столько-то сейчас, и график
+    капитала строится по этим точкам — затирая прошлое, человек переписывал
+    бы собственную историю задним числом.
+
+    Последнюю точку удалить можно: тогда текущей становится предыдущая. А
+    вот единственную — нет: актив без цены не показать нигде, и вместо
+    ошибки ввода получился бы актив-невидимка.
+    """
+    valuation = await session.get(AssetValuation, valuation_id)
+    if valuation is None or valuation.asset_id != asset_id:
+        raise HTTPException(status_code=404, detail="Valuation not found")
+
+    remaining = (
+        await session.execute(
+            select(func.count()).select_from(AssetValuation).where(AssetValuation.asset_id == asset_id)
+        )
+    ).scalar_one()
+    if remaining <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="An asset needs at least one valuation — delete the asset instead",
+        )
+
+    await session.delete(valuation)
+    await session.commit()
 
 
 @router.delete("/{asset_id}", status_code=204)
