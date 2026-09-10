@@ -143,8 +143,14 @@ class ParticipantKind(str, enum.Enum):
     """Who a transaction is for. A pet is a participant rather than a
     category branch on purpose: cat food is both "Питомцы → Корм" and "for
     Мурзик", and folding the name into the category tree would mean
-    duplicating the whole branch per animal. Pets can receive spending but
-    never earn — enforced in services, not by the enum."""
+    duplicating the whole branch per animal.
+
+    Вид — только пометка. Запрета записать доход на питомца нет ни
+    здесь, ни в сервисах — раньше здесь было написано обратное, и это
+    было неправдой. Отсутствие запрета сознательное: проверка,
+    которая отказывается сохранить запись, должна быть нужнее того,
+    что она ломает, а доход на питомца — это просто странная строка, а не
+    разъехавшийся баланс."""
 
     PERSON = "person"
     PET = "pet"

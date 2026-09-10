@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, ArchiveRestore, Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, PawPrint, Pencil, Plus, Trash2, User, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -22,6 +22,7 @@ import { UnitsCard } from "@/components/directories/UnitsCard";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import type { ParticipantKind } from "@/types";
 
 interface Entry {
   id: number;
@@ -32,6 +33,8 @@ interface Entry {
   /** Сколько денег ушло в эту запись — есть только у магазинов. */
   spent_total?: number | string;
   spent_year?: number | string;
+  /** Человек или питомец — есть только у участников. */
+  kind?: ParticipantKind;
 }
 
 /**
@@ -90,7 +93,9 @@ export function DirectoriesPage() {
         hintKey="directories.peopleHint"
         entries={participants.data ?? []}
         isLoading={participants.isLoading}
-        onCreate={async (name) => void (await createParticipant.mutateAsync({ name }))}
+        withKind
+        onCreate={async (name, kind) => void (await createParticipant.mutateAsync({ name, kind }))}
+        onSetKind={async (id, kind) => void (await updateParticipant.mutateAsync({ id, input: { kind } }))}
         onRename={async (id, name) => void (await updateParticipant.mutateAsync({ id, input: { name } }))}
         onArchive={async (id, archived) =>
           void (await updateParticipant.mutateAsync({ id, input: { is_archived: archived } }))
@@ -134,10 +139,20 @@ interface DirectorySectionProps {
   hintKey: TranslationKey;
   entries: Entry[];
   isLoading: boolean;
-  onCreate: (name: string) => Promise<void>;
+  onCreate: (name: string, kind: ParticipantKind) => Promise<void>;
   onRename: (id: number, name: string) => Promise<void>;
   onArchive: (id: number, archived: boolean) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  /**
+   * Показывать выбор «человек или питомец». Только у участников: у магазина
+   * и контрагента вида нет, и переключатель там был бы шумом.
+   *
+   * Питомец — участник, а не ветка категорий. Корм коту это одновременно
+   * «Питомцы → Корм» и «для Мурзика»; вплести кличку в дерево значило бы
+   * дублировать всю ветку на каждое животное.
+   */
+  withKind?: boolean;
+  onSetKind?: (id: number, kind: ParticipantKind) => Promise<void>;
 }
 
 /** Три справочника устроены одинаково — одна карточка на все три, а не
@@ -151,6 +166,8 @@ function DirectorySection({
   onRename,
   onArchive,
   onDelete,
+  withKind = false,
+  onSetKind,
 }: DirectorySectionProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
@@ -158,6 +175,9 @@ function DirectorySection({
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  // Вид заводимой записи. Сбрасывается на «человека» после каждого
+  // добавления: питомцев заводят раз в несколько лет, людей — чаще.
+  const [newKind, setNewKind] = useState<ParticipantKind>("person");
 
   async function commitRename(id: number) {
     const trimmed = draft.trim();
@@ -168,8 +188,9 @@ function DirectorySection({
   async function commitCreate() {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    await onCreate(trimmed);
+    await onCreate(trimmed, newKind);
     setNewName("");
+    setNewKind("person");
     setAdding(false);
   }
 
@@ -187,7 +208,26 @@ function DirectorySection({
       </CardHeader>
       <CardContent>
         {adding && (
-          <div className="mb-3 flex gap-1.5">
+          <div className="mb-3 space-y-1.5">
+            {withKind && (
+              // Отдельной строкой, а не рядом с полем: на телефоне две
+              // кнопки в один ряд с вводом выдавливают само поле имени.
+              <div className="flex gap-1.5">
+                <KindButton
+                  active={newKind === "person"}
+                  icon={<User size={14} />}
+                  label={t("directories.kindPerson")}
+                  onClick={() => setNewKind("person")}
+                />
+                <KindButton
+                  active={newKind === "pet"}
+                  icon={<PawPrint size={14} />}
+                  label={t("directories.kindPet")}
+                  onClick={() => setNewKind("pet")}
+                />
+              </div>
+            )}
+            <div className="flex gap-1.5">
             <Input
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
@@ -220,6 +260,7 @@ function DirectorySection({
             >
               <X size={15} />
             </button>
+            </div>
           </div>
         )}
 
@@ -261,6 +302,22 @@ function DirectorySection({
                   </>
                 ) : (
                   <>
+                    {/* Значок вида — он же переключатель. Отдельной кнопки
+                        «сделать питомцем» не нужно: видов ровно два, и щелчок
+                        по значку понятнее, чем меню из двух пунктов. */}
+                    {withKind && entry.kind && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onSetKind?.(entry.id, entry.kind === "pet" ? "person" : "pet")
+                        }
+                        aria-label={t(entry.kind === "pet" ? "directories.makePerson" : "directories.makePet")}
+                        title={t(entry.kind === "pet" ? "directories.makePerson" : "directories.makePet")}
+                        className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                      >
+                        {entry.kind === "pet" ? <PawPrint size={15} /> : <User size={15} />}
+                      </button>
+                    )}
                     <span
                       className={`min-w-0 flex-1 truncate text-sm ${
                         entry.is_archived ? "text-text-muted line-through" : "text-text-primary"
@@ -338,5 +395,36 @@ function DirectorySection({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Кнопка выбора вида записи: человек или питомец. Пара таких заменяет
+ *  выпадающий список из двух пунктов, который на телефоне открывается
+ *  во весь экран ради одного щелчка. */
+function KindButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
+        active
+          ? "border-accent bg-surface-2 text-text-primary"
+          : "border-border text-text-muted hover:bg-surface-2 hover:text-text-primary"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

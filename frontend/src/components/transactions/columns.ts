@@ -1,5 +1,4 @@
 import type { TranslationKey } from "@/lib/i18n";
-import type { Transaction } from "@/types";
 
 /**
  * Описание колонок таблицы транзакций: что показывать, в каком порядке и
@@ -104,21 +103,17 @@ export function reconcileLayout(stored: Partial<ColumnLayout> | null | undefined
   return { order, visible: order.filter((id) => withRequired.includes(id)) };
 }
 
-/** Значение ячейки в виде простого текста — для колонок, которым не нужна
- * собственная разметка. Возвращает null, если показывать нечего. */
-export function plainCellValue(column: ColumnId, tx: Transaction): string | null {
-  switch (column) {
-    case "participant":
-      return tx.participant_id ? String(tx.participant_id) : null;
-    case "store":
-      return tx.store_id ? String(tx.store_id) : null;
-    case "counterparty":
-      return tx.counterparty_id ? String(tx.counterparty_id) : null;
-    case "currency":
-      return tx.currency;
-    case "uuid":
-      return tx.uuid;
-    default:
-      return null;
-  }
-}
+/*
+ * Текста ячеек здесь нет намеренно.
+ *
+ * Раньше здесь лежала plainCellValue — она печатала «На кого», «Магазин» и
+ * «Контрагента» как есть, то есть номером записи: «1» вместо «Иван».
+ * Функцию никто не вызывал, потому что сетка давно решает это правильно:
+ * тянет справочники и раскладывает их в id → имя (см. nameById в
+ * TransactionsGrid). Оставлять рядом вторую версию, которая врёт, — способ
+ * однажды подключить именно её.
+ *
+ * Если понадобится текст ячейки вне сетки (выгрузка, копирование), он
+ * должен получать те же справочники, а не обходиться одной транзакцией:
+ * имени в ней нет, есть только ссылка.
+ */
