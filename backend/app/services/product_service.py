@@ -316,6 +316,30 @@ async def suggest_products(session: AsyncSession, query: str, limit: int = 10) -
     return [_to_read(product, stats.get(product.id), await _base_unit_names(session)) for product in products]
 
 
+async def find_product_by_name(session: AsyncSession, name: str) -> Product | None:
+    """Товар справочника с ровно таким названием, без учёта регистра.
+
+    Нужен, чтобы позиция, набранная руками, всё-таки склеилась с товаром.
+    Человек вписывает «Хлеб бородинский» в третий чек, подсказку не
+    нажимает — и в справочнике остаётся один товар, а в кривой цены одна
+    точка из трёх: история цен смотрит только на позиции с product_id.
+
+    Совпадение только точное. «Молоко» и «Молоко 3,2%» — разные товары, и
+    склейка по вхождению испортила бы ровно то, ради чего справочник
+    заведён: цену за базовую меру у двух разных вещей.
+
+    Архивные не ищутся: товар отправляют в архив как раз для того, чтобы он
+    перестал подставляться сам.
+    """
+    cleaned = name.strip()
+    if not cleaned:
+        return None
+    stmt = select(Product).where(
+        func.lower(Product.name) == cleaned.lower(), Product.is_archived.is_(False)
+    )
+    return (await session.execute(stmt)).scalars().first()
+
+
 async def resolve_item_category(session: AsyncSession, category_id: int | None) -> int | None:
     """Проверяет, что категория позиции существует.
 

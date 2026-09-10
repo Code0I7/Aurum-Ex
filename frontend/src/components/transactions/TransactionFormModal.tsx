@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
@@ -232,6 +232,16 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const createCounterparty = useCreateCounterparty();
   const { data: settings } = useAppSettings();
   const isSaving = createTransaction.isPending || updateTransaction.isPending;
+
+  // Категория самой операции — для товаров, заводимых прямо из чека.
+  // Только когда она одна: у разложенной на сплиты операции единой
+  // категории нет, а подставлять одну из нескольких наугад хуже, чем не
+  // подставлять вовсе.
+  const singleCategoryId = categoryRows.length === 1 ? Number(categoryRows[0]?.category_id) || null : null;
+  const transactionCategory = useMemo(() => {
+    const found = singleCategoryId ? categories?.find((row) => row.id === singleCategoryId) : undefined;
+    return found ? { id: found.id, name: translateCategoryName(found.name) } : null;
+  }, [categories, singleCategoryId]);
 
   function updateCategoryRow(key: string, patch: Partial<SplitRowState>) {
     setCategoryRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -742,7 +752,12 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         {/* Состав чека — только у трат: у зарплаты нет позиций, а у перевода
             между своими счетами тем более. */}
         {form.type === "expense" && (
-          <ItemsEditor items={items} onChange={setItems} total={form.amount} />
+          <ItemsEditor
+            items={items}
+            onChange={setItems}
+            total={form.amount}
+            transactionCategory={transactionCategory}
+          />
         )}
 
         {error && <p className="text-sm text-danger">{error}</p>}

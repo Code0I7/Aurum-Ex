@@ -9,7 +9,8 @@ import { useCategoryTotals, useCategories, useDeleteCategory } from "@/hooks/use
 import { translateCategoryName } from "@/lib/categoryLabels";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
-import type { Category, CategoryKind } from "@/types";
+import { fetchCategoryUsage } from "@/api/categories";
+import type { Category, CategoryKind, CategoryUsage } from "@/types";
 
 // Alphabetical by displayed (translated) name — same locale-aware sort
 // BudgetFormModal's category picker uses, so a default category shown as
@@ -18,6 +19,11 @@ function byName(language: string) {
   return (a: Category, b: Category) =>
     translateCategoryName(a.name).localeCompare(translateCategoryName(b.name), language);
 }
+
+// Абзацы вопроса разделяются пустой строкой: Dialog рендерит текст с
+// whitespace-pre-line, и последствие удаления читается отдельно от
+// самого вопроса, а не сливается с ним в один абзац.
+const PARAGRAPH_BREAK = "\n\n";
 
 export function CategoriesPage() {
   // Суммы за всё время: список категорий открывают, чтобы разобраться в
@@ -49,8 +55,46 @@ export function CategoriesPage() {
   }
 
   async function handleDelete(category: Category) {
+    // Вопрос собирается из того, что удаление действительно зацепит.
+    // Безразмерное «её транзакции останутся без категории» выглядело
+    // одинаково и для пустой категории, и для той, в которой лежит год
+    // истории, — решение принималось вслепую. Про подкатегории оно молчало
+    // совсем, хотя они переживают родителя и всплывают в корень.
+    let usage: CategoryUsage | null = null;
+    try {
+      usage = await fetchCategoryUsage(category.id);
+    } catch {
+      // Не достучались — спрашиваем без чисел. Молча удалять из-за сбоя
+      // подсчёта нельзя, а отменять действие целиком незачем.
+      usage = null;
+    }
+
+    const lines = [t("category.confirmDelete", { name: category.name })];
+    if (usage) {
+      if (usage.transactions > 0) lines.push(t("category.deleteUsed", { count: usage.transactions }));
+      if (usage.items > 0) lines.push(t("category.deleteItems", { count: usage.items }));
+      if (usage.transactions === 0 && usage.items === 0 && usage.children === 0) {
+        lines.push(t("category.deleteUnused"));
+      }
+      if (usage.children > 0) {
+        lines.push(t("category.deleteChildren", { count: usage.children }));
+        // Внуки называются отдельно: «две подкатегории» звучит безобидно,
+        // когда под ними ещё двадцать.
+        if (usage.descendants > usage.children) {
+          lines.push(
+            t("category.deleteBranch", {
+              descendants: usage.descendants,
+              transactions: usage.descendant_transactions,
+            }),
+          );
+        }
+      }
+    } else {
+      lines.push(t("category.deleteUnknownUsage"));
+    }
+
     const ok = await confirm({
-      message: t("category.confirmDelete", { name: category.name }),
+      message: lines.join(PARAGRAPH_BREAK),
       confirmLabel: t("common.delete"),
       tone: "danger",
     });

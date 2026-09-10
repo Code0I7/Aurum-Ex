@@ -30,8 +30,9 @@ from app.schemas.transaction import (
 )
 from app.models.product import Product
 from app.schemas.product import TransactionItemInput
+from app.services.category_tree import load_category_tree
 from app.services.currency_service import get_base_currency, to_base
-from app.services.product_service import resolve_item_category
+from app.services.product_service import find_product_by_name, resolve_item_category
 from app.services.transaction_service import (
     find_similar_transactions,
     next_day_order,
@@ -127,11 +128,24 @@ async def _build_items(
     built: list[TransactionItem] = []
     for position, item in enumerate(items):
         await resolve_item_category(session, item.category_id)
-        if item.product_id is not None and await session.get(Product, item.product_id) is None:
+        product_id = item.product_id
+        if product_id is not None and await session.get(Product, product_id) is None:
             raise HTTPException(status_code=400, detail="Product not found")
+        if product_id is None:
+            # Позиция, набранная текстом, всё же склеивается с товаром, если
+            # товар с таким названием уже заведён. Иначе одинаковые строки в
+            # разных чеках остаются разными строками, и кривая цены видит
+            # одну покупку из трёх — подсказку нажимают не всегда, а
+            # название печатают одно и то же.
+            #
+            # Название позиции при этом остаётся тем, что набрали: в
+            # магазине товар мог называться иначе, и это важно помнить.
+            match = await find_product_by_name(session, item.name)
+            if match is not None:
+                product_id = match.id
         built.append(
             TransactionItem(
-                product_id=item.product_id,
+                product_id=product_id,
                 name=item.name,
                 category_id=item.category_id,
                 quantity=item.quantity,
@@ -243,8 +257,17 @@ async def list_transactions(
         # category lives on its split lines instead, so filtering by exact
         # column match alone would silently drop it from a category filter
         # it genuinely belongs to.
+        #
+        # Ветка целиком, а не одна категория. Рейтинг и график в отчётах
+        # сворачивают потомков (reports_service), и список операций под ними
+        # обязан показывать ровно те же операции. Пока фильтр совпадал
+        # точно, «Благотворительность» с итогом в графике раскрывалась
+        # одной строкой: всё остальное лежало в её подкатегориях, и
+        # выглядело это как поломанный диапазон дат.
+        tree = await load_category_tree(session)
+        branch = tree.subtree_of(category_id)
         category_filter = or_(
-            Transaction.category_id == category_id, Transaction.splits.any(TransactionSplit.category_id == category_id)
+            Transaction.category_id.in_(branch), Transaction.splits.any(TransactionSplit.category_id.in_(branch))
         )
         stmt = stmt.where(category_filter)
         count_stmt = count_stmt.where(category_filter)

@@ -4,14 +4,14 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
-from app.models.transaction import Transaction, TransactionSplit
-from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
+from app.models.transaction import Transaction, TransactionItem, TransactionSplit
+from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate, CategoryUsage
 from app.services.category_rollup import monthly_amounts_by_category
 from app.services.category_tree import MAX_DEPTH, load_category_tree
 
@@ -123,6 +123,53 @@ async def update_category(
     await session.commit()
     await session.refresh(category)
     return category
+
+
+@router.get("/{category_id}/usage", response_model=CategoryUsage)
+async def read_category_usage(category_id: int, session: AsyncSession = Depends(get_session)) -> CategoryUsage:
+    """Что зацепит удаление категории.
+
+    Отдельный запрос, а не поле в списке: спрашивают об этом ровно один раз
+    за жизнь категории, а список категорий грузится на каждой странице с
+    выбором.
+
+    Считается перед показом вопроса, потому что вопрос без чисел ничего не
+    решает: «её транзакции останутся без категории» звучит одинаково и для
+    пустой категории, и для той, в которой лежит год истории.
+    """
+    category = await session.get(Category, category_id)
+    if category is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    tree = await load_category_tree(session)
+    descendants = tree.descendants_of(category_id)
+
+    async def _transactions_in(category_ids: list[int]) -> int:
+        """Разные операции, а не ссылки на категорию.
+
+        Сплит-операция может указывать на одну категорию двумя строками —
+        это одна операция. distinct обязателен, иначе число в вопросе
+        оказалось бы больше, чем на самом деле.
+        """
+        if not category_ids:
+            return 0
+        stmt = select(func.count(func.distinct(Transaction.id))).where(
+            or_(
+                Transaction.category_id.in_(category_ids),
+                Transaction.splits.any(TransactionSplit.category_id.in_(category_ids)),
+            )
+        )
+        return int((await session.execute(stmt)).scalar_one())
+
+    items_stmt = select(func.count()).select_from(TransactionItem).where(TransactionItem.category_id == category_id)
+
+    return CategoryUsage(
+        transactions=await _transactions_in([category_id]),
+        items=int((await session.execute(items_stmt)).scalar_one()),
+        children=len(tree.children.get(category_id, [])),
+        descendants=len(descendants),
+        descendant_transactions=await _transactions_in(descendants),
+    )
 
 
 @router.delete("/{category_id}", status_code=204)

@@ -1190,3 +1190,17 @@ export interface InvestmentTradeInput {
   account_id?: number | null;
   note?: string | null;
 }
+
+/** Что зацепит удаление категории — считается перед вопросом о нём. */
+export interface CategoryUsage {
+  /** Операций, ссылающихся на категорию строкой или сплитом. */
+  transactions: number;
+  /** Позиций чека с этой категорией. */
+  items: number;
+  /** Прямых подкатегорий. Они не удаляются, а всплывают в корень. */
+  children: number;
+  /** Вся ветка ниже, включая внуков. */
+  descendants: number;
+  /** Операции в ветке ниже — удаление они переживут. */
+  descendant_transactions: number;
+}

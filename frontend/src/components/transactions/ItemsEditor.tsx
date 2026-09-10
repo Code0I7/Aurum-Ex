@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { HelpBadge } from "@/components/ui/HelpBadge";
+import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { Input, Label } from "@/components/ui/Input";
 import { suggestProducts } from "@/api/products";
 import { useCreateProduct, useUnits } from "@/hooks/useProducts";
@@ -13,6 +14,15 @@ interface ItemsEditorProps {
   onChange: (items: TransactionItemInput[]) => void;
   /** Сумма операции — чтобы показать нераспределённый остаток. */
   total: string;
+  /**
+   * Категория самой операции, если она одна. Нужна только товару,
+   * заводимому прямо отсюда: у позиции своей категории обычно нет — она
+   * и так берётся у операции, — а в справочнике из-за этого оставалось пусто.
+   *
+   * У разложенной на сплиты операции единой категории нет, и тогда
+   * здесь null: подставлять одну из нескольких наугад хуже, чем не подставлять.
+   */
+  transactionCategory?: { id: number; name: string } | null;
 }
 
 /**
@@ -37,7 +47,7 @@ function baseUnitName(units: Unit[] | undefined, unitId: number | null | undefin
   return base ? `₽ / ${base.name}` : null;
 }
 
-export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
+export function ItemsEditor({ items, onChange, total, transactionCategory = null }: ItemsEditorProps) {
   const { t } = useTranslation();
   const { data: units } = useUnits();
 
@@ -109,6 +119,7 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                     // второй раз в справочнике незачем.
                     unitId={item.unit_id ?? null}
                     categoryId={item.category_id ?? null}
+                    fallbackCategory={transactionCategory}
                     onCreated={(product) => update(index, { name: product.name, product_id: product.id })}
                     onChange={(name) => update(index, { name, product_id: null })}
                     onPick={(product) =>
@@ -221,6 +232,7 @@ function ProductNameField({
   bound,
   unitId,
   categoryId,
+  fallbackCategory,
   onChange,
   onPick,
   onCreated,
@@ -230,11 +242,14 @@ function ProductNameField({
   bound: boolean;
   unitId: number | null;
   categoryId: number | null;
+  /** Категория операции — предлагается товару, когда своей у позиции нет. */
+  fallbackCategory: { id: number; name: string } | null;
   onChange: (value: string) => void;
   onPick: (product: Product) => void;
   onCreated: (product: Product) => void;
 }) {
   const { t } = useTranslation();
+  const confirm = useConfirm();
   const createProduct = useCreateProduct();
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [open, setOpen] = useState(false);
@@ -270,10 +285,27 @@ function ProductNameField({
     !suggestions.some((product) => product.name.toLowerCase() === name.toLowerCase());
 
   async function create() {
+    let category = categoryId;
+    if (category === null && fallbackCategory !== null) {
+      // Товар, заведённый прямо в чеке, оставался без категории. Своей
+      // категории у позиции обычно нет — она и так берётся у операции, — и
+      // в справочник переезжало пустое поле. В следующем чеке подставлять
+      // становилось нечего — ради этого справочник и заведён.
+      //
+      // Спрашиваем, а не подставляем молча: категория операции подходит
+      // товару не всегда. Обед из «Столовой» — это «Столовая» у похода,
+      // а не у самого обеда.
+      const assign = await confirm({
+        message: t("items.assignCategoryToProduct", { name, category: fallbackCategory.name }),
+        confirmLabel: t("items.assignCategoryYes"),
+        cancelLabel: t("items.assignCategoryNo"),
+      });
+      if (assign) category = fallbackCategory.id;
+    }
     const product = await createProduct.mutateAsync({
       name,
       unit_id: unitId,
-      category_id: categoryId,
+      category_id: category,
       barcode: null,
       notes: null,
     });
