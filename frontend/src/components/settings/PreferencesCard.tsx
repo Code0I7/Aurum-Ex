@@ -1,8 +1,10 @@
 import { Card, CardContent } from "@/components/ui/Card";
 import { PillSelector } from "@/components/layout/PillSelector";
+import { HelpBadge } from "@/components/ui/HelpBadge";
 import { useTranslation, type Language } from "@/lib/i18n";
 import { useTheme, type Theme } from "@/lib/theme";
 import { DESIGNS, useDesign, type Design } from "@/lib/design";
+import { SCALES, useScale, type Scale } from "@/lib/scale";
 
 /** Язык, тема и оформление рядом — всё это чисто клиентские настройки
  * показа (в отличие от валюты, которая хранится на сервере), и вместе они
@@ -15,6 +17,7 @@ export function PreferencesCard() {
   const { t, language, setLanguage } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { design, setDesign } = useDesign();
+  const { scale, setScale } = useScale();
 
   const languageOptions: Array<{ value: Language; label: string }> = [
     { value: "ru", label: t("settings.languageRussian") },
@@ -32,6 +35,10 @@ export function PreferencesCard() {
     legacy: t("settings.designLegacy"),
   };
   const designOptions = DESIGNS.map((value) => ({ value, label: designLabels[value] }));
+  const scaleOptions: Array<{ value: Scale; label: string }> = SCALES.map((value) => ({
+    value,
+    label: `${value}%`,
+  }));
 
   return (
     <Card>
@@ -56,6 +63,18 @@ export function PreferencesCard() {
             <PillSelector options={designOptions} value={design} onChange={setDesign} />
           </div>
           <p className="mt-2 text-xs text-text-muted">{t(`settings.designHint.${design}` as never)}</p>
+        </div>
+
+        {/* Масштаб во всю ширину: пять значений в половине карточки
+            сжимаются в нечитаемые огрызки. */}
+        <div className="pt-5 sm:col-span-2 sm:pt-5">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {t("settings.scale")}
+            <HelpBadge hintKey="help.scale" />
+          </p>
+          <div className="mt-2">
+            <PillSelector options={scaleOptions} value={scale} onChange={setScale} />
+          </div>
         </div>
       </CardContent>
     </Card>
