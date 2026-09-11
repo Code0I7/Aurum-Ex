@@ -46,20 +46,24 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label={t("help.what")}
-        // Кружок остаётся четыре на четыре, а нажимаемая область — нет.
-        // Шестнадцать точек это меньше половины пальца: на телефоне
-        // попадание было делом удачи, и особенно в шапке, где рядом
-        // заголовок раздела, который перехватывал промах. Отрицательный
-        // отступ возвращает разметку на место, не трогая соседей.
+        // Кружок ровно такой, каким был, — четыре на четыре. Увеличивать
+        // его нельзя: в заголовке он налезает на текст и выглядит кляксой.
+        //
+        // Растёт только область нажатия, и растёт невидимкой — прозрачным
+        // пятном внутри кнопки (span ниже). Шестнадцать точек это меньше
+        // половины пальца: на телефоне попадание было делом удачи, особенно
+        // в шапке, где рядом заголовок, перехватывавший промах.
         //
         // touch-action: браузер иначе ждёт, не второе ли это касание
         // двойного тапа, и подсказка появляется с задержкой в треть
         // секунды — за это время палец успевает убраться, и выглядит
         // так, будто значок не нажался.
-        className="-m-2 flex h-4 w-4 touch-manipulation items-center justify-center rounded-full border border-border p-2 text-[10px] font-bold leading-none text-text-muted transition-colors hover:border-text-secondary hover:text-text-primary"
-        style={{ boxSizing: "content-box" }}
+        className="relative flex h-4 w-4 touch-manipulation items-center justify-center rounded-full border border-border text-[10px] font-bold leading-none text-text-muted transition-colors hover:border-text-secondary hover:text-text-primary"
       >
         !
+        {/* Невидимое пятно вокруг кружка: клик по нему попадает в кнопку,
+            потому что это её потомок. Размер значка при этом прежний. */}
+        <span className="absolute -inset-2.5" aria-hidden="true" />
       </button>
 
       {open && (

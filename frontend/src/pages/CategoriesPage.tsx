@@ -72,8 +72,7 @@ export function CategoriesPage() {
     const lines = [t("category.confirmDelete", { name: category.name })];
     if (usage) {
       if (usage.transactions > 0) lines.push(t("category.deleteUsed", { count: usage.transactions }));
-      if (usage.items > 0) lines.push(t("category.deleteItems", { count: usage.items }));
-      if (usage.transactions === 0 && usage.items === 0 && usage.children === 0) {
+      if (usage.transactions === 0 && usage.children === 0) {
         lines.push(t("category.deleteUnused"));
       }
       if (usage.children > 0) {

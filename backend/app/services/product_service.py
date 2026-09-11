@@ -30,7 +30,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.category import Category
 from app.models.product import Product
 from app.models.store import Store
 from app.models.transaction import Transaction, TransactionItem
@@ -134,8 +133,6 @@ def _to_read(
     return ProductRead(
         id=product.id,
         name=product.name,
-        category_id=product.category_id,
-        category_name=product.category.name if product.category else None,
         unit_id=product.unit_id,
         unit_name=product.unit.name if product.unit else None,
         barcode=product.barcode,
@@ -164,7 +161,7 @@ async def _base_unit_names(session: AsyncSession) -> dict[str, str]:
 async def list_products(session: AsyncSession, include_archived: bool = False) -> list[ProductRead]:
     stmt = (
         select(Product)
-        .options(selectinload(Product.category), selectinload(Product.unit))
+        .options(selectinload(Product.unit))
         .order_by(Product.name)
     )
     if not include_archived:
@@ -187,7 +184,7 @@ async def create_product(session: AsyncSession, payload: ProductCreate) -> Produ
     product = Product(**payload.model_dump())
     session.add(product)
     await session.commit()
-    await session.refresh(product, ["category", "unit"])
+    await session.refresh(product, ["unit"])
     return _to_read(product, None)
 
 
@@ -198,7 +195,7 @@ async def update_product(session: AsyncSession, product_id: int, payload: Produc
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(product, field, value)
     await session.commit()
-    await session.refresh(product, ["category", "unit"])
+    await session.refresh(product, ["unit"])
     stats = await _product_stats(session)
     return _to_read(product, stats.get(product.id), await _base_unit_names(session))
 
@@ -303,7 +300,7 @@ async def suggest_products(session: AsyncSession, query: str, limit: int = 10) -
     pattern = f"%{query.strip().lower()}%"
     stmt = (
         select(Product)
-        .options(selectinload(Product.category), selectinload(Product.unit))
+        .options(selectinload(Product.unit))
         .where(
             Product.is_archived.is_(False),
             func.lower(Product.name).like(pattern) | (Product.barcode == query.strip()),
@@ -339,16 +336,3 @@ async def find_product_by_name(session: AsyncSession, name: str) -> Product | No
     )
     return (await session.execute(stmt)).scalars().first()
 
-
-async def resolve_item_category(session: AsyncSession, category_id: int | None) -> int | None:
-    """Проверяет, что категория позиции существует.
-
-    Молча проглотить несуществующую значило бы записать позицию, которая
-    нигде не показывается: связь SET NULL, и ошибки бы не случилось.
-    """
-    if category_id is None:
-        return None
-    exists = await session.get(Category, category_id)
-    if exists is None:
-        raise HTTPException(status_code=400, detail="Item category not found")
-    return category_id

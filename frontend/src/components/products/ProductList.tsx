@@ -26,8 +26,7 @@ export function ProductList({ items, onEdit, onPrices, onDelete, onArchive }: Pr
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-text-primary">{product.name}</span>
             <span className="block truncate text-xs text-text-muted">
-              {product.category_name ?? t("product.noCategory")}
-              {product.unit_name && ` · ${product.unit_name}`}
+              {product.unit_name ?? t("product.noUnit")}
               {/* Сколько раз покупали и когда в последний раз: без этого
                   список товаров — просто список слов, и непонятно, что живое,
                   а что заведено однажды по ошибке. */}

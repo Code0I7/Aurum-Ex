@@ -207,8 +207,11 @@ class TransactionItem(Base):
     # Название как в чеке. Хранится всегда, даже когда товар выбран из
     # справочника: в магазине он мог называться иначе, и это важно помнить.
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    # Категория позиции. Если не задана — берётся у транзакции целиком.
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    # Категории у позиции нет намеренно. Она здесь была, её можно было
+    # задать — и ни один отчёт её не читал: деньги считаются по категории
+    # операции и по её сплитам (services/category_rollup.py). Поле, которое
+    # хранится, но никуда не идёт, хуже отсутствующего: на него смотрят и
+    # делают выводы. Разложить чек по категориям можно сплитами.
 
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"), nullable=True)
@@ -235,5 +238,4 @@ class TransactionItem(Base):
 
     transaction: Mapped["Transaction"] = relationship(back_populates="items")
     product: Mapped["Product | None"] = relationship()
-    category: Mapped["Category | None"] = relationship()
     unit: Mapped["Unit | None"] = relationship()

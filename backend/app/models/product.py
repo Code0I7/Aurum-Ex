@@ -1,13 +1,14 @@
 """A thing that gets bought repeatedly — "хлеб чёрный городской", "молоко
-3.2%", "боевой пропуск" — with the category and unit it usually comes in.
+3.2%", "боевой пропуск" — with the unit it usually comes in.
 
-Two jobs. First, autofill: picking a product fills in its category, so the
-user stops choosing from a 166-item subcategory list they cannot remember.
-That was the plan in the source spreadsheet too — it even reserved a named
-range called `Продукты` — but the column was left empty and the feature
-never existed.
+Категории у товара нет намеренно. Она здесь была и копировалась в позицию
+чека, где её не читал ни один отчёт: деньги считаются по категории
+операции. Получалось поле, которое надо заполнять, которое ни на что не
+влияет и которое приходится объяснять. Товар отвечает на вопрос «что
+купили», категория — «куда ушли деньги», и смешивать их незачем.
 
-Second, price history: ten receipts mentioning "хлеб" as free text are ten
+Отсюда единственная настоящая работа справочника — price history: ten
+receipts mentioning "хлеб" as free text are ten
 unrelated strings, while ten line items pointing at one product row form a
 price curve. This is the difference between "динамика цен на товар" working
 and not working, and it is why the product reference has to exist before
@@ -29,7 +30,6 @@ class Product(Base, TimestampMixin):
     # Подставляется в позицию чека при выборе товара. SET NULL, а не
     # CASCADE: удаление категории не должно уносить с собой товар вместе с
     # накопленной по нему историей цен.
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     # Единица, в которой этот товар обычно покупают: молоко — литры, хлеб —
     # штуки. Тоже лишь подсказка, в позиции её можно поменять.
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"), nullable=True)
@@ -40,5 +40,4 @@ class Product(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    category: Mapped["Category | None"] = relationship()
     unit: Mapped["Unit | None"] = relationship()

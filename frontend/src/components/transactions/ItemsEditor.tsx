@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { HelpBadge } from "@/components/ui/HelpBadge";
-import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { Input, Label } from "@/components/ui/Input";
 import { suggestProducts } from "@/api/products";
 import { useCreateProduct, useUnits } from "@/hooks/useProducts";
@@ -14,15 +13,6 @@ interface ItemsEditorProps {
   onChange: (items: TransactionItemInput[]) => void;
   /** Сумма операции — чтобы показать нераспределённый остаток. */
   total: string;
-  /**
-   * Категория самой операции, если она одна. Нужна только товару,
-   * заводимому прямо отсюда: у позиции своей категории обычно нет — она
-   * и так берётся у операции, — а в справочнике из-за этого оставалось пусто.
-   *
-   * У разложенной на сплиты операции единой категории нет, и тогда
-   * здесь null: подставлять одну из нескольких наугад хуже, чем не подставлять.
-   */
-  transactionCategory?: { id: number; name: string } | null;
 }
 
 /**
@@ -47,7 +37,7 @@ function baseUnitName(units: Unit[] | undefined, unitId: number | null | undefin
   return base ? `₽ / ${base.name}` : null;
 }
 
-export function ItemsEditor({ items, onChange, total, transactionCategory = null }: ItemsEditorProps) {
+export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
   const { t } = useTranslation();
   const { data: units } = useUnits();
 
@@ -113,23 +103,13 @@ export function ItemsEditor({ items, onChange, total, transactionCategory = null
                 <div className="min-w-0 flex-1">
                   <ProductNameField
                     value={item.name}
-                    bound={item.product_id != null}
-                    // Единица и категория строки переезжают в заводимый
-                    // товар: человек их только что указал, и спрашивать
-                    // второй раз в справочнике незачем.
-                    unitId={item.unit_id ?? null}
-                    categoryId={item.category_id ?? null}
-                    fallbackCategory={transactionCategory}
-                    onCreated={(product) => update(index, { name: product.name, product_id: product.id })}
                     onChange={(name) => update(index, { name, product_id: null })}
                     onPick={(product) =>
                       update(index, {
                         name: product.name,
                         product_id: product.id,
-                        // Категория и единица — подсказки из справочника. В
-                        // позиции их можно поменять, справочник от этого не
-                        // меняется.
-                        category_id: product.category_id,
+                        // Единица — подсказка из справочника. В позиции её
+                        // можно поменять, справочник от этого не меняется.
                         unit_id: product.unit_id,
                       })
                     }
@@ -202,6 +182,14 @@ export function ItemsEditor({ items, onChange, total, transactionCategory = null
                   onChange={(event) => update(index, { price: event.target.value || null })}
                 />
               </div>
+
+              <CreateProductButton
+                name={item.name}
+                unitId={item.unit_id ?? null}
+                quantity={item.quantity ?? null}
+                bound={item.product_id != null}
+                onCreated={(product) => update(index, { name: product.name, product_id: product.id })}
+              />
             </li>
           ))}
         </ul>
@@ -223,34 +211,23 @@ export function ItemsEditor({ items, onChange, total, transactionCategory = null
 /**
  * Поле названия с подсказкой из справочника товаров.
  *
- * Выбор товара подставляет категорию и единицу — ради этого справочник и
- * заведён: человек перестаёт выбирать из списка в полторы сотни
- * подкатегорий, который всё равно не помнит наизусть.
+ * Только подсказки. Заведение товара живёт отдельной кнопкой ниже и
+ * появляется, когда указаны количество и единица: раньше «создать» висело
+ * прямо в этом списке и срабатывало на полуслове, ещё до того, как
+ * человек выбрал меру. Товар попадал в справочник без единицы, а без неё
+ * кривая цены не строится — то есть ровно то, ради чего справочник и
+ * заведён, не работало.
  */
 function ProductNameField({
   value,
-  bound,
-  unitId,
-  categoryId,
-  fallbackCategory,
   onChange,
   onPick,
-  onCreated,
 }: {
   value: string;
-  /** Уже привязан к товару из справочника. */
-  bound: boolean;
-  unitId: number | null;
-  categoryId: number | null;
-  /** Категория операции — предлагается товару, когда своей у позиции нет. */
-  fallbackCategory: { id: number; name: string } | null;
   onChange: (value: string) => void;
   onPick: (product: Product) => void;
-  onCreated: (product: Product) => void;
 }) {
   const { t } = useTranslation();
-  const confirm = useConfirm();
-  const createProduct = useCreateProduct();
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
@@ -273,46 +250,6 @@ function ProductNameField({
     };
   }, [value]);
 
-  const name = value.trim();
-  // Предложение завести товар — когда набранное имя ни с чем не совпало.
-  // Регулярные покупки почти всегда впервые вписываются здесь, в чеке, а
-  // не в справочнике: уходить за этим на другую страницу посреди ввода
-  // операции никто не станет, и товар просто не заводится никогда.
-  const canCreate =
-    !bound &&
-    name.length >= 2 &&
-    !createProduct.isPending &&
-    !suggestions.some((product) => product.name.toLowerCase() === name.toLowerCase());
-
-  async function create() {
-    let category = categoryId;
-    if (category === null && fallbackCategory !== null) {
-      // Товар, заведённый прямо в чеке, оставался без категории. Своей
-      // категории у позиции обычно нет — она и так берётся у операции, — и
-      // в справочник переезжало пустое поле. В следующем чеке подставлять
-      // становилось нечего — ради этого справочник и заведён.
-      //
-      // Спрашиваем, а не подставляем молча: категория операции подходит
-      // товару не всегда. Обед из «Столовой» — это «Столовая» у похода,
-      // а не у самого обеда.
-      const assign = await confirm({
-        message: t("items.assignCategoryToProduct", { name, category: fallbackCategory.name }),
-        confirmLabel: t("items.assignCategoryYes"),
-        cancelLabel: t("items.assignCategoryNo"),
-      });
-      if (assign) category = fallbackCategory.id;
-    }
-    const product = await createProduct.mutateAsync({
-      name,
-      unit_id: unitId,
-      category_id: category,
-      barcode: null,
-      notes: null,
-    });
-    onCreated(product);
-    setOpen(false);
-  }
-
   return (
     <div className="relative">
       <Input
@@ -327,7 +264,7 @@ function ProductNameField({
         // сработать — blur снимает список раньше.
         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
       />
-      {open && (suggestions.length > 0 || canCreate) && (
+      {open && suggestions.length > 0 && (
         <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-surface-1 shadow-md">
           {suggestions.map((product) => (
             <li key={product.id}>
@@ -340,31 +277,92 @@ function ProductNameField({
                 className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2"
               >
                 <span className="truncate">{product.name}</span>
-                {product.category_name && (
-                  <span className="shrink-0 text-xs text-text-muted">{product.category_name}</span>
+                {product.unit_name && (
+                  <span className="shrink-0 text-xs text-text-muted">{product.unit_name}</span>
                 )}
               </button>
             </li>
           ))}
-          {canCreate && (
-            <li className={suggestions.length > 0 ? "border-t border-border" : undefined}>
-              <button
-                type="button"
-                // pointerdown, а не click: поле теряет фокус раньше, чем
-                // click успевает дойти, и подсказка закрывается пустой.
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  void create();
-                }}
-                className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm text-series-1 hover:bg-surface-2"
-              >
-                <Plus size={13} className="shrink-0" />
-                <span className="truncate">{t("items.createProduct", { name })}</span>
-              </button>
-            </li>
-          )}
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * «Завести товар» — отдельной строкой под полями позиции.
+ *
+ * Появляется, когда набрано название, указаны количество и единица, и
+ * товар с таким именем ещё не заведён. Порядок не случайный: в справочник
+ * уезжает единица измерения, и предлагать заведение раньше, чем она
+ * выбрана, значит заводить товар, по которому не построится кривая цены.
+ *
+ * Регулярные покупки почти всегда впервые вписываются здесь, в чеке, а не
+ * в справочнике: уходить за этим на другую страницу посреди ввода операции
+ * никто не станет, и товар просто не заводится никогда.
+ */
+function CreateProductButton({
+  name,
+  unitId,
+  quantity,
+  bound,
+  onCreated,
+}: {
+  name: string;
+  unitId: number | null;
+  quantity: string | null;
+  /** Позиция уже привязана к товару — заводить нечего. */
+  bound: boolean;
+  onCreated: (product: Product) => void;
+}) {
+  const { t } = useTranslation();
+  const createProduct = useCreateProduct();
+  const [known, setKnown] = useState<boolean | null>(null);
+  const trimmed = name.trim();
+  const ready = !bound && trimmed.length >= 2 && unitId !== null && Boolean(quantity);
+
+  useEffect(() => {
+    if (!ready) {
+      setKnown(null);
+      return;
+    }
+    let cancelled = false;
+    // Товар с таким именем мог быть заведён раньше — тогда кнопки быть не
+    // должно вовсе. Проверка по точному совпадению, как и склейка позиции
+    // с товаром на сервере.
+    suggestProducts(trimmed)
+      .then((found) => {
+        if (!cancelled) {
+          setKnown(found.some((product) => product.name.toLowerCase() === trimmed.toLowerCase()));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setKnown(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, trimmed]);
+
+  if (!ready || known !== false) return null;
+
+  return (
+    <button
+      type="button"
+      disabled={createProduct.isPending}
+      onClick={async () => {
+        const product = await createProduct.mutateAsync({
+          name: trimmed,
+          unit_id: unitId,
+          barcode: null,
+          notes: null,
+        });
+        onCreated(product);
+      }}
+      className="mt-2 flex items-center gap-1.5 text-xs text-series-1 hover:underline disabled:opacity-50"
+    >
+      <Plus size={13} className="shrink-0" />
+      <span className="truncate">{t("items.createProduct", { name: trimmed })}</span>
+    </button>
   );
 }

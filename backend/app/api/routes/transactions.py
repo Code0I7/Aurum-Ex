@@ -32,7 +32,7 @@ from app.models.product import Product
 from app.schemas.product import TransactionItemInput
 from app.services.category_tree import load_category_tree
 from app.services.currency_service import get_base_currency, to_base
-from app.services.product_service import find_product_by_name, resolve_item_category
+from app.services.product_service import find_product_by_name
 from app.services.transaction_service import (
     find_similar_transactions,
     next_day_order,
@@ -51,7 +51,6 @@ _EAGER = (
     selectinload(Transaction.tags),
     selectinload(Transaction.splits).selectinload(TransactionSplit.category),
     selectinload(Transaction.items).selectinload(TransactionItem.product),
-    selectinload(Transaction.items).selectinload(TransactionItem.category),
     selectinload(Transaction.items).selectinload(TransactionItem.unit),
 )
 
@@ -121,13 +120,12 @@ async def _build_items(
     остаётся источником истины. Нераспределённый остаток интерфейс
     показывает, а не подгоняет.
 
-    Категория позиции проверяется на существование, но НЕ на совпадение с
-    видом операции: позиция расхода не может быть доходной по построению, а
-    лишняя проверка мешала бы разложить чек по подкатегориям свободно.
+    Категории у позиции нет: она здесь была, её можно было задать, и ни
+    один отчёт её не читал — деньги считаются по категории операции и по её
+    сплитам. Разложить чек по категориям можно сплитами.
     """
     built: list[TransactionItem] = []
     for position, item in enumerate(items):
-        await resolve_item_category(session, item.category_id)
         product_id = item.product_id
         if product_id is not None and await session.get(Product, product_id) is None:
             raise HTTPException(status_code=400, detail="Product not found")
@@ -147,7 +145,6 @@ async def _build_items(
             TransactionItem(
                 product_id=product_id,
                 name=item.name,
-                category_id=item.category_id,
                 quantity=item.quantity,
                 unit_id=item.unit_id,
                 price=item.price,

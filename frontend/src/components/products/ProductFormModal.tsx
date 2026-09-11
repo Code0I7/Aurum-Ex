@@ -3,8 +3,6 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useCreateProduct, useUnits, useUpdateProduct } from "@/hooks/useProducts";
-import { CategoryPicker } from "@/components/categories/CategoryPicker";
-import { useCategories } from "@/hooks/useCategories";
 import { useTranslation } from "@/lib/i18n";
 import type { Product } from "@/types";
 
@@ -14,13 +12,12 @@ interface ProductFormModalProps {
   product?: Product | null;
 }
 
-const EMPTY_FORM = { name: "", category_id: "", unit_id: "", barcode: "", notes: "" };
+const EMPTY_FORM = { name: "", unit_id: "", barcode: "", notes: "" };
 
 export function ProductFormModal({ open, onClose, product }: ProductFormModalProps) {
   const { t } = useTranslation();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
-  const { data: categories } = useCategories();
   const { data: units } = useUnits();
 
   const [form, setForm] = useState(EMPTY_FORM);
@@ -32,7 +29,6 @@ export function ProductFormModal({ open, onClose, product }: ProductFormModalPro
     if (product) {
       setForm({
         name: product.name,
-        category_id: product.category_id?.toString() ?? "",
         unit_id: product.unit_id?.toString() ?? "",
         barcode: product.barcode ?? "",
         notes: product.notes ?? "",
@@ -48,7 +44,6 @@ export function ProductFormModal({ open, onClose, product }: ProductFormModalPro
 
     const input = {
       name: form.name.trim(),
-      category_id: form.category_id ? Number(form.category_id) : null,
       unit_id: form.unit_id ? Number(form.unit_id) : null,
       barcode: form.barcode.trim() || null,
       notes: form.notes.trim() || null,
@@ -82,18 +77,9 @@ export function ProductFormModal({ open, onClose, product }: ProductFormModalPro
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="product-category">{t("product.category")}</Label>
-            <CategoryPicker
-              id="product-category"
-              categories={(categories ?? []).filter((category) => category.kind === "expense")}
-              value={form.category_id}
-              onChange={(value) => setForm((prev) => ({ ...prev, category_id: value }))}
-              placeholder={t("product.noCategory")}
-              emptyLabel={t("product.noCategory")}
-            />
-          </div>
+        {/* Категории у товара нет: она копировалась в позицию чека, где её
+            не читал ни один отчёт. Деньги считаются по категории операции. */}
+        <div className="grid gap-3">
           <div>
             <Label htmlFor="product-unit">{t("product.unit")}</Label>
             <select

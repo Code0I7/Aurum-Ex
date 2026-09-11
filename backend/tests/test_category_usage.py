@@ -7,6 +7,9 @@
 Про подкатегории он молчал совсем, а внешний ключ parent_id стоит
 ON DELETE SET NULL: дети удалённого родителя не удаляются, а всплывают в
 корень отдельными ветками верхнего уровня.
+
+Позиции чека здесь больше не считаются: категории у позиции нет с
+миграции 0010 — она хранилась и не читалась ни одним отчётом.
 """
 from httpx import AsyncClient
 
@@ -40,7 +43,6 @@ async def test_an_untouched_category_reports_zeroes(client: AsyncClient):
     usage = (await client.get(f"/categories/{fresh['id']}/usage")).json()
     assert usage == {
         "transactions": 0,
-        "items": 0,
         "children": 0,
         "descendants": 0,
         "descendant_transactions": 0,
@@ -97,28 +99,6 @@ async def test_the_branch_below_is_reported_separately(client: AsyncClient, acco
     assert usage["children"] == 1
     assert usage["descendants"] == 2
     assert usage["descendant_transactions"] == 2
-
-
-async def test_receipt_lines_are_counted(client: AsyncClient, account_id: int):
-    """Позиция теряет категорию так же молча, как операция."""
-    sweets = await _category(client, "Сладости")
-    resp = await client.post(
-        "/transactions",
-        json={
-            "account_id": account_id,
-            "type": "expense",
-            "amount": "300.00",
-            "description": "Магазин",
-            "date": "2026-03-05",
-            "items": [
-                {"name": "Торт", "amount": "180.00", "category_id": sweets["id"]},
-                {"name": "Печенье", "amount": "120.00", "category_id": sweets["id"]},
-            ],
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    usage = (await client.get(f"/categories/{sweets['id']}/usage")).json()
-    assert usage["items"] == 2
 
 
 async def test_children_really_do_float_up(client: AsyncClient):

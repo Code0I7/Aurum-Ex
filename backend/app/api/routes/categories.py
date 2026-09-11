@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_session
 from app.models.category import Category
 from app.models.enums import CategoryKind, TransactionType
-from app.models.transaction import Transaction, TransactionItem, TransactionSplit
+from app.models.transaction import Transaction, TransactionSplit
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate, CategoryUsage
 from app.services.category_rollup import monthly_amounts_by_category
 from app.services.category_tree import MAX_DEPTH, load_category_tree
@@ -161,11 +161,8 @@ async def read_category_usage(category_id: int, session: AsyncSession = Depends(
         )
         return int((await session.execute(stmt)).scalar_one())
 
-    items_stmt = select(func.count()).select_from(TransactionItem).where(TransactionItem.category_id == category_id)
-
     return CategoryUsage(
         transactions=await _transactions_in([category_id]),
-        items=int((await session.execute(items_stmt)).scalar_one()),
         children=len(tree.children.get(category_id, [])),
         descendants=len(descendants),
         descendant_transactions=await _transactions_in(descendants),

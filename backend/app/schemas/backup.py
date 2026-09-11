@@ -380,7 +380,6 @@ class ProductBackup(BaseModel):
 
     id: int
     name: str
-    category_id: int | None = None
     unit_id: int | None = None
     barcode: str | None = None
     notes: str | None = None
@@ -394,7 +393,6 @@ class TransactionItemBackup(BaseModel):
     transaction_id: int
     product_id: int | None = None
     name: str
-    category_id: int | None = None
     quantity: Decimal | None = None
     unit_id: int | None = None
     price: Decimal | None = None

@@ -44,10 +44,7 @@ export function SettlementTable({ items }: SettlementTableProps) {
           <tbody>
             {items.map((item) => (
               <tr key={item.counterparty_id} className="border-b border-border/50 last:border-0">
-                <td className="py-2.5 pr-3 font-medium">
-                  {item.name}
-                  <TransitNote item={item} />
-                </td>
+                <td className="py-2.5 pr-3 font-medium">{item.name}</td>
                 <td className="py-2.5 px-3 text-right tabular-nums text-text-muted">
                   {formatCurrency(item.received)}
                 </td>
@@ -80,7 +77,6 @@ export function SettlementTable({ items }: SettlementTableProps) {
               <p className="mt-0.5 text-xs text-text-muted">
                 {t("debts.turnover")}: {formatCurrency(item.received)} / {formatCurrency(item.given)}
               </p>
-              <TransitNote item={item} />
             </div>
             <BalanceCell balance={item.balance} />
           </li>
@@ -111,42 +107,5 @@ function BalanceCell({ balance }: { balance: string }) {
     >
       {formatCurrency(Math.abs(value))}
     </span>
-  );
-}
-
-/**
- * Транзит по одному человеку: сколько он передал на покупки и сколько на
- * них ушло.
- *
- * Отдельной строкой под именем, а не колонкой: колонок в таблице и так
- * шесть, а транзит есть далеко не у каждого — пустая колонка на всю
- * таблицу стоила бы дороже, чем строка у тех, у кого он есть.
- *
- * Долгом не является и в остаток долга не входит: человек, недодавший на
- * продукты, не обязан возвращать, пока об этом не договорились. Но видеть
- * разницу нужно — общей суммы по всем сразу мало, чтобы понять, с кем
- * именно не сошлось.
- */
-function TransitNote({ item }: { item: Settlement }) {
-  const { t } = useTranslation();
-  const balance = Number(item.transit_balance);
-  const hasTransit = Number(item.transit_in) !== 0 || Number(item.transit_out) !== 0;
-  if (!hasTransit) return null;
-
-  return (
-    <p className="mt-0.5 text-xs font-normal text-text-muted">
-      {t("debts.transitFlow", {
-        received: formatCurrency(item.transit_in),
-        spent: formatCurrency(item.transit_out),
-      })}
-      {balance !== 0 && (
-        <span className={balance > 0 ? "text-success" : "text-danger"}>
-          {" · "}
-          {t(balance > 0 ? "debts.transitLeft" : "debts.transitShort", {
-            amount: formatCurrency(Math.abs(balance)),
-          })}
-        </span>
-      )}
-    </p>
   );
 }

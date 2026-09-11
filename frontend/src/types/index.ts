@@ -572,11 +572,6 @@ export interface Settlement {
   owed_by_me: string;
   // Плюс — должны вам, минус — должны вы.
   balance: string;
-  // Транзит по этому человеку: передал на покупки / потрачено на них.
-  transit_in: string;
-  transit_out: string;
-  // Плюс — его деньги ещё у вас, минус — вы вложили свои. Это не долг.
-  transit_balance: string;
   operations: number;
   last_date: string | null;
 }
@@ -1002,8 +997,6 @@ export interface Unit {
 export interface Product {
   id: number;
   name: string;
-  category_id: number | null;
-  category_name: string | null;
   unit_id: number | null;
   unit_name: string | null;
   barcode: string | null;
@@ -1024,7 +1017,6 @@ export interface Product {
 
 export interface ProductInput {
   name: string;
-  category_id: number | null;
   unit_id: number | null;
   barcode: string | null;
   notes: string | null;
@@ -1061,8 +1053,6 @@ export interface TransactionItem {
   product_id: number | null;
   product_name: string | null;
   name: string;
-  category_id: number | null;
-  category_name: string | null;
   quantity: string | null;
   unit_id: number | null;
   unit_name: string | null;
@@ -1074,7 +1064,6 @@ export interface TransactionItem {
 export interface TransactionItemInput {
   product_id?: number | null;
   name: string;
-  category_id?: number | null;
   quantity?: string | null;
   unit_id?: number | null;
   price?: string | null;
@@ -1202,8 +1191,6 @@ export interface InvestmentTradeInput {
 export interface CategoryUsage {
   /** Операций, ссылающихся на категорию строкой или сплитом. */
   transactions: number;
-  /** Позиций чека с этой категорией. */
-  items: number;
   /** Прямых подкатегорий. Они не удаляются, а всплывают в корень. */
   children: number;
   /** Вся ветка ниже, включая внуков. */

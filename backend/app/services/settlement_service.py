@@ -43,12 +43,6 @@ class SettlementTotals:
         # Долговая часть оборота.
         self.owed_to_me = Decimal("0")
         self.owed_by_me = Decimal("0")
-        # Транзит — отдельно от оборота и от долга. Человек передал денег
-        # на покупки, я купил: ни один из нас никому не должен, но видеть
-        # разницу нужно. Раньше она была только общей суммой по всем
-        # сразу, и понять, с кем именно не сошлось, было нельзя.
-        self.transit_in = Decimal("0")
-        self.transit_out = Decimal("0")
         self.last_date = None
         self.operations = 0
 
@@ -56,19 +50,6 @@ class SettlementTotals:
     def balance(self) -> Decimal:
         """Остаток долга: плюс — должны вам, минус — должны вы."""
         return self.owed_to_me - self.owed_by_me
-
-    @property
-    def transit_balance(self) -> Decimal:
-        """Чужие деньги по этому человеку.
-
-        Плюс — передал больше, чем потрачено: остаток лежит у вас.
-        Минус — потрачено больше, чем передал: разницу вы вложили свою.
-
-        Это не долг и в остаток долга не входит: человек, недодавший на
-        продукты, не обязан возвращать, пока об этом не договорились. Но
-        число честное и отвечает на вопрос «сошлось ли с ним».
-        """
-        return self.transit_in - self.transit_out
 
 
 async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
@@ -117,27 +98,15 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
         # ничего: деньги полежали на счёте и ушли дальше.
         #
         # Сколько всего прошло и сколько чужого лежит сейчас, показывается
-        # отдельно — см. get_transit_summary. По каждому человеку своя пара
-        # transit_in/transit_out ниже: общей суммы мало, чтобы понять, с кем
-        # именно не сошлось.
+        # отдельно — см. get_transit_summary.
+        if settlement == SettlementKind.TRANSIT:
+            continue
         entry = totals.setdefault(counterparty_id, SettlementTotals(party))
         entry.operations += 1
         if entry.last_date is None or tx_date > entry.last_date:
             entry.last_date = tx_date
 
         incoming = tx_type == TransactionType.EXTERNAL_IN
-
-        if settlement == SettlementKind.TRANSIT:
-            # Транзит идёт в свою пару и дальше не участвует: ни в обороте,
-            # ни в долге. В оборот его класть нельзя по причине, описанной
-            # выше — получивший и отдавший оказываются разными людьми, и
-            # список читался бы как «один щедрый, вторая просила».
-            if incoming:
-                entry.transit_in += amount
-            else:
-                entry.transit_out += amount
-            continue
-
         if incoming:
             entry.received += amount
         else:

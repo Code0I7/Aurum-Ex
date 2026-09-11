@@ -21,9 +21,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ProductBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    # Подсказки, подставляемые в позицию при выборе товара. Именно подсказки:
-    # в позиции их можно поменять, не трогая справочник.
-    category_id: int | None = None
+    # Единица измерения — подсказка, подставляемая в позицию при выборе
+    # товара. Именно подсказка: в позиции её можно поменять, не трогая
+    # справочник.
+    #
+    # Категории у товара нет и не должно быть. Она тут стояла и копировалась
+    # в позицию чека, где её никто не читал: деньги считаются по категории
+    # операции. Получалось поле, которое надо заполнять, которое ни на что
+    # не влияет и которое приходится объяснять.
     unit_id: int | None = None
     barcode: str | None = Field(default=None, max_length=64)
     notes: str | None = None
@@ -36,7 +41,6 @@ class ProductCreate(ProductBase):
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    category_id: int | None = None
     unit_id: int | None = None
     barcode: str | None = Field(default=None, max_length=64)
     notes: str | None = None
@@ -47,7 +51,6 @@ class ProductRead(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    category_name: str | None = None
     unit_name: str | None = None
     # Сколько раз товар встречался в чеках и когда в последний раз. Список
     # товаров без этого — просто список слов: непонятно, что живое, а что
@@ -109,7 +112,6 @@ class TransactionItemInput(BaseModel):
     # Название как в чеке. Хранится всегда, даже когда товар выбран из
     # справочника: в магазине он мог называться иначе, и это важно помнить.
     name: str = Field(min_length=1, max_length=200)
-    category_id: int | None = None
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
     unit_id: int | None = None
     # Цена за БАЗОВУЮ меру своего вида — за килограмм, за литр, за штуку.
@@ -136,5 +138,4 @@ class TransactionItemRead(TransactionItemInput):
     id: int
     position: int
     product_name: str | None = None
-    category_name: str | None = None
     unit_name: str | None = None

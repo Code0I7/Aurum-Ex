@@ -251,30 +251,16 @@ async def test_transit_stays_out_of_the_turnover_with_a_person(client: AsyncClie
     Раньше транзит попадал в оборот, и читалось неправильное: Иван
     числился дающим, Ольга берущей, будто один щедрый, а вторая просила.
     Деньги при этом просто полежали на счёте и ушли дальше.
-
-    Из оборота он по-прежнему исключён, но своя строка у человека теперь
-    есть: без неё нельзя было понять, с кем именно транзит не сошёлся.
     """
     ivan = await _counterparty(client, "Иван")
     olga = await _counterparty(client, "Ольга")
     await _move(client, account_id, ivan, incoming=True, amount="5000.00", settlement="transit")
     await _move(client, account_id, olga, incoming=False, amount="5000.00", settlement="transit")
 
-    rows = {row["name"]: row for row in (await client.get("/settlements")).json()}
-
-    # Между мной и каждым из них не произошло ничего: ни оборота, ни долга.
-    for name in ("Иван", "Ольга"):
-        assert rows[name]["received"] == "0.00"
-        assert rows[name]["given"] == "0.00"
-        assert rows[name]["balance"] == "0.00"
-
-    # Но сами строки теперь есть, и в них видно направление транзита. Раньше
-    # их не было вовсе, и вопрос «с кем не сошлось» оставался без ответа:
-    # общая сумма по всем сразу на него не отвечает.
-    assert rows["Иван"]["transit_in"] == "5000.00"
-    assert rows["Иван"]["transit_balance"] == "5000.00"
-    assert rows["Ольга"]["transit_out"] == "5000.00"
-    assert rows["Ольга"]["transit_balance"] == "-5000.00"
+    rows = (await client.get("/settlements")).json()
+    # Строк нет вовсе: человек, с которым были только транзиты, в расчётах
+    # не участвовал. Нулевая строка была бы шумом.
+    assert rows == []
 
 
 async def test_transit_still_shows_up_as_its_own_figure(client: AsyncClient, account_id):
