@@ -5,6 +5,7 @@ import type {
   CreditTermsInput,
   Settlement,
   SettlementSummary,
+  TransitPerson,
   TransitSummary,
 } from "@/types";
 
@@ -14,6 +15,16 @@ export function fetchSettlements() {
 
 export function fetchSettlementSummary() {
   return api.get<SettlementSummary>("/settlements/summary");
+}
+
+// Транзит по людям за период. Год и месяц необязательны: без них отвечает
+// на вопрос «с кем не сошлось вообще», с ними — «что было в этом месяце».
+export function fetchTransitByPerson(year?: number, month?: number) {
+  const params = new URLSearchParams();
+  if (year !== undefined) params.set("year", String(year));
+  if (month !== undefined) params.set("month", String(month));
+  const query = params.toString();
+  return api.get<TransitPerson[]>(`/settlements/transit-by-person${query ? `?${query}` : ""}`);
 }
 
 export function fetchTransitSummary() {

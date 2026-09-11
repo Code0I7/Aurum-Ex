@@ -99,6 +99,7 @@ class TransactionBackup(BaseModel):
     participant_id: int | None = None
     store_id: int | None = None
     counterparty_id: int | None = None
+    transit_party_id: int | None = None
     settlement_kind: SettlementKind | None = None
     is_excluded: bool = False
     day_order: int = 0
@@ -372,6 +373,7 @@ class CounterpartyBackup(BaseModel):
 
     id: int
     name: str
+    group_name: str | None = None
     notes: str | None = None
     is_archived: bool = False
 

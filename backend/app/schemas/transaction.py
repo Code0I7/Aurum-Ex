@@ -107,6 +107,8 @@ class TransactionFields(BaseModel):
     participant_id: int | None = None
     store_id: int | None = None
     counterparty_id: int | None = None
+    # Вторая сторона транзита: у прихода — для кого, у расхода — чьи деньги.
+    transit_party_id: int | None = None
     settlement_kind: SettlementKind | None = None
 
     # Запись видна в истории, но в суммы и графики не входит — замена
@@ -195,6 +197,8 @@ class TransactionUpdate(BaseModel):
     participant_id: int | None = None
     store_id: int | None = None
     counterparty_id: int | None = None
+    # Вторая сторона транзита: у прихода — для кого, у расхода — чьи деньги.
+    transit_party_id: int | None = None
     settlement_kind: SettlementKind | None = None
     is_excluded: bool | None = None
     day_order: int | None = None

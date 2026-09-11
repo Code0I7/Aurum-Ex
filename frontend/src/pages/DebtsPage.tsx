@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { TransitByPersonCard } from "@/components/debts/TransitByPersonCard";
 import { SettlementTable } from "@/components/debts/SettlementTable";
 import { CreditList } from "@/components/debts/CreditList";
 import { CreditTermsModal } from "@/components/debts/CreditTermsModal";
@@ -12,6 +13,7 @@ import {
   useCreditSummary,
   useSettlements,
   useSettlementSummary,
+  useTransitByPerson,
   useTransitSummary,
 } from "@/hooks/useDebts";
 import { HelpBadge } from "@/components/ui/HelpBadge";
@@ -35,6 +37,9 @@ export function DebtsPage() {
   const { data: settlements, isLoading: settlementsLoading } = useSettlements();
   const { data: settlementSummary } = useSettlementSummary();
   const { data: transit } = useTransitSummary();
+  // За всё время: колонка в таблице людей отвечает на вопрос «сошлось ли с
+  // ним вообще». Разрез по месяцам — в карточке внизу, у неё свой фильтр.
+  const { data: transitByPerson } = useTransitByPerson();
   const { data: credits, isLoading: creditsLoading } = useCredits();
   const { data: creditSummary } = useCreditSummary();
   const { data: accounts } = useAccounts(false);
@@ -151,7 +156,7 @@ export function DebtsPage() {
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
             <>
-              <SettlementTable items={settlements ?? []} />
+              <SettlementTable items={settlements ?? []} transit={transitByPerson} />
               {(settlements?.length ?? 0) > 0 && (
                 <p className="mt-3 text-xs text-text-muted">{t("debts.turnoverHint")}</p>
               )}
@@ -166,6 +171,10 @@ export function DebtsPage() {
         terms={editingTerms}
         candidates={candidates}
       />
+
+      {/* Транзит по людям — в самом конце: у большинства транзитов нет
+          вовсе, а долги и кредиты есть почти у всех. */}
+      <TransitByPersonCard />
     </div>
   );
 }

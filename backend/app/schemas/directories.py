@@ -76,6 +76,8 @@ class StoreRead(StoreBase):
 
 class CounterpartyBase(BaseModel):
     name: str = Field(min_length=1, max_length=150)
+    # Полка на странице справочников. Ни на что, кроме показа, не влияет.
+    group_name: str | None = Field(default=None, max_length=100)
     notes: str | None = None
 
 
@@ -85,6 +87,7 @@ class CounterpartyCreate(CounterpartyBase):
 
 class CounterpartyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
+    group_name: str | None = Field(default=None, max_length=100)
     notes: str | None = None
     is_archived: bool | None = None
 

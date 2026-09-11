@@ -25,6 +25,7 @@ import { RecurringPage } from "@/pages/RecurringPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { RoiPage } from "@/pages/RoiPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { UnitsPage } from "@/pages/UnitsPage";
 import { TransactionsPage } from "@/pages/TransactionsPage";
 import { SpreadsheetImportPage } from "@/pages/SpreadsheetImportPage";
 
@@ -80,6 +81,7 @@ export default function App() {
             <Route path="/debts" element={<DebtsPage />} />
             <Route path="/planning" element={<PlanningPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/units" element={<UnitsPage />} />
             <Route path="/investments" element={<InvestmentsPage />} />
             <Route path="/recurring" element={<RecurringPage />} />
             <Route path="/settings" element={<SettingsPage />} />

@@ -29,5 +29,9 @@ class Counterparty(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    # Полка на странице справочников: «Близкие», «коллеги», «организации».
+    # То же, что у магазинов, и по той же причине — список копится, и всё
+    # в нём вперемешку. Ни в отчёты, ни в подстановку не идёт.
+    group_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

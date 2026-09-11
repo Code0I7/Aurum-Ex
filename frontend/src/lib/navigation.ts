@@ -8,16 +8,17 @@ import {
   Flag,
   HandCoins,
   Layers,
-  Lightbulb,
   LayoutDashboard,
+  Lightbulb,
   PieChart,
   Repeat,
+  Ruler,
   Settings,
   ShoppingBasket,
   Tags,
-  Users,
   Target,
   TrendingUp,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -91,11 +92,26 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: "nav.group.directories",
     items: [
       { labelKey: "nav.categories", to: "/categories", icon: Tags, hintKey: "help.categories" },
-      { labelKey: "nav.directories", to: "/directories", icon: Users, hintKey: "help.directories" },
+      // Единицы отдельным разделом: правят их раз в жизни, но лежали они
+      // внизу справочников, и ради одного редкого действия приходилось
+      // листать мимо всех людей и магазинов.
+      { labelKey: "nav.units", to: "/units", icon: Ruler, hintKey: "help.units" },
       { labelKey: "nav.products", to: "/products", icon: ShoppingBasket, hintKey: "help.products" },
-      { labelKey: "nav.settings", to: "/settings", icon: Settings, hintKey: "help.settings" },
+      { labelKey: "nav.directories", to: "/directories", icon: Users, hintKey: "help.directories" },
     ],
   },
+];
+
+/**
+ * Пункты, прижатые к низу меню.
+ *
+ * Настройки — не раздел учёта, а место, куда ходят раз в месяц. В общем
+ * списке они были последней строкой последней группы и уезжали за нижний
+ * край вместе с ним; внизу они всегда на виду и всегда на одном месте, где
+ * бы ни закончился список разделов.
+ */
+export const NAV_FOOTER: NavItem[] = [
+  { labelKey: "nav.settings", to: "/settings", icon: Settings, hintKey: "help.settings" },
 ];
 
 /**
@@ -103,4 +119,4 @@ export const NAV_GROUPS: NavGroup[] = [
  * (заголовок страницы в шапке). Собирается из групп, чтобы не разъехаться с
  * меню при добавлении раздела.
  */
-export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
+export const NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((group) => group.items), ...NAV_FOOTER];

@@ -2,13 +2,70 @@ import { useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
-import { NAV_GROUPS } from "@/lib/navigation";
+import { NAV_FOOTER, NAV_GROUPS, type NavItem } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 
 interface NavListProps {
   collapsed: boolean;
   onNavigate?: () => void;
+}
+
+/** Один пункт меню. Вынесен потому, что рисуется в двух местах: в
+ *  группах и в прижатом к низу подвале. */
+function NavEntry({
+  item,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = item.icon;
+  const label = t(item.labelKey);
+
+  if (item.disabled) {
+    return (
+      <span
+        title={collapsed ? `${label} (${t("nav.comingSoon")})` : undefined}
+        className={cn(
+          "flex cursor-not-allowed items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-text-muted",
+          collapsed && "justify-center px-0"
+        )}
+      >
+        <Icon size={18} className="shrink-0" />
+        {!collapsed && (
+          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+            <span className="truncate">{label}</span>
+            <span className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] leading-none">
+              {t("nav.comingSoon")}
+            </span>
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === "/"}
+      onClick={onNavigate}
+      title={collapsed ? label : undefined}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
+          collapsed && "justify-center px-0",
+          isActive && "bg-surface-2 text-text-primary"
+        )
+      }
+    >
+      <Icon size={18} className="shrink-0" />
+      {!collapsed && <span className="truncate">{label}</span>}
+    </NavLink>
+  );
 }
 
 function NavList({ collapsed, onNavigate }: NavListProps) {
@@ -30,55 +87,26 @@ function NavList({ collapsed, onNavigate }: NavListProps) {
               </p>
             ))}
           <div className="flex flex-col gap-0.5">
-      {group.items.map((item) => {
-        const Icon = item.icon;
-        const label = t(item.labelKey);
-        if (item.disabled) {
-          return (
-            <span
-              key={item.to}
-              title={collapsed ? `${label} (${t("nav.comingSoon")})` : undefined}
-              className={cn(
-                "flex cursor-not-allowed items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-text-muted",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Icon size={18} className="shrink-0" />
-              {!collapsed && (
-                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{label}</span>
-                  <span className="shrink-0 rounded bg-surface-2 px-1 py-0.5 text-[10px] leading-none">
-                    {t("nav.comingSoon")}
-                  </span>
-                </span>
-              )}
-            </span>
-          );
-        }
-
-        return (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === "/"}
-            onClick={onNavigate}
-            title={collapsed ? label : undefined}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
-                collapsed && "justify-center px-0",
-                isActive && "bg-surface-2 text-text-primary"
-              )
-            }
-          >
-            <Icon size={18} className="shrink-0" />
-            {!collapsed && <span className="truncate">{label}</span>}
-          </NavLink>
-        );
-      })}
+            {group.items.map((item) => (
+              <NavEntry key={item.to} item={item} collapsed={collapsed} onNavigate={onNavigate} />
+            ))}
           </div>
         </div>
       ))}
+
+      {/* Подвал прижат к низу: mt-auto съедает весь остаток высоты, поэтому
+          настройки стоят у нижнего края независимо от того, где кончился
+          список разделов, и не уезжают вместе с ним при прокрутке. */}
+      <div className="mt-auto flex flex-col gap-0.5 pt-3">
+        {collapsed ? (
+          <div className="mx-2 mb-2 border-t border-border" />
+        ) : (
+          <div className="mb-1 border-t border-border" />
+        )}
+        {NAV_FOOTER.map((item) => (
+          <NavEntry key={item.to} item={item} collapsed={collapsed} onNavigate={onNavigate} />
+        ))}
+      </div>
     </nav>
   );
 }

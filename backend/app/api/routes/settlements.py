@@ -6,7 +6,7 @@
 """
 from datetime import date as date_
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.api.deps import get_session
 from app.services.currency_service import quantize_money
 from app.services.settlement_service import (
     get_settlements,
+    get_transit_by_person,
     get_settlement_summary,
     get_transit_summary,
 )
@@ -61,6 +62,24 @@ class TransitSummary(BaseModel):
     held: str
 
 
+
+class TransitPersonRead(BaseModel):
+    """Транзит по одному человеку — по тому, ДЛЯ КОГО шли деньги.
+
+    Источник, передавший на покупки для кого-то другого, сюда не попадает:
+    он не сторона расчёта. См. services/settlement_service.py.
+    """
+
+    counterparty_id: int
+    name: str
+    # Передано на него и потрачено на него.
+    received: str
+    spent: str
+    # Плюс — его деньги ещё у вас, минус — вы вложили свои. Не долг.
+    balance: str
+    operations: int
+
+
 @router.get("", response_model=list[SettlementRead])
 async def list_settlements(session: AsyncSession = Depends(get_session)) -> list[SettlementRead]:
     return [
@@ -86,6 +105,31 @@ async def read_transit_summary(session: AsyncSession = Depends(get_session)) -> 
         passed_through=_money(totals["passed_through"]), held=_money(totals["held"])
     )
 
+
+
+@router.get("/transit-by-person", response_model=list[TransitPersonRead])
+async def read_transit_by_person(
+    year: int | None = Query(default=None, ge=1970, le=2200),
+    month: int | None = Query(default=None, ge=1, le=12),
+    session: AsyncSession = Depends(get_session),
+) -> list[TransitPersonRead]:
+    """Разложенный по людям транзит за период.
+
+    Период необязателен: без него отвечает на вопрос «с кем не сошлось
+    вообще», с ним — «что происходило в этом месяце». Оба вопроса реальные,
+    и заставлять выбирать месяц ради первого незачем.
+    """
+    return [
+        TransitPersonRead(
+            counterparty_id=item.counterparty.id,
+            name=item.counterparty.name,
+            received=_money(item.received),
+            spent=_money(item.spent),
+            balance=_money(item.balance),
+            operations=item.operations,
+        )
+        for item in await get_transit_by_person(session, year, month)
+    ]
 
 @router.get("/summary", response_model=SettlementSummary)
 async def read_settlement_summary(session: AsyncSession = Depends(get_session)) -> SettlementSummary:

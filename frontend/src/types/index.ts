@@ -161,6 +161,8 @@ export interface Counterparty {
   usage: number;
   id: number;
   name: string;
+  // Полка на странице справочников: ни в отчёты, ни в подстановку не идёт.
+  group_name: string | null;
   notes: string | null;
   is_archived: boolean;
 }
@@ -189,6 +191,8 @@ export interface Transaction {
   participant_id: number | null;
   store_id: number | null;
   counterparty_id: number | null;
+  // Вторая сторона транзита: у прихода «для кого», у расхода «чьи деньги».
+  transit_party_id: number | null;
   settlement_kind: SettlementKind | null;
   account: Account;
   category: Category | null;
@@ -235,6 +239,7 @@ export interface TransactionInput {
   store_id?: number | null;
   // Имеют смысл только у расчётов (external_in / external_out).
   counterparty_id?: number | null;
+  transit_party_id?: number | null;
   settlement_kind?: SettlementKind | null;
   // Запись остаётся в истории, но выпадает из всех расчётов.
   is_excluded?: boolean;
@@ -584,6 +589,22 @@ export interface TransitSummary {
   passed_through: string;
   /** Может быть отрицательным: передал вперёд, ещё не получив. */
   held: string;
+}
+
+/**
+ * Транзит по одному человеку — по тому, ДЛЯ КОГО шли деньги.
+ *
+ * Источник, передавший на покупки для кого-то другого, сюда не попадает:
+ * он не сторона расчёта, ни он никому не должен, ни ему.
+ */
+export interface TransitPerson {
+  counterparty_id: number;
+  name: string;
+  received: string;
+  spent: string;
+  // Плюс — его деньги ещё у вас, минус — вы вложили свои. Не долг.
+  balance: string;
+  operations: number;
 }
 
 export interface SettlementSummary {

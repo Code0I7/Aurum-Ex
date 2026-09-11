@@ -18,7 +18,6 @@ import {
   useUpdateParticipant,
   useUpdateStore,
 } from "@/hooks/useDirectories";
-import { UnitsCard } from "@/components/directories/UnitsCard";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -112,7 +111,10 @@ export function DirectoriesPage() {
         entries={counterparties.data ?? []}
         isLoading={counterparties.isLoading}
         onCreate={async (name) => void (await createCounterparty.mutateAsync({ name }))}
-        onRename={async (id, name) => void (await updateCounterparty.mutateAsync({ id, input: { name } }))}
+        withGroup
+        onRename={async (id, name, groupName) =>
+          void (await updateCounterparty.mutateAsync({ id, input: { name, group_name: groupName ?? null } }))
+        }
         onArchive={async (id, archived) =>
           void (await updateCounterparty.mutateAsync({ id, input: { is_archived: archived } }))
         }
@@ -135,9 +137,8 @@ export function DirectoriesPage() {
         onDelete={async (id) => void (await deleteStore.mutateAsync(id))}
       />
 
-      {/* Единицы в конце: их правят раз в жизни, а листать мимо них до
-          магазинов приходилось каждый раз. */}
-      <UnitsCard />
+      {/* Единицы уехали в свой раздел меню: правят их раз в жизни, а
+          листать мимо них до магазинов приходилось каждый раз. */}
     </div>
   );
 }
@@ -192,14 +193,16 @@ interface DirectorySectionProps {
   withKind?: boolean;
   onSetKind?: (id: number, kind: ParticipantKind) => Promise<void>;
   /**
-   * Раскладывать по полкам. Только у магазинов: за год их набирается из
-   * всего сразу — продуктовый за углом, аптека, маркетплейс, игровая площадка, — и в
-   * одном алфавитном списке найти нужное можно, только зная название
-   * целиком.
+   * Раскладывать по группам. Есть у магазинов и контрагентов: и тех и
+   * других за год набирается из всего сразу — продуктовый за углом,
+   * аптека, маркетплейс, игровая площадка; близкие, коллеги, случайные знакомые, — и
+   * в одном алфавитном списке найти нужное можно, только зная название
+   * целиком. У людей и питомцев групп нет: их единицы, и они уже разделены
+   * видом.
    *
-   * Полка ни на что не влияет, кроме этой страницы: в отчёты не идёт, в
+   * Группа ни на что не влияет, кроме этой страницы: в отчёты не идёт, в
    * подстановку не идёт. Иначе пришлось бы отвечать, что показывать в
-   * отчёте по полке, и заводить её стало бы обязанностью.
+   * отчёте по группе, и заводить её стало бы обязанностью.
    */
   withGroup?: boolean;
 }

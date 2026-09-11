@@ -5,6 +5,7 @@ import {
   fetchCreditSummary,
   fetchSettlements,
   fetchSettlementSummary,
+  fetchTransitByPerson,
   fetchTransitSummary,
   saveCreditTerms,
 } from "@/api/debts";
@@ -26,6 +27,13 @@ export function useSettlements() {
 
 export function useSettlementSummary() {
   return useQuery({ queryKey: ["settlements", "summary"], queryFn: fetchSettlementSummary });
+}
+
+export function useTransitByPerson(year?: number, month?: number) {
+  return useQuery({
+    queryKey: ["settlements", "transit-by-person", year ?? null, month ?? null],
+    queryFn: () => fetchTransitByPerson(year, month),
+  });
 }
 
 export function useTransitSummary() {

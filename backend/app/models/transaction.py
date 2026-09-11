@@ -71,6 +71,25 @@ class Transaction(Base, TimestampMixin):
     counterparty_id: Mapped[int | None] = mapped_column(
         ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True
     )
+    # Вторая сторона транзита, и только его.
+    #
+    # Транзит проходит между двумя людьми: брат передал на покупки для мамы,
+    # покупки сделаны для мамы. С одним полем в записи оказывались брат у
+    # прихода и мама у расхода, и сложить их было не по чему — приложение
+    # писало «брату осталось 4 500» и «маме недодал 4 870», оба числа
+    # бессмысленны, потому что стороны разные.
+    #
+    #   приход — counterparty кто передал, transit_party для кого;
+    #   расход — counterparty кому ушло,  transit_party чьи деньги.
+    #
+    # Сложение идёт по «для кого»: получено для мамы минус потрачено на маму.
+    # Источник в расчётах не появляется — он не сторона: ни он никому не
+    # должен, ни ему.
+    #
+    # У подарка и займа второй стороны нет: там деньги и правда между двумя.
+    transit_party_id: Mapped[int | None] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     type: Mapped[TransactionType] = mapped_column(
         Enum(TransactionType, name="transaction_type", native_enum=False, length=15), nullable=False
@@ -131,7 +150,10 @@ class Transaction(Base, TimestampMixin):
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
     participant: Mapped["Participant | None"] = relationship()
     store: Mapped["Store | None"] = relationship()
-    counterparty: Mapped["Counterparty | None"] = relationship()
+    # Колонок на контрагентов теперь две, и SQLAlchemy сама выбрать между
+    # ними не может — приходится назвать нужную явно.
+    counterparty: Mapped["Counterparty | None"] = relationship(foreign_keys=[counterparty_id])
+    transit_party: Mapped["Counterparty | None"] = relationship(foreign_keys=[transit_party_id])
     tags: Mapped[list["Tag"]] = relationship(secondary=transaction_tags, back_populates="transactions")
     splits: Mapped[list["TransactionSplit"]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan", order_by="TransactionSplit.id"

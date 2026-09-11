@@ -91,6 +91,7 @@ const EMPTY_FORM = {
   store_id: "",
   counterparty_id: "",
   settlement_kind: "" as SettlementKind | "",
+  transit_party_id: "",
   // «Не учитывать»: запись остаётся в истории, но выпадает из всех расчётов.
   // Ошибочный перевод, задвоенная строка, тестовая операция.
   is_excluded: false,
@@ -164,6 +165,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         store_id: transaction.store_id ? String(transaction.store_id) : "",
         counterparty_id: transaction.counterparty_id ? String(transaction.counterparty_id) : "",
         settlement_kind: transaction.settlement_kind ?? "",
+        transit_party_id: transaction.transit_party_id?.toString() ?? "",
         is_excluded: transaction.is_excluded,
       });
       setTags(transaction.tags);
@@ -262,6 +264,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   }
 
   const isSettlement = SETTLEMENT_TYPES.includes(form.type);
+  const isTransit = isSettlement && form.settlement_kind === "transit";
   // Разбивка — это просто «строк больше одной». Отдельного признака нет:
   // два источника правды про одно и то же расходились бы при каждой правке.
   const isSplit = form.type !== "transfer" && categoryRows.length > 1;
@@ -344,6 +347,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       // нет, и человек потом гадал бы, откуда взялся долг.
       counterparty_id: isSettlement && form.counterparty_id ? Number(form.counterparty_id) : null,
       settlement_kind: isSettlement && form.settlement_kind ? form.settlement_kind : null,
+      // Вторая сторона есть только у транзита: у подарка и займа деньги
+      // и правда между двумя, и лишнее поле там означало бы третьего.
+      transit_party_id:
+        isTransit && form.transit_party_id ? Number(form.transit_party_id) : null,
       is_excluded: form.is_excluded,
       splits,
       // Позиции без названия не отправляются: пустая строка, добавленная и
@@ -555,6 +562,31 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               </Select>
               <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementHint")}</p>
             </div>
+
+            {/* Чьи это деньги. Одного поля на транзит не хватает: в
+                контрагенте стоит тот, с кем прошла операция, а деньги могут
+                быть третьего — брат передал на покупки для мамы, и без
+                второго поля сложить приход с расходом не по чему.
+
+                Вопрос одинаковый в обе стороны, поэтому и подпись одна: у
+                прихода «чьи деньги мне дали», у расхода «чьи деньги я
+                передаю». Пустое поле значит «его» у прихода и «мои» у
+                расхода — самый частый случай. */}
+            {isTransit && (
+              <div>
+                <Label htmlFor="transit_party">{t("transactions.form.transitFromLabel")}</Label>
+                <DirectoryPicker
+                  id="transit_party"
+                  options={counterparties ?? []}
+                  value={form.transit_party_id}
+                  onChange={(value) => setForm((prev) => ({ ...prev, transit_party_id: value }))}
+                  emptyLabel={t("transactions.form.transitPartyNone")}
+                  placeholder={t("transactions.form.selectCounterparty")}
+                  onCreate={async (name) => (await createCounterparty.mutateAsync({ name })).id}
+                />
+                <p className="mt-1 text-xs text-text-muted">{t("transactions.form.transitPartyHint")}</p>
+              </div>
+            )}
 
             {/* Категория у движения с человеком. Раньше её здесь не было
                 вовсе, и покупку на чужие деньги нельзя было ни на что

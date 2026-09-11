@@ -157,6 +157,89 @@ async def get_settlement_summary(session: AsyncSession) -> dict[str, Decimal]:
     }
 
 
+
+class TransitTotals:
+    """Транзит по одному человеку: сколько его денег пришло и сколько ушло."""
+
+    def __init__(self, counterparty: Counterparty) -> None:
+        self.counterparty = counterparty
+        self.received = Decimal("0")
+        self.spent = Decimal("0")
+        self.operations = 0
+
+    @property
+    def balance(self) -> Decimal:
+        """Плюс — его деньги ещё лежат у вас, минус — вы вложили свои.
+
+        Долгом это не является и в расчёты не входит: человек, недодавший на
+        продукты, ничего не обязан возвращать, пока об этом не договорились.
+        Но видеть разницу нужно — иначе непонятно, сошлось ли.
+        """
+        return self.received - self.spent
+
+
+async def get_transit_by_person(
+    session: AsyncSession, year: int | None = None, month: int | None = None
+) -> list[TransitTotals]:
+    """Транзит, разложенный по тому, ЧЬИ это были деньги.
+
+    Ключ сложения — владелец денег, а не тот, с кем прошла операция:
+
+        приход  — деньги дал counterparty, но принадлежать они могут
+                  третьему, и тогда он указан в transit_party;
+        расход  — деньги ушли к counterparty, но это могут быть чужие
+                  деньги, которые просто идут дальше.
+
+    Пустое поле означает «его» у прихода и «мои» у расхода — самый частый
+    случай, ради которого заполнять ничего не нужно.
+
+    Отсюда и весь расчёт. Брат передал 4 500 на покупки для мамы, я отдал
+    маме эти 4 500 и ещё 370 своих: у брата приход и расход по 4 500 гасят
+    друг друга — его деньги дошли, между нами не осталось ничего; у мамы
+    остаются мои 370 со знаком минус. Ни «брату 4 500», ни «маме 4 870» не
+    появляется ни с какой стороны: первое давно дошло, второе на три
+    четверти состоит из чужих денег.
+
+    Операция, у которой не указано вообще ничего, пропускается: записать
+    её не на кого.
+    """
+    stmt = select(
+        Transaction.type,
+        Transaction.counterparty_id,
+        Transaction.transit_party_id,
+        Transaction.amount,
+    ).where(Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only())
+    if year is not None:
+        stmt = stmt.where(func.extract("year", Transaction.date) == year)
+    if month is not None:
+        stmt = stmt.where(func.extract("month", Transaction.date) == month)
+
+    rows = (await session.execute(stmt)).all()
+    counterparties = {
+        row.id: row for row in (await session.execute(select(Counterparty))).scalars().all()
+    }
+
+    totals: dict[int, TransitTotals] = {}
+    for tx_type, counterparty_id, transit_party_id, amount in rows:
+        # Чьи это деньги. Не указано — значит, ничьих третьих здесь нет: у
+        # прихода они того, кто передал, у расхода мои собственные, и счёт
+        # в обоих случаях ведётся с тем, с кем прошла операция.
+        owner_id = transit_party_id if transit_party_id is not None else counterparty_id
+        party = counterparties.get(owner_id) if owner_id is not None else None
+        if party is None:
+            continue
+
+        entry = totals.setdefault(owner_id, TransitTotals(party))
+        entry.operations += 1
+        if tx_type == TransactionType.EXTERNAL_IN:
+            entry.received += amount
+        else:
+            entry.spent += amount
+
+    # Сначала те, у кого не сошлось сильнее всего в минус: недостача — это
+    # то, ради чего в список и смотрят.
+    return sorted(totals.values(), key=lambda item: (item.balance, item.counterparty.name))
+
 async def get_transit_summary(session: AsyncSession) -> dict[str, Decimal]:
     """Деньги, прошедшие через счёт насквозь.
 
