@@ -374,6 +374,11 @@ export function TransactionsPage() {
           <option value="expense">{t("transactions.expense")}</option>
           <option value="income">{t("transactions.income")}</option>
           <option value="transfer">{t("transactions.transfer")}</option>
+          {/* Расчёты с людьми были в форме, но не в фильтре: найти их можно
+              было только глазами по списку. Подписи те же, что в форме, —
+              человек ищет то, что сам туда и записал. */}
+          <option value="external_out">{t("transactions.form.typeExternalOut")}</option>
+          <option value="external_in">{t("transactions.form.typeExternalIn")}</option>
         </Select>
         <Select
           value={accountId}

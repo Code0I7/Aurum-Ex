@@ -572,6 +572,11 @@ export interface Settlement {
   owed_by_me: string;
   // Плюс — должны вам, минус — должны вы.
   balance: string;
+  // Транзит по этому человеку: передал на покупки / потрачено на них.
+  transit_in: string;
+  transit_out: string;
+  // Плюс — его деньги ещё у вас, минус — вы вложили свои. Это не долг.
+  transit_balance: string;
   operations: number;
   last_date: string | null;
 }

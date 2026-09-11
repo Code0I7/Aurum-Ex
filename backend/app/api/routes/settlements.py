@@ -39,6 +39,13 @@ class SettlementRead(BaseModel):
     owed_by_me: str
     # Остаток: плюс — должны вам, минус — должны вы.
     balance: str
+    # Транзит по этому человеку: сколько он передал на покупки и сколько
+    # на них ушло. В долг не входит и в оборот тоже — см.
+    # services/settlement_service.py.
+    transit_in: str
+    transit_out: str
+    # Плюс — его деньги ещё лежат у вас, минус — вы вложили свои.
+    transit_balance: str
     operations: int
     last_date: date_ | None
 
@@ -72,6 +79,9 @@ async def list_settlements(session: AsyncSession = Depends(get_session)) -> list
             owed_to_me=_money(max(item.balance, 0)),
             owed_by_me=_money(-min(item.balance, 0)),
             balance=_money(item.balance),
+            transit_in=_money(item.transit_in),
+            transit_out=_money(item.transit_out),
+            transit_balance=_money(item.transit_balance),
             operations=item.operations,
             last_date=item.last_date,
         )
