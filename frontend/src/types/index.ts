@@ -1004,6 +1004,9 @@ export interface Product {
   is_archived: boolean;
   // Насколько строка живая: список товаров без этого — просто список слов.
   purchases: number;
+  // Количество и единица последней покупки — подставляются в новую позицию.
+  last_quantity: string | null;
+  last_unit_id: number | null;
   last_bought: string | null;
   last_price_per_base_unit: string | null;
   // В каких единицах выражена цена выше: «74 ₽ / л» читается, а

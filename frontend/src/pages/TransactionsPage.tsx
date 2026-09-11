@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { FileUp, Plus, Search, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Plus, Search, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
@@ -309,24 +309,11 @@ export function TransactionsPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* Перенос истории из таблицы — операция разовая, поэтому
-              кнопка неброская и уходит в самый край. Обычный CSV-импорт
-              банковской выписки рядом и остаётся основным. */}
-          <Link to="/transactions/import-spreadsheet" className="flex-1 sm:flex-none">
-            <Button variant="ghost" className="w-full sm:w-auto">
-              <FileUp size={16} />
-              {t("spreadsheet.buttonShort")}
-            </Button>
-          </Link>
-          <Link to="/transactions/import" className="flex-1 sm:flex-none">
-            <Button variant="secondary" className="w-full sm:w-auto">
-              <FileUp size={16} />
-              {t("transactions.importButton")}
-            </Button>
-          </Link>
-          {/* В шапку уходит только «Добавить». Импорт выписки и перенос
-              таблицы остаются здесь: они разовые, и тащить их наверх значит
-              менять свалку внизу на свалку вверху. */}
+          {/* Импорта здесь больше нет — обе кнопки переехали в настройки.
+              Рядом они выглядели как одно и то же, сделанное дважды, хотя
+              одна переносит таблицу целиком на пустую установку, а вторая
+              дополняет накопленное выпиской за месяц. Для вкладки, где
+              операции заводят каждый день, обе разовые. */}
           <PageActions>
             <Button onClick={openCreateModal}>
               <Plus size={16} />

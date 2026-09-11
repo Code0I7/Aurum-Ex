@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, Plus, X } from "lucide-react";
-import { Input, Select } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
+import { Combobox } from "@/components/ui/Combobox";
 import { useTranslation } from "@/lib/i18n";
 
 interface DirectoryPickerProps {
@@ -111,26 +112,20 @@ export function DirectoryPicker({
 
   return (
     <div className="flex gap-1.5">
-      <Select
+      {/* Свой список, а не браузерный: нативный рисуется средствами
+          системы, и как он выглядит на конкретной связке «браузер плюс
+          телефон», не знает никто. Заодно появляется поиск, без которого
+          полтора десятка людей или магазинов уже листаются. */}
+      <Combobox
         id={id}
+        className="min-w-0 flex-1"
+        options={options.map((option) => ({ value: String(option.id), label: option.name }))}
         value={value}
-        required={emptyLabel === undefined}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
+        placeholder={placeholder}
+        emptyLabel={emptyLabel}
         disabled={disabled}
-      >
-        {emptyLabel !== undefined ? (
-          <option value="">{emptyLabel}</option>
-        ) : (
-          <option value="" disabled>
-            {placeholder}
-          </option>
-        )}
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </Select>
+      />
       <button
         type="button"
         onClick={() => setAdding(true)}

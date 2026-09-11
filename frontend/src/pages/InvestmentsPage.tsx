@@ -69,7 +69,8 @@ export function InvestmentsPage() {
         <CardHeader className="items-start">
           <div>
             <CardTitle>{t("nav.investments")}</CardTitle>
-            <p className="mt-1 text-xs text-text-muted">{t("investments.subtitle")}</p>
+            {/* Описание раздела живёт в подсказке (!) в шапке — тот же
+                текст двумя местами расходится при первой правке. */}
           </div>
           {/* Только главное действие. «Создать портфель» ниже — это
               подсказка пустого экрана, а не постоянная кнопка. */}

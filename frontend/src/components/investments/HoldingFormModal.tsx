@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Combobox } from "@/components/ui/Combobox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
@@ -54,18 +55,14 @@ export function HoldingFormModal({ open, onClose, portfolios, defaultPortfolioId
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label htmlFor="holding-portfolio">{t("investments.portfolio")}</Label>
-          <select
+          <Combobox
             id="holding-portfolio"
+            className="mt-1"
+            options={portfolios.map((portfolio) => ({ value: String(portfolio.id), label: portfolio.name }))}
             value={form.portfolio_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, portfolio_id: event.target.value }))}
-            className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-          >
-            {portfolios.map((portfolio) => (
-              <option key={portfolio.id} value={portfolio.id}>
-                {portfolio.name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setForm((prev) => ({ ...prev, portfolio_id: value }))}
+            placeholder={t("investments.portfolio")}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -91,18 +88,17 @@ export function HoldingFormModal({ open, onClose, portfolios, defaultPortfolioId
 
         <div>
           <Label htmlFor="holding-kind">{t("investments.kindLabel")}</Label>
-          <select
+          <Combobox
             id="holding-kind"
+            className="mt-1"
+            options={KINDS.map((kind) => ({
+              value: kind,
+              label: t(`investments.kind.${kind}` as never),
+            }))}
             value={form.kind}
-            onChange={(event) => setForm((prev) => ({ ...prev, kind: event.target.value as InvestmentKind }))}
-            className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-          >
-            {KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {t(`investments.kind.${kind}` as never)}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setForm((prev) => ({ ...prev, kind: value as InvestmentKind }))}
+            placeholder={t(`investments.kind.${KINDS[0]}` as never)}
+          />
           <p className="mt-1 text-xs text-text-muted">{t("investments.kindHint")}</p>
         </div>
 

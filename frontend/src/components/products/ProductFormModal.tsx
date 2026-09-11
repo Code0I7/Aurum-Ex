@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Combobox } from "@/components/ui/Combobox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
@@ -82,19 +83,15 @@ export function ProductFormModal({ open, onClose, product }: ProductFormModalPro
         <div className="grid gap-3">
           <div>
             <Label htmlFor="product-unit">{t("product.unit")}</Label>
-            <select
+            <Combobox
               id="product-unit"
+              className="mt-1"
+              options={(units ?? []).map((unit) => ({ value: String(unit.id), label: unit.name }))}
               value={form.unit_id}
-              onChange={(event) => setForm((prev) => ({ ...prev, unit_id: event.target.value }))}
-              className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-            >
-              <option value="">{t("product.noUnit")}</option>
-              {(units ?? []).map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setForm((prev) => ({ ...prev, unit_id: value }))}
+              placeholder={t("product.noUnit")}
+              emptyLabel={t("product.noUnit")}
+            />
           </div>
         </div>
         <p className="text-xs text-text-muted">{t("product.hintsHint")}</p>

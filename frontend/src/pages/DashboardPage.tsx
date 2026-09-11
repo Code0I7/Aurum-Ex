@@ -108,45 +108,57 @@ export function DashboardPage() {
           я оставляю себе» и «во что мне обходится покупка», — и подменять
           один другим значит убирать метрику, на которую человек только
           что смотрел. */}
-      <div
-        className={`grid grid-cols-2 gap-3 sm:gap-4 ${
-          data?.earned_per_hour ? "lg:grid-cols-5" : "lg:grid-cols-4"
-        }`}
-      >
+      {/* Последняя карточка, оставшаяся одна в строке, растягивается на всю
+          ширину. На телефоне колонок две, а карточек пять — пятая иначе
+          висит половинкой рядом с пустотой. Правило через nth-child, а не
+          через счёт карточек в коде: их число зависит от данных, и держать
+          два места в согласии пришлось бы вручную. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1">
         <StatCard
           label={t("dashboard.statRealIncomeLabel")}
           value={isLoading ? "…" : formatCurrency(data?.real_income ?? 0)}
-          caption={t("dashboard.statRealIncomeCaption")}
+          hintKey="help.realIncome"
           tone="success"
         />
         <StatCard
           label={t("dashboard.statSpentLabel")}
           value={isLoading ? "…" : formatCurrency(data?.spent ?? 0)}
-          caption={t("dashboard.statSpentCaption")}
+          hintKey="help.spent"
           tone="danger"
         />
         <StatCard
           label={t("dashboard.statNetLabel")}
           value={isLoading ? "…" : formatSignedCurrency(data?.net ?? 0)}
-          caption={t("dashboard.statNetCaption")}
+          hintKey="help.net"
           tone={Number(data?.net ?? 0) >= 0 ? "success" : "danger"}
         />
         <StatCard
           label={t("dashboard.statSavingsRateLabel")}
           value={isLoading ? "…" : rate === null ? "—" : formatPercent(rate)}
-          caption={t("dashboard.statSavingsRateCaption")}
+          hintKey="help.savingsRate"
           tone={rate === null ? "default" : rate >= 0 ? "success" : "danger"}
         />
-        {/* Заработок за час появляется только при введённых часах: без них
-            карточка показывала бы прочерк в каждом периоде. */}
-        {data?.earned_per_hour && (
-          <StatCard
-            label={t("dashboard.statHourlyLabel")}
-            value={formatCurrency(data.earned_per_hour)}
-            caption={t("dashboard.statHourlyCaption", { hours: Number(data.hours_worked) })}
-            tone="default"
-          />
-        )}
+        {/* Заработок за час показывается всегда, и прочерком тоже — как
+            норма сбережений рядом. Раньше карточка при пустых часах
+            исчезала, и ряд показателей менял состав от периода к периоду:
+            человек искал глазами то, что было тут в прошлом месяце. Прочерк
+            честнее пропажи: он говорит «данных нет», а не «показателя не
+            существует». */}
+        <StatCard
+          label={t("dashboard.statHourlyLabel")}
+          value={
+            isLoading ? "…" : data?.earned_per_hour ? formatCurrency(data.earned_per_hour) : "—"
+          }
+          hintKey="help.hourly"
+          // Подпись здесь остаётся: число часов меняется вместе с суммой и
+          // объясняет именно её, а не понятие.
+          caption={
+            data?.earned_per_hour
+              ? t("dashboard.statHourlyCaption", { hours: Number(data.hours_worked) })
+              : t("dashboard.statHourlyEmpty")
+          }
+          tone="default"
+        />
       </div>
 
       <MonthlyFlowCard points={data?.monthly ?? []} />

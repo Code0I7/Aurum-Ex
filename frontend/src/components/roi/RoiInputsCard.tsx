@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { HelpBadge } from "@/components/ui/HelpBadge";
 import { Input, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency } from "@/lib/format";
@@ -120,7 +121,13 @@ export function RoiInputsCard({ form, onChange, mode, onModeChange, resolvedAnnu
         )}
 
         <div>
-          <Label htmlFor="roi-growth">{t("roi.growthLabel")}</Label>
+          {/* Объяснение поля — в подсказке у названия, а не строкой под
+              ним. Поля тут понятные, и абзац под каждым читается один раз,
+              а место занимает всегда. */}
+          <Label htmlFor="roi-growth" className="flex items-center gap-1.5">
+            {t("roi.growthLabel")}
+            <HelpBadge hintKey="roi.growthHint" />
+          </Label>
           <Input
             id="roi-growth"
             type="number"
@@ -130,12 +137,14 @@ export function RoiInputsCard({ form, onChange, mode, onModeChange, resolvedAnnu
             onChange={(event) => onChange({ growthRate: event.target.value })}
             placeholder="0"
           />
-          <p className="mt-1 text-xs text-text-muted">{t("roi.growthHint")}</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label htmlFor="roi-contribution">{t("roi.contributionLabel")}</Label>
+            <Label htmlFor="roi-contribution" className="flex items-center gap-1.5">
+              {t("roi.contributionLabel")}
+              <HelpBadge hintKey="roi.contributionHint" />
+            </Label>
             <Input
               id="roi-contribution"
               type="number"
@@ -145,7 +154,6 @@ export function RoiInputsCard({ form, onChange, mode, onModeChange, resolvedAnnu
               onChange={(event) => onChange({ contribution: event.target.value })}
               placeholder="0"
             />
-            <p className="mt-1 text-xs text-text-muted">{t("roi.contributionHint")}</p>
           </div>
           <div>
             <Label htmlFor="roi-index">{t("roi.contributionIndexLabel")}</Label>
@@ -183,7 +191,7 @@ export function RoiInputsCard({ form, onChange, mode, onModeChange, resolvedAnnu
             />
             <span>
               {t("roi.reinvestLabel")}
-              <span className="block text-xs text-text-muted">{t("roi.reinvestHint")}</span>
+              <HelpBadge hintKey="roi.reinvestHint" />
             </span>
           </label>
         </div>

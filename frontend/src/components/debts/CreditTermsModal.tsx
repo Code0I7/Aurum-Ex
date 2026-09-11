@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Combobox } from "@/components/ui/Combobox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
@@ -119,18 +120,14 @@ export function CreditTermsModal({ open, onClose, terms, candidates }: CreditTer
             {candidates.length === 0 ? (
               <p className="mt-1 text-xs text-text-muted">{t("debts.noLiabilityAccounts")}</p>
             ) : (
-              <select
+              <Combobox
                 id="credit-account"
-                value={accountId ?? ""}
-                onChange={(event) => setAccountId(Number(event.target.value))}
-                className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-              >
-                {candidates.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
+                className="mt-1"
+                options={candidates.map((account) => ({ value: String(account.id), label: account.name }))}
+                value={accountId ? String(accountId) : ""}
+                onChange={(value) => setAccountId(Number(value))}
+                placeholder={t("debts.pickAccount")}
+              />
             )}
           </div>
         )}

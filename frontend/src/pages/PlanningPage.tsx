@@ -74,7 +74,8 @@ export function PlanningPage() {
         <CardHeader className="items-start">
           <div>
             <CardTitle>{t("nav.planning")}</CardTitle>
-            <p className="mt-1 text-xs text-text-muted">{t("planning.subtitle")}</p>
+            {/* Описание раздела живёт в подсказке (!) в шапке — тот же
+                текст двумя местами расходится при первой правке. */}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 rounded-md border border-border">

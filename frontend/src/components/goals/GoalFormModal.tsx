@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Combobox } from "@/components/ui/Combobox";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
@@ -107,19 +108,15 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
 
         <div>
           <Label htmlFor="goal-account">{t("goal.form.accountLabel")}</Label>
-          <select
+          <Combobox
             id="goal-account"
+            className="mt-1"
+            options={(accounts ?? []).map((account) => ({ value: String(account.id), label: account.name }))}
             value={form.account_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, account_id: event.target.value }))}
-            className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-          >
-            <option value="">{t("goal.form.accountNone")}</option>
-            {(accounts ?? []).map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setForm((prev) => ({ ...prev, account_id: value }))}
+            placeholder={t("goal.form.accountNone")}
+            emptyLabel={t("goal.form.accountNone")}
+          />
           <p className="mt-1 text-xs text-text-muted">{t("goal.form.accountHint")}</p>
         </div>
 

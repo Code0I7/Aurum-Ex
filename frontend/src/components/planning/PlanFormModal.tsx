@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Combobox } from "@/components/ui/Combobox";
 import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
@@ -112,16 +113,18 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
 
         <div>
           <Label htmlFor="plan-kind">{t("planning.kind")}</Label>
-          <select
+          <Combobox
             id="plan-kind"
+            className="mt-1"
+            options={[
+              { value: "monthly", label: t("planning.kind.monthly") },
+              { value: "daily", label: t("planning.kind.daily") },
+              { value: "one_off", label: t("planning.kind.oneOff") },
+            ]}
             value={form.kind}
-            onChange={(event) => setForm((prev) => ({ ...prev, kind: event.target.value as PlanKind }))}
-            className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-          >
-            <option value="monthly">{t("planning.kind.monthly")}</option>
-            <option value="daily">{t("planning.kind.daily")}</option>
-            <option value="one_off">{t("planning.kind.oneOff")}</option>
-          </select>
+            onChange={(value) => setForm((prev) => ({ ...prev, kind: value as PlanKind }))}
+            placeholder={t("planning.kind.monthly")}
+          />
           <p className="mt-1 text-xs text-text-muted">{t(`planning.kindHint.${form.kind}` as never)}</p>
         </div>
 

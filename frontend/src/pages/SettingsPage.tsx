@@ -2,6 +2,7 @@ import { AccountCard } from "@/components/settings/AccountCard";
 import { AlertThresholdsCard } from "@/components/settings/AlertThresholdsCard";
 import { BackupCard } from "@/components/settings/BackupCard";
 import { CurrencyCard } from "@/components/settings/CurrencyCard";
+import { ImportCard } from "@/components/settings/ImportCard";
 import { PreferencesCard } from "@/components/settings/PreferencesCard";
 import { ViewDefaultsCard } from "@/components/settings/ViewDefaultsCard";
 import { useHealth } from "@/hooks/useHealth";
@@ -20,6 +21,7 @@ export function SettingsPage() {
       <CurrencyCard />
       <AccountCard />
       <AlertThresholdsCard />
+      <ImportCard />
       <BackupCard />
       {health?.version && (
         <p className="text-center text-xs text-text-muted">

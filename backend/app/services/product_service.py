@@ -69,6 +69,11 @@ class ProductStats:
     purchases: int = 0
     last_bought: object = None
     last_price: Decimal | None = None
+    # Количество и единица последней покупки — подставляются в новую
+    # позицию. Хлеб берут по одной штуке, молоко по литру, и вводить одно и
+    # то же в каждом чеке незачем.
+    last_quantity: Decimal | None = None
+    last_unit_id: int | None = None
     spent_total: Decimal = Decimal("0")
     spent_year: Decimal = Decimal("0")
 
@@ -87,6 +92,7 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
                 Transaction.date,
                 TransactionItem.amount,
                 TransactionItem.quantity,
+                TransactionItem.unit_id,
                 Unit.factor,
             )
             .join(Transaction, Transaction.id == TransactionItem.transaction_id)
@@ -101,12 +107,20 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
     year_ago = date_.today() - timedelta(days=365)
 
     stats: dict[int, ProductStats] = defaultdict(ProductStats)
-    for product_id, tx_date, amount, quantity, factor in rows:
+    for product_id, tx_date, amount, quantity, unit_id, factor in rows:
         item = stats[product_id]
         item.purchases += 1
         # Запрос отсортирован по дате, поэтому последняя строка и есть
         # последняя покупка — отдельного max() не нужно.
         item.last_bought = tx_date
+        # Количество последней покупки. Хлеб берут по одной штуке, молоко —
+        # по литру: подставить прошлое число избавляет от ввода того же
+        # самого в каждом чеке. Пустое не запоминается: «не помню, сколько
+        # было» не должно стирать то, что помнили раньше.
+        if quantity is not None:
+            item.last_quantity = quantity
+        if unit_id is not None:
+            item.last_unit_id = unit_id
         price = price_per_base_unit(amount, quantity, factor)
         if price is not None:
             item.last_price = price
@@ -139,6 +153,8 @@ def _to_read(
         notes=product.notes,
         is_archived=product.is_archived,
         purchases=stats.purchases,
+        last_quantity=stats.last_quantity,
+        last_unit_id=stats.last_unit_id,
         last_bought=stats.last_bought,
         last_price_per_base_unit=stats.last_price,
         spent_total=stats.spent_total,

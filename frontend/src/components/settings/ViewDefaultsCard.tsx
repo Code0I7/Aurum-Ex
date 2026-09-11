@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Combobox } from "@/components/ui/Combobox";
 import { Input, Label } from "@/components/ui/Input";
 import { useAppSettings, useUpdateAppSettings } from "@/hooks/useSettings";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -32,39 +33,31 @@ export function ViewDefaultsCard() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="default-range">{t("settings.defaultRange")}</Label>
-            <select
+            <Combobox
               id="default-range"
+              className="mt-1"
+              options={[
+                { value: "month", label: t("dashboard.rangeMonth") },
+                { value: "year", label: t("dashboard.rangeYear") },
+                { value: "all", label: t("dashboard.rangeAll") },
+              ]}
               value={settings.default_dashboard_range}
-              onChange={(event) =>
-                update.mutate({ default_dashboard_range: event.target.value as DashboardRange })
-              }
-              className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-            >
-              <option value="month">{t("dashboard.rangeMonth")}</option>
-              <option value="year">{t("dashboard.rangeYear")}</option>
-              <option value="all">{t("dashboard.rangeAll")}</option>
-            </select>
+              onChange={(value) => update.mutate({ default_dashboard_range: value as DashboardRange })}
+              placeholder={t("dashboard.rangeMonth")}
+            />
           </div>
 
           <div>
             <Label htmlFor="default-account">{t("settings.defaultAccount")}</Label>
-            <select
+            <Combobox
               id="default-account"
-              value={settings.default_account_id ?? ""}
-              onChange={(event) =>
-                update.mutate({
-                  default_account_id: event.target.value ? Number(event.target.value) : null,
-                })
-              }
-              className="mt-1 w-full rounded-md border border-border bg-surface-1 px-3 py-2 text-sm"
-            >
-              <option value="">{t("settings.defaultAccountNone")}</option>
-              {(accounts ?? []).map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
+              className="mt-1"
+              options={(accounts ?? []).map((account) => ({ value: String(account.id), label: account.name }))}
+              value={settings.default_account_id ? String(settings.default_account_id) : ""}
+              onChange={(value) => update.mutate({ default_account_id: value ? Number(value) : null })}
+              placeholder={t("settings.defaultAccountNone")}
+              emptyLabel={t("settings.defaultAccountNone")}
+            />
             <p className="mt-1 text-xs text-text-muted">{t("settings.defaultAccountHint")}</p>
           </div>
 

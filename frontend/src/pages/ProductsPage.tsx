@@ -84,7 +84,8 @@ export function ProductsPage() {
         <CardHeader className="items-start">
           <div>
             <CardTitle>{t("nav.products")}</CardTitle>
-            <p className="mt-1 text-xs text-text-muted">{t("product.subtitle")}</p>
+            {/* Описание раздела живёт в подсказке (!) в шапке — тот же
+                текст двумя местами расходится при первой правке. */}
           </div>
           <PageActions>
             <Button onClick={openCreate}>

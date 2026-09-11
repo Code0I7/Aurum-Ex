@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { HelpBadge } from "@/components/ui/HelpBadge";
 import { Input, Label } from "@/components/ui/Input";
+import { Combobox } from "@/components/ui/Combobox";
 import { suggestProducts } from "@/api/products";
 import { useCreateProduct, useUnits } from "@/hooks/useProducts";
 import { useTranslation } from "@/lib/i18n";
@@ -108,9 +109,16 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                       update(index, {
                         name: product.name,
                         product_id: product.id,
-                        // Единица — подсказка из справочника. В позиции её
-                        // можно поменять, справочник от этого не меняется.
-                        unit_id: product.unit_id,
+                        // Количество и единица прошлой покупки. Хлеб берут по
+                        // одной штуке, молоко по литру — вводить одно и то же
+                        // в каждом чеке незачем.
+                        //
+                        // Единица последней покупки важнее записанной в
+                        // справочнике: чек заполняют по чеку, а в справочнике
+                        // лежит обычная мера товара. Если покупок ещё не
+                        // было, берётся справочник.
+                        quantity: product.last_quantity ?? null,
+                        unit_id: product.last_unit_id ?? product.unit_id,
                       })
                     }
                   />
@@ -143,20 +151,13 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                   value={item.quantity ?? ""}
                   onChange={(event) => update(index, { quantity: event.target.value || null })}
                 />
-                <select
-                  value={item.unit_id ?? ""}
-                  onChange={(event) =>
-                    update(index, { unit_id: event.target.value ? Number(event.target.value) : null })
-                  }
-                  className="rounded-md border border-border bg-surface-1 px-2 py-2 text-sm"
-                >
-                  <option value="">{t("items.unit")}</option>
-                  {(units ?? []).map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name}
-                    </option>
-                  ))}
-                </select>
+                <Combobox
+                  options={(units ?? []).map((unit) => ({ value: String(unit.id), label: unit.name }))}
+                  value={item.unit_id ? String(item.unit_id) : ""}
+                  onChange={(value) => update(index, { unit_id: value ? Number(value) : null })}
+                  placeholder={t("items.unit")}
+                  emptyLabel={t("items.unit")}
+                />
               </div>
 
               <div className="mt-2 grid grid-cols-2 gap-2">
