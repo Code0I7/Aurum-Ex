@@ -429,6 +429,7 @@ class PlanBackup(BaseModel):
     valid_from: date_
     valid_to: date_ | None = None
     workdays_only: bool = False
+    weekdays_only: bool = False
     note: str | None = None
     is_active: bool = True
 

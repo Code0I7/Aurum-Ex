@@ -24,10 +24,16 @@ export function WorkDaysCard({ year }: { year: number }) {
   // Черновик правки — по одному месяцу за раз. Сохраняется по уходу из
   // поля: отдельная кнопка на двенадцать строк превратила бы ввод года в
   // двадцать четыре клика.
+  //
+  // Ключ включает год, и это не украшение. Карточка при смене года не
+  // размонтируется, поэтому черновик её переживал: напечатанное в сентябре
+  // 2026-го подставлялось в сентябрь 2025-го, а уход из соседнего поля
+  // сохранял туда же. Со стороны выглядело так, будто месяц меняется сразу
+  // во всех годах.
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   function valueOf(month: number, field: "hours" | "workdays"): string {
-    const key = `${month}-${field}`;
+    const key = `${year}-${month}-${field}`;
     if (key in draft) return draft[key];
     const period = periods?.find((item) => item.month === month);
     if (!period) return "";
@@ -60,7 +66,10 @@ export function WorkDaysCard({ year }: { year: number }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="mb-3 text-xs text-text-muted">{t("planning.workHint")}</p>
+        {/* Абзаца с объяснением здесь больше нет: то же самое, только
+            подробнее, лежит в подсказке у заголовка (help.workTime).
+            Два текста об одном расходятся при первой правке, а на телефоне
+            занимали четверть карточки. */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -85,7 +94,7 @@ export function WorkDaysCard({ year }: { year: number }) {
                           step={field === "hours" ? "0.5" : "1"}
                           value={valueOf(month, field)}
                           onChange={(event) =>
-                            setDraft((prev) => ({ ...prev, [`${month}-${field}`]: event.target.value }))
+                            setDraft((prev) => ({ ...prev, [`${year}-${month}-${field}`]: event.target.value }))
                           }
                           onBlur={() => commit(month)}
                           className="w-full rounded-md border border-border bg-surface-1 px-2 py-1 text-right text-sm tabular-nums"

@@ -21,6 +21,7 @@ const EMPTY_FORM = {
   valid_from: "",
   valid_to: "",
   workdays_only: false,
+  weekdays_only: false,
   note: "",
 };
 
@@ -44,6 +45,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
         valid_from: plan.valid_from,
         valid_to: plan.valid_to ?? "",
         workdays_only: plan.workdays_only,
+        weekdays_only: plan.weekdays_only,
         note: plan.note ?? "",
       });
     } else {
@@ -71,6 +73,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
       // его на остальных, и посылать его оттуда было бы отправкой заведомой
       // ошибки.
       workdays_only: isDaily && form.workdays_only,
+      weekdays_only: isDaily && form.weekdays_only,
       note: form.note || null,
     };
 
@@ -164,19 +167,51 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
           </div>
         )}
 
+        {/* Два способа считать дни, и они взаимоисключающие: «отработанные»
+            берутся из введённых руками work_periods, «будни» — из
+            календаря. Включение одного снимает другое прямо здесь, а не
+            четырёхсотым с сервера: человек не должен узнавать о
+            несовместимости из ошибки сохранения. */}
         {isDaily && (
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.workdays_only}
-              onChange={(event) => setForm((prev) => ({ ...prev, workdays_only: event.target.checked }))}
-              className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
-            />
-            <span>
-              {t("planning.workdaysOnly")}
-              <span className="block text-xs text-text-muted">{t("planning.workdaysOnlyHint")}</span>
-            </span>
-          </label>
+          <div className="space-y-2">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.workdays_only}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    workdays_only: event.target.checked,
+                    weekdays_only: event.target.checked ? false : prev.weekdays_only,
+                  }))
+                }
+                className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+              />
+              <span>
+                {t("planning.workdaysOnly")}
+                <span className="block text-xs text-text-muted">{t("planning.workdaysOnlyHint")}</span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.weekdays_only}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    weekdays_only: event.target.checked,
+                    workdays_only: event.target.checked ? false : prev.workdays_only,
+                  }))
+                }
+                className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+              />
+              <span>
+                {t("planning.weekdaysOnly")}
+                <span className="block text-xs text-text-muted">{t("planning.weekdaysOnlyHint")}</span>
+              </span>
+            </label>
+          </div>
         )}
 
         <div>

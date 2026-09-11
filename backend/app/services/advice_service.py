@@ -23,6 +23,13 @@ from app.services.dashboard_service import get_dashboard_summary
 
 TRAILING_MONTHS = 3
 RISING_CATEGORY_THRESHOLD_PERCENT = 25
+# В скольких из прошлых месяцев категория должна встречаться, чтобы среднее
+# по ней что-то значило. Два из трёх: требовать все три значило бы молчать
+# про сезонные траты, требовать один — сравнивать с числом, выдуманным из
+# единственной покупки.
+MIN_TRAILING_MONTHS = 2
+# Насколько траты должны вырасти в рублях, а не только в процентах.
+RISING_CATEGORY_MIN_DIFFERENCE = Decimal("500")
 SAVINGS_RATE_TREND_THRESHOLD_POINTS = 5
 
 
@@ -59,18 +66,39 @@ async def _rising_category_advice(session: AsyncSession, year: int, month: int) 
         return None
 
     trailing_totals: dict[int, Decimal] = defaultdict(Decimal)
+    # Сколько из прошлых месяцев в категории вообще что-то было. Среднее по
+    # трём месяцам у категории, потраченной один раз, — это не среднее.
+    months_seen: dict[int, int] = defaultdict(int)
     y, m = year, month
     for _ in range(TRAILING_MONTHS):
         y, m = _previous_month(y, m)
         for cat_id, amount in (await _category_expense_totals(session, y, m)).items():
             trailing_totals[cat_id] += amount
+            months_seen[cat_id] += 1
 
     best: tuple[float, int, Decimal, Decimal] | None = None
     for cat_id, current in current_totals.items():
-        average = trailing_totals.get(cat_id, Decimal("0")) / TRAILING_MONTHS
+        seen = months_seen.get(cat_id, 0)
+        # Нужна хотя бы пара месяцев подряд, иначе «выросли» сказать не о
+        # чем. Раньше сумма делилась на три всегда: одна покупка на 56 ₽
+        # три месяца назад давала «среднее» 18,67 ₽, и любая нормальная
+        # трата после неё выглядела ростом на полторы тысячи процентов.
+        # Совет при этом вытеснял настоящие изменения — он же самый
+        # большой по проценту.
+        if seen < MIN_TRAILING_MONTHS:
+            continue
+        # Делим на месяцы, в которых траты были, а не на длину окна:
+        # пропущенный месяц означает «не покупали», а не «потратили ноль».
+        average = trailing_totals[cat_id] / seen
         if average <= 0:
             continue
-        increase_percent = float((current - average) / average * 100)
+        difference = current - average
+        # Абсолютный порог рядом с процентным. Рост со 120 ₽ до 200 ₽ — это
+        # 67%, но говорить о нём не стоит: восемьдесят рублей не меняют
+        # ни одного решения, а место в советах занимают.
+        if difference < RISING_CATEGORY_MIN_DIFFERENCE:
+            continue
+        increase_percent = float(difference / average * 100)
         if increase_percent >= RISING_CATEGORY_THRESHOLD_PERCENT and (best is None or increase_percent > best[0]):
             best = (increase_percent, cat_id, current, average)
 

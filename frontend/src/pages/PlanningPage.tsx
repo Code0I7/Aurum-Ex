@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -29,6 +29,22 @@ export function PlanningPage() {
   const { data: plans } = usePlans();
   const deletePlan = useDeletePlan();
   const confirm = useConfirm();
+
+  // Только планы, действующие в выбранном году. Плана «связь 700 ₽»
+  // хватает на годы, но за пять лет список копится из всего, что когда-то
+  // было: отменённые тарифы, разовые покупки позапрошлого года, всё разом.
+  // Таблица над списком показывает один год — список под ней обязан
+  // показывать его же.
+  //
+  // Период считается пересекающимся, если он захватывает хотя бы один день
+  // года: план с 01.11.2025 по 30.03.2026 виден и в 2025-м, и в 2026-м.
+  const plansThisYear = useMemo(() => {
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+    return (plans ?? []).filter(
+      (plan) => plan.valid_from <= yearEnd && (plan.valid_to === null || plan.valid_to >= yearStart)
+    );
+  }, [plans, year]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
@@ -109,11 +125,11 @@ export function PlanningPage() {
             <CardTitle>{t("planning.plansTitle")}</CardTitle>
           </CardHeader>
           <CardContent>
-            {(plans ?? []).length === 0 ? (
-              <p className="py-6 text-center text-sm text-text-muted">{t("planning.noPlans")}</p>
+            {plansThisYear.length === 0 ? (
+              <p className="py-6 text-center text-sm text-text-muted">{t("planning.noPlansThisYear", { year })}</p>
             ) : (
               <ul className="divide-y divide-gridline">
-                {(plans ?? []).map((plan) => (
+                {plansThisYear.map((plan) => (
                   <li key={plan.id} className="flex items-center gap-3 py-2.5">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
@@ -122,6 +138,7 @@ export function PlanningPage() {
                       <span className="block truncate text-xs text-text-muted">
                         {t(`planning.kind.${plan.kind === "one_off" ? "oneOff" : plan.kind}` as never)}
                         {plan.workdays_only && ` · ${t("planning.workdaysShort")}`}
+                        {plan.weekdays_only && ` · ${t("planning.weekdaysShort")}`}
                         {plan.note && ` · ${plan.note}`}
                       </span>
                     </span>

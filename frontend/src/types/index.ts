@@ -860,6 +860,7 @@ export interface Plan {
   valid_to: string | null;
   // Только для ежедневного: считать по отработанным дням, а не календарным.
   workdays_only: boolean;
+  weekdays_only: boolean;
   note: string | null;
   is_active: boolean;
 }
@@ -871,6 +872,7 @@ export interface PlanInput {
   valid_from: string;
   valid_to: string | null;
   workdays_only: boolean;
+  weekdays_only: boolean;
   note: string | null;
 }
 

@@ -22,6 +22,7 @@ class PlanBase(BaseModel):
     valid_from: date_
     valid_to: date_ | None = None
     workdays_only: bool = False
+    weekdays_only: bool = False
     note: str | None = Field(default=None, max_length=200)
     is_active: bool = True
 
@@ -34,6 +35,13 @@ class PlanBase(BaseModel):
         # ежемесячном плане, ждал другого поведения.
         if self.workdays_only and self.kind is not PlanKind.DAILY:
             raise ValueError("workdays_only applies to daily plans only")
+        if self.weekdays_only and self.kind is not PlanKind.DAILY:
+            raise ValueError("weekdays_only applies to daily plans only")
+        # Взаимоисключающие: «отработанные дни» — факт из work_periods,
+        # «будни» — календарь. Вместе они означали бы два разных числа дней
+        # на один месяц, и пришлось бы выбирать молча за человека.
+        if self.workdays_only and self.weekdays_only:
+            raise ValueError("workdays_only and weekdays_only are mutually exclusive")
         return self
 
 
@@ -50,6 +58,7 @@ class PlanUpdate(BaseModel):
     valid_from: date_ | None = None
     valid_to: date_ | None = None
     workdays_only: bool | None = None
+    weekdays_only: bool | None = None
     note: str | None = Field(default=None, max_length=200)
     is_active: bool | None = None
 

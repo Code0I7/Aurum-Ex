@@ -46,7 +46,18 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label={t("help.what")}
-        className="flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] font-bold leading-none text-text-muted transition-colors hover:border-text-secondary hover:text-text-primary"
+        // Кружок остаётся четыре на четыре, а нажимаемая область — нет.
+        // Шестнадцать точек это меньше половины пальца: на телефоне
+        // попадание было делом удачи, и особенно в шапке, где рядом
+        // заголовок раздела, который перехватывал промах. Отрицательный
+        // отступ возвращает разметку на место, не трогая соседей.
+        //
+        // touch-action: браузер иначе ждёт, не второе ли это касание
+        // двойного тапа, и подсказка появляется с задержкой в треть
+        // секунды — за это время палец успевает убраться, и выглядит
+        // так, будто значок не нажался.
+        className="-m-2 flex h-4 w-4 touch-manipulation items-center justify-center rounded-full border border-border p-2 text-[10px] font-bold leading-none text-text-muted transition-colors hover:border-text-secondary hover:text-text-primary"
+        style={{ boxSizing: "content-box" }}
       >
         !
       </button>
@@ -56,7 +67,7 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
         // ширину экрана читается хуже колонки в сорок слов.
         <span
           role="tooltip"
-          className="absolute left-0 top-6 z-30 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-1 p-3 text-xs font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-lg"
+          className="absolute left-0 top-8 z-50 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-1 p-3 text-xs font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-lg"
         >
           {t(hintKey)}
         </span>
