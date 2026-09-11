@@ -847,17 +847,31 @@ export interface HealthStatus {
 // года.
 export type PlanKind = "one_off" | "monthly" | "daily";
 
+/**
+ * Сумма плана на отрезке времени.
+ *
+ * Отрезков у плана может быть несколько: категория и способ счёта одни, а
+ * сумма меняется — подорожал тариф, сменился оператор. Заметка отвечает на
+ * вопрос «почему тут другое число», который через год не вспомнит никто.
+ */
+export interface PlanPeriod {
+  // Есть у сохранённых; у новой строки в форме появляется после записи.
+  id?: number;
+  // Для разового и ежемесячного — сумма на месяц, для ежедневного — на день.
+  amount: string;
+  valid_from: string;
+  valid_to: string | null;
+  note: string | null;
+}
+
 export interface Plan {
   id: number;
   category_id: number | null;
   category_name: string | null;
   participant_id: number | null;
   kind: PlanKind;
-  // Для разового и ежемесячного — сумма на месяц, для ежедневного — на день.
-  amount: string;
   currency: string;
-  valid_from: string;
-  valid_to: string | null;
+  periods: PlanPeriod[];
   // Только для ежедневного: считать по отработанным дням, а не календарным.
   workdays_only: boolean;
   weekdays_only: boolean;
@@ -868,9 +882,7 @@ export interface Plan {
 export interface PlanInput {
   category_id: number | null;
   kind: PlanKind;
-  amount: string;
-  valid_from: string;
-  valid_to: string | null;
+  periods: PlanPeriod[];
   workdays_only: boolean;
   weekdays_only: boolean;
   note: string | null;

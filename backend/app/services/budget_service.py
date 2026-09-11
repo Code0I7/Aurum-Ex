@@ -118,7 +118,11 @@ async def _plan_lines(
     plans = (
         (
             await session.execute(
-                select(Plan).where(Plan.category_id.is_not(None), Plan.category_id.not_in(taken or {0}))
+                # Отрезки подгружаются сразу: сумма плана живёт в них, а
+                # ленивая загрузка в асинхронной сессии падает.
+                select(Plan)
+                .options(selectinload(Plan.periods))
+                .where(Plan.category_id.is_not(None), Plan.category_id.not_in(taken or {0}))
             )
         )
         .scalars()

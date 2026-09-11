@@ -170,8 +170,7 @@ async def _plan(client: AsyncClient, category_id: int, amount: str, kind: str = 
     payload = {
         "category_id": category_id,
         "kind": kind,
-        "amount": amount,
-        "valid_from": "2026-01-01",
+        "periods": [{"amount": amount, "valid_from": extra.pop("valid_from", "2026-01-01")}],
         **extra,
     }
     resp = await client.post("/plans", json=payload)

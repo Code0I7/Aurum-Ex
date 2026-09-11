@@ -48,9 +48,8 @@ async def test_a_weekday_plan_multiplies_by_weekdays(client: AsyncClient):
         json={
             "category_id": category["id"],
             "kind": "daily",
-            "amount": "200.00",
-            "valid_from": "2026-01-01",
             "weekdays_only": True,
+            "periods": [{"amount": "200.00", "valid_from": "2026-01-01"}],
         },
     )
     assert resp.status_code == 201, resp.text
@@ -70,10 +69,9 @@ async def test_the_two_day_modes_cannot_be_combined(client: AsyncClient):
         json={
             "category_id": category["id"],
             "kind": "daily",
-            "amount": "200.00",
-            "valid_from": "2026-01-01",
             "workdays_only": True,
             "weekdays_only": True,
+            "periods": [{"amount": "200.00", "valid_from": "2026-01-01"}],
         },
     )
     assert resp.status_code == 422, resp.text
@@ -86,9 +84,8 @@ async def test_weekdays_only_is_for_daily_plans(client: AsyncClient):
         json={
             "category_id": category["id"],
             "kind": "monthly",
-            "amount": "700.00",
-            "valid_from": "2026-01-01",
             "weekdays_only": True,
+            "periods": [{"amount": "700.00", "valid_from": "2026-01-01"}],
         },
     )
     assert resp.status_code == 422, resp.text
@@ -102,8 +99,7 @@ async def test_a_plain_daily_plan_still_uses_calendar_days(client: AsyncClient):
         json={
             "category_id": category["id"],
             "kind": "daily",
-            "amount": "50.00",
-            "valid_from": "2026-01-01",
+            "periods": [{"amount": "50.00", "valid_from": "2026-01-01"}],
         },
     )
     assert resp.status_code == 201, resp.text

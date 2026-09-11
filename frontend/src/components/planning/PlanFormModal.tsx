@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { Combobox } from "@/components/ui/Combobox";
 import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { Dialog } from "@/components/ui/Dialog";
@@ -9,18 +10,41 @@ import { useCategories } from "@/hooks/useCategories";
 import { useTranslation } from "@/lib/i18n";
 import type { Plan, PlanKind } from "@/types";
 
+/** Следующий день после даты в виде ГГГГ-ММ-ДД. Нужен, чтобы новый
+ *  отрезок начинался там, где кончился предыдущий, не перекрывая его
+ *  ни на сутки: перехлёст сервер не примет. */
+function nextDay(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  parsed.setDate(parsed.getDate() + 1);
+  return parsed.toISOString().slice(0, 10);
+}
+
 interface PlanFormModalProps {
   open: boolean;
   onClose: () => void;
   plan?: Plan | null;
 }
 
+/** Отрезок в состоянии формы: те же поля, что уходят на сервер, только
+ *  строками — как их печатают в полях ввода. `key` живёт лишь в браузере:
+ *  React нужен устойчивый ключ, а id у новой строки появится только после
+ *  сохранения. */
+interface PeriodRow {
+  key: string;
+  amount: string;
+  valid_from: string;
+  valid_to: string;
+  note: string;
+}
+
+function emptyPeriod(validFrom = ""): PeriodRow {
+  return { key: crypto.randomUUID(), amount: "", valid_from: validFrom, valid_to: "", note: "" };
+}
+
 const EMPTY_FORM = {
   category_id: "",
   kind: "monthly" as PlanKind,
-  amount: "",
-  valid_from: "",
-  valid_to: "",
   workdays_only: false,
   weekdays_only: false,
   note: "",
@@ -33,6 +57,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
   const { data: categories } = useCategories();
 
   const [form, setForm] = useState(EMPTY_FORM);
+  const [periods, setPeriods] = useState<PeriodRow[]>([emptyPeriod()]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,21 +67,44 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
       setForm({
         category_id: plan.category_id?.toString() ?? "",
         kind: plan.kind,
-        amount: plan.amount,
-        valid_from: plan.valid_from,
-        valid_to: plan.valid_to ?? "",
         workdays_only: plan.workdays_only,
         weekdays_only: plan.weekdays_only,
         note: plan.note ?? "",
       });
+      setPeriods(
+        plan.periods.map((period) => ({
+          key: crypto.randomUUID(),
+          amount: period.amount,
+          valid_from: period.valid_from,
+          valid_to: period.valid_to ?? "",
+          note: period.note ?? "",
+        }))
+      );
     } else {
       // Новый план начинается с первого числа текущего месяца: план на
       // половину месяца всё равно действует на весь — см. plan_service.
       const now = new Date();
       const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      setForm({ ...EMPTY_FORM, valid_from: first });
+      setForm(EMPTY_FORM);
+      setPeriods([emptyPeriod(first)]);
     }
   }, [open, plan]);
+
+  function updatePeriod(key: string, patch: Partial<PeriodRow>) {
+    setPeriods((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
+
+  function addPeriod() {
+    // Новый отрезок начинается там, где кончился предыдущий: смена тарифа
+    // почти всегда именно так и выглядит, а поставить другую дату можно.
+    const last = periods[periods.length - 1];
+    const start = last?.valid_to ? nextDay(last.valid_to) : "";
+    setPeriods((prev) => [...prev, emptyPeriod(start)]);
+  }
+
+  function removePeriod(key: string) {
+    setPeriods((prev) => (prev.length > 1 ? prev.filter((row) => row.key !== key) : prev));
+  }
 
   const isDaily = form.kind === "daily";
 
@@ -67,9 +115,13 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
     const input = {
       category_id: form.category_id ? Number(form.category_id) : null,
       kind: form.kind,
-      amount: form.amount,
-      valid_from: form.valid_from,
-      valid_to: form.valid_to || null,
+      periods: periods.map((row) => ({
+        amount: row.amount,
+        valid_from: row.valid_from,
+        // Пустая дата окончания означает «пока не отменю», а не «сегодня».
+        valid_to: row.valid_to || null,
+        note: row.note || null,
+      })),
       // Признак имеет смысл только у ежедневного плана — бэкенд отклоняет
       // его на остальных, и посылать его оттуда было бы отправкой заведомой
       // ошибки.
@@ -128,47 +180,103 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
           <p className="mt-1 text-xs text-text-muted">{t(`planning.kindHint.${form.kind}` as never)}</p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="plan-amount">
-              {isDaily ? t("planning.amountPerDay") : t("planning.amountPerMonth")}
-            </Label>
-            <Input
-              id="plan-amount"
-              type="number"
-              step="0.01"
-              min="0.01"
-              required
-              value={form.amount}
-              onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
-            />
+        {/* Суммы списком. Категория и способ счёта у плана одни, а сумма
+            меняется: подорожал тариф, сменился оператор. Раньше это
+            означало второй план с тем же названием, и через несколько лет
+            список планов превращался в список версий одного плана. */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>{t("planning.periods")}</Label>
+            {/* У разового плана отрезок один по смыслу: он стоит в своём
+                месяце и больше нигде, и второй был бы второй покупкой. */}
+            {form.kind !== "one_off" && (
+              <button
+                type="button"
+                onClick={addPeriod}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted hover:bg-surface-2 hover:text-text-primary"
+              >
+                <Plus size={14} />
+                {t("planning.addPeriod")}
+              </button>
+            )}
           </div>
-          <div>
-            <Label htmlFor="plan-from">{t("planning.validFrom")}</Label>
-            <Input
-              id="plan-from"
-              type="date"
-              required
-              value={form.valid_from}
-              onChange={(event) => setForm((prev) => ({ ...prev, valid_from: event.target.value }))}
-            />
-          </div>
-        </div>
 
-        {/* Дата окончания скрыта у разового плана: он и так стоит в одном
-            месяце, и второе поле про то же самое только путало бы. */}
-        {form.kind !== "one_off" && (
-          <div>
-            <Label htmlFor="plan-to">{t("planning.validTo")}</Label>
-            <Input
-              id="plan-to"
-              type="date"
-              value={form.valid_to}
-              onChange={(event) => setForm((prev) => ({ ...prev, valid_to: event.target.value }))}
-            />
-            <p className="mt-1 text-xs text-text-muted">{t("planning.validToHint")}</p>
-          </div>
-        )}
+          <ul className="space-y-2">
+            {periods.map((row, index) => (
+              <li key={row.key} className="rounded-lg border border-border p-2.5">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor={`plan-amount-${row.key}`}>
+                      {isDaily ? t("planning.amountPerDay") : t("planning.amountPerMonth")}
+                    </Label>
+                    <Input
+                      id={`plan-amount-${row.key}`}
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      value={row.amount}
+                      onChange={(event) => updatePeriod(row.key, { amount: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`plan-from-${row.key}`}>{t("planning.validFrom")}</Label>
+                    <Input
+                      id={`plan-from-${row.key}`}
+                      type="date"
+                      required
+                      value={row.valid_from}
+                      onChange={(event) => updatePeriod(row.key, { valid_from: event.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Дата окончания скрыта у разового плана: он и так стоит в
+                    одном месяце, и второе поле про то же самое путало бы. */}
+                {form.kind !== "one_off" && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor={`plan-to-${row.key}`}>{t("planning.validTo")}</Label>
+                      <Input
+                        id={`plan-to-${row.key}`}
+                        type="date"
+                        value={row.valid_to}
+                        onChange={(event) => updatePeriod(row.key, { valid_to: event.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`plan-note-${row.key}`}>{t("planning.periodNote")}</Label>
+                      <Input
+                        id={`plan-note-${row.key}`}
+                        value={row.note}
+                        placeholder={t("planning.periodNotePlaceholder")}
+                        onChange={(event) => updatePeriod(row.key, { note: event.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {periods.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removePeriod(row.key)}
+                    className="mt-2 flex items-center gap-1 text-xs text-text-muted hover:text-danger"
+                  >
+                    <Trash2 size={13} />
+                    {t("planning.removePeriod")}
+                  </button>
+                )}
+
+                {/* Подсказка про открытый конец — только у последнего:
+                    у остальных пустая дата окончания означает перехлёст, и
+                    сервер её не примет. */}
+                {index === periods.length - 1 && form.kind !== "one_off" && (
+                  <p className="mt-2 text-xs text-text-muted">{t("planning.validToHint")}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
 
         {/* Два способа считать дни, и они взаимоисключающие: «отработанные»
             берутся из введённых руками work_periods, «будни» — из

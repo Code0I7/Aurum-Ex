@@ -22,6 +22,27 @@ import type { Plan } from "@/types";
  * год». Свести их значило бы заставить выбирать между предупреждением и
  * прогнозом.
  */
+/** Отрезки плана, задевающие этот год. */
+function periodsOfYear(plan: Plan, year: number) {
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+  return plan.periods.filter(
+    (period) => period.valid_from <= yearEnd && (period.valid_to === null || period.valid_to >= yearStart)
+  );
+}
+
+function periodsInYear(plan: Plan, year: number): number {
+  return periodsOfYear(plan, year).length;
+}
+
+/** Сумма, которой план описывается в этом году: последняя из
+ *  действующих. Если их несколько, рядом стоит счётчик — одно число
+ *  вместо двух иначе выглядело бы как весь план. */
+function currentAmount(plan: Plan, year: number): string {
+  const periods = periodsOfYear(plan, year);
+  return periods.length > 0 ? periods[periods.length - 1].amount : "0";
+}
+
 export function PlanningPage() {
   const { t } = useTranslation();
   const [year, setYear] = useSessionState("aurum:planning-year", new Date().getFullYear());
@@ -41,8 +62,14 @@ export function PlanningPage() {
   const plansThisYear = useMemo(() => {
     const yearStart = `${year}-01-01`;
     const yearEnd = `${year}-12-31`;
-    return (plans ?? []).filter(
-      (plan) => plan.valid_from <= yearEnd && (plan.valid_to === null || plan.valid_to >= yearStart)
+    // План виден в году, если в него попадает хотя бы один его отрезок:
+    // суммы теперь лежат списком, и «когда действует план» — это «когда
+    // действует любая из его сумм».
+    return (plans ?? []).filter((plan) =>
+      plan.periods.some(
+        (period) =>
+          period.valid_from <= yearEnd && (period.valid_to === null || period.valid_to >= yearStart)
+      )
     );
   }, [plans, year]);
 
@@ -143,11 +170,20 @@ export function PlanningPage() {
                         {plan.note && ` · ${plan.note}`}
                       </span>
                     </span>
-                    <span className="shrink-0 text-sm tabular-nums">
-                      {formatCurrency(plan.amount)}
+                    {/* Сумма отрезка, действующего в выбранном году. Их
+                        может быть несколько — тогда рядом стоит счётчик: без
+                        него строка показывала бы одно число там, где план на
+                        год состоит из двух. */}
+                    <span className="shrink-0 text-right text-sm tabular-nums">
+                      {formatCurrency(currentAmount(plan, year))}
                       <span className="text-xs text-text-muted">
                         {plan.kind === "daily" ? t("planning.perDay") : t("planning.perMonth")}
                       </span>
+                      {periodsInYear(plan, year) > 1 && (
+                        <span className="block text-xs font-normal text-text-muted">
+                          {t("planning.periodCount", { count: periodsInYear(plan, year) })}
+                        </span>
+                      )}
                     </span>
                     <span className="flex shrink-0 gap-1">
                       <button

@@ -32,7 +32,7 @@ from app.models.currency import Currency, ExchangeRate
 from app.models.investment import InvestmentHolding, InvestmentPortfolio, InvestmentTrade
 from app.models.goal import Goal, GoalContribution
 from app.models.participant import Participant
-from app.models.plan import Plan
+from app.models.plan import Plan, PlanPeriod
 from app.models.product import Product
 from app.models.recurring import RecurringTransaction
 from app.models.settings import AppSettings
@@ -63,6 +63,7 @@ from app.schemas.backup import (
     InvestmentTradeBackup,
     ParticipantBackup,
     PlanBackup,
+    PlanPeriodBackup,
     ProductBackup,
     StoreBackup,
     TransactionItemBackup,
@@ -108,6 +109,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     transaction_items = (await session.execute(select(TransactionItem))).scalars().all()
     credit_terms = (await session.execute(select(CreditTerms))).scalars().all()
     plans = (await session.execute(select(Plan))).scalars().all()
+    plan_periods = (await session.execute(select(PlanPeriod))).scalars().all()
     work_periods = (await session.execute(select(WorkPeriod))).scalars().all()
     investment_portfolios = (await session.execute(select(InvestmentPortfolio))).scalars().all()
     investment_holdings = (await session.execute(select(InvestmentHolding))).scalars().all()
@@ -149,6 +151,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         transaction_items=[TransactionItemBackup.model_validate(row) for row in transaction_items],
         credit_terms=[CreditTermsBackup.model_validate(row) for row in credit_terms],
         plans=[PlanBackup.model_validate(row) for row in plans],
+        plan_periods=[PlanPeriodBackup.model_validate(row) for row in plan_periods],
         work_periods=[WorkPeriodBackup.model_validate(row) for row in work_periods],
         investment_portfolios=[
             InvestmentPortfolioBackup.model_validate(row) for row in investment_portfolios
@@ -262,6 +265,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await session.execute(delete(InvestmentHolding))
         await session.execute(delete(InvestmentPortfolio))
         await session.execute(delete(WorkPeriod))
+        await session.execute(delete(PlanPeriod))
         await session.execute(delete(Plan))
         await session.execute(delete(CreditTerms))
         await session.execute(delete(TransactionItem))
@@ -333,6 +337,10 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         session.add_all(TransactionItem(**row.model_dump()) for row in payload.transaction_items)
         session.add_all(CreditTerms(**row.model_dump()) for row in payload.credit_terms)
         session.add_all(Plan(**row.model_dump()) for row in payload.plans)
+        # Отрезки после планов: внешний ключ смотрит на план, и обратный
+        # порядок не прошёл бы даже до конца транзакции.
+        await session.flush()
+        session.add_all(PlanPeriod(**row.model_dump()) for row in payload.plan_periods)
         session.add_all(WorkPeriod(**row.model_dump()) for row in payload.work_periods)
         session.add_all(InvestmentPortfolio(**row.model_dump()) for row in payload.investment_portfolios)
         session.add_all(InvestmentHolding(**row.model_dump()) for row in payload.investment_holdings)

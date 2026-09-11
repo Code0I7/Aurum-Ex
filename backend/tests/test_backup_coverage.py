@@ -84,8 +84,7 @@ async def test_a_full_install_survives_a_round_trip(client: AsyncClient, account
         "/plans",
         json={
             "kind": "monthly",
-            "amount": "700.00",
-            "valid_from": "2026-01-01",
+            "periods": [{"amount": "700.00", "valid_from": "2026-01-01"}],
             "category_id": categories["Housing & Utilities"]["id"],
         },
     )

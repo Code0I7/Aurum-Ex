@@ -422,14 +422,25 @@ class PlanBackup(BaseModel):
     category_id: int | None = None
     participant_id: int | None = None
     kind: PlanKind
-    amount: Decimal
     currency: str = "RUB"
-    valid_from: date_
-    valid_to: date_ | None = None
     workdays_only: bool = False
     weekdays_only: bool = False
     note: str | None = None
     is_active: bool = True
+
+
+class PlanPeriodBackup(BaseModel):
+    """Отрезок плана. Отдельной таблицей с версии 0011: у плана их может
+    быть несколько, и в одну строку они не помещаются."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    plan_id: int
+    amount: Decimal
+    valid_from: date_
+    valid_to: date_ | None = None
+    note: str | None = None
 
 
 class WorkPeriodBackup(BaseModel):
@@ -547,6 +558,7 @@ class BackupPayload(BaseModel):
     transaction_items: list[TransactionItemBackup] = Field(default_factory=list)
     credit_terms: list[CreditTermsBackup] = Field(default_factory=list)
     plans: list[PlanBackup] = Field(default_factory=list)
+    plan_periods: list[PlanPeriodBackup] = Field(default_factory=list)
     work_periods: list[WorkPeriodBackup] = Field(default_factory=list)
     investment_portfolios: list[InvestmentPortfolioBackup] = Field(default_factory=list)
     investment_holdings: list[InvestmentHoldingBackup] = Field(default_factory=list)

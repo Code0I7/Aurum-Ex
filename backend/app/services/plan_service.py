@@ -37,7 +37,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.category import Category
 from app.models.enums import CategoryKind, PlanKind, TransactionType
-from app.models.plan import Plan
+from app.models.plan import Plan, PlanPeriod
 from app.models.work_period import WorkPeriod
 from app.schemas.plan import PlanCreate, PlanUpdate
 from app.services.category_rollup import monthly_amounts_by_category
@@ -146,6 +146,27 @@ def _roll_up_branches(rows: list[PlanRow], tree) -> None:
             cell.actual = sum((child[index][1] for child in children), cell.actual)
 
 
+def period_for_month(plan: Plan, year: int, month: int):
+    """Отрезок плана, действующий в этом месяце, или None.
+
+    Границы сравниваются по месяцу, а не по дню: отрезок, начатый 15-го,
+    действует на весь месяц. Половинчатый месяц требовал бы делить сумму на
+    дни, а «связь 700 ₽ с середины марта» всё равно стоит 700.
+
+    Перекрытий между отрезками не бывает — это проверяет схема, — поэтому
+    подходящий ровно один, и брать первый найденный безопасно.
+    """
+    first = date_(year, month, 1)
+    last = date_(year, month, days_in_month(year, month))
+    for period in plan.periods:
+        if period.valid_from > last:
+            continue
+        if period.valid_to is not None and period.valid_to < first:
+            continue
+        return period
+    return None
+
+
 def expand_plan(
     plan: Plan,
     year: int,
@@ -160,22 +181,20 @@ def expand_plan(
     if not plan.is_active:
         return Decimal("0")
 
-    # Границы сравниваются по месяцу, а не по дню: план, начатый 15-го,
-    # действует на весь месяц. Половинчатый месяц требовал бы делить сумму
-    # на дни, а «связь 700 ₽ с середины марта» всё равно стоит 700.
-    first = date_(year, month, 1)
-    last = date_(year, month, days_in_month(year, month))
-    if plan.valid_from > last:
-        return Decimal("0")
-    if plan.valid_to is not None and plan.valid_to < first:
+    period = period_for_month(plan, year, month)
+    if period is None:
         return Decimal("0")
 
     if plan.kind is PlanKind.ONE_OFF:
         # Разовая покупка стоит в своём месяце и больше нигде.
-        return plan.amount if (plan.valid_from.year, plan.valid_from.month) == (year, month) else Decimal("0")
+        return (
+            period.amount
+            if (period.valid_from.year, period.valid_from.month) == (year, month)
+            else Decimal("0")
+        )
 
     if plan.kind is PlanKind.MONTHLY:
-        return plan.amount
+        return period.amount
 
     # DAILY. Три способа посчитать число дней, и они отвечают на разные
     # вопросы:
@@ -190,10 +209,10 @@ def expand_plan(
     # считаем по календарным: лучше приблизительно, чем никак. Ноль дал бы
     # пустой план там, где траты есть, и человек искал бы ошибку в фактах.
     if plan.workdays_only and workdays is not None:
-        return plan.amount * workdays
+        return period.amount * workdays
     if plan.weekdays_only:
-        return plan.amount * weekdays_in_month(year, month)
-    return plan.amount * days_in_month(year, month)
+        return period.amount * weekdays_in_month(year, month)
+    return period.amount * days_in_month(year, month)
 
 
 async def workdays_by_month(session: AsyncSession, year: int) -> dict[tuple[int, int], int]:
@@ -225,7 +244,15 @@ async def get_plan_overview(session: AsyncSession, year: int) -> dict:
     Категория без того и другого не показывается: пустая строка на год
     занимает место и ничего не сообщает.
     """
-    plans = (await session.execute(select(Plan).where(Plan.is_active.is_(True)))).scalars().all()
+    plans = (
+        (
+            await session.execute(
+                select(Plan).options(selectinload(Plan.periods)).where(Plan.is_active.is_(True))
+            )
+        )
+        .scalars()
+        .all()
+    )
     tree = await load_category_tree(session)
     categories = {row.id: row for row in (await session.execute(select(Category))).scalars().all()}
     workdays = await workdays_by_month(session, year)
@@ -484,10 +511,14 @@ async def get_watchlist_overview(session: AsyncSession, year: int) -> dict:
 async def list_plans(session: AsyncSession) -> list[Plan]:
     # Категория подгружается сразу: в асинхронной сессии ленивая загрузка
     # отношения падает, а список планов без названий категорий бесполезен.
+    # Отрезки — тоже сразу: без них план это категория без единой суммы, и
+    # список планов показывал бы пустые строки.
     return list(
         (
             await session.execute(
-                select(Plan).options(selectinload(Plan.category)).order_by(Plan.valid_from, Plan.id)
+                select(Plan)
+                .options(selectinload(Plan.category), selectinload(Plan.periods))
+                .order_by(Plan.id)
             )
         )
         .scalars()
@@ -496,30 +527,49 @@ async def list_plans(session: AsyncSession) -> list[Plan]:
 
 
 async def create_plan(session: AsyncSession, payload: PlanCreate) -> Plan:
-    plan = Plan(**payload.model_dump())
+    data = payload.model_dump()
+    periods = data.pop("periods")
+    plan = Plan(**data)
+    plan.periods = [PlanPeriod(**period) for period in periods]
     session.add(plan)
     await session.commit()
-    await session.refresh(plan)
-    return plan
+    return await _reload(session, plan.id)
+
+
+async def _reload(session: AsyncSession, plan_id: int) -> Plan:
+    """Перечитывает план вместе со связями.
+
+    refresh() их не трогает, а в асинхронной сессии ленивая загрузка падает:
+    ответ на создание плана разворачивал бы отрезки и ронял запрос.
+    """
+    stmt = (
+        select(Plan)
+        .options(selectinload(Plan.category), selectinload(Plan.periods))
+        .where(Plan.id == plan_id)
+    )
+    return (await session.execute(stmt)).scalar_one()
 
 
 async def update_plan(session: AsyncSession, plan_id: int, payload: PlanUpdate) -> Plan:
-    plan = await session.get(Plan, plan_id)
-    if plan is None:
-        raise HTTPException(status_code=404, detail="Plan not found")
-    for field_name, value in payload.model_dump(exclude_unset=True).items():
+    plan = await _reload(session, plan_id)
+    updates = payload.model_dump(exclude_unset=True)
+    # Отрезки заменяются целиком: правка приходит из формы, где список виден
+    # весь, и «дополнить» означало бы, что удалённую строку нельзя удалить.
+    periods = updates.pop("periods", None)
+    for field_name, value in updates.items():
         setattr(plan, field_name, value)
+    if periods is not None:
+        plan.periods = [PlanPeriod(**period) for period in periods]
     await session.commit()
-    await session.refresh(plan)
-    return plan
+    return await _reload(session, plan_id)
 
 
 async def delete_plan(session: AsyncSession, plan_id: int) -> None:
     """Удаляет план целиком.
 
     Чтобы прекратить план с определённого месяца, а не стереть его из
-    истории, ставят `valid_to`: прошлое сравнение «план — факт» тогда
-    остаётся правдой.
+    истории, ставят `valid_to` у последнего отрезка: прошлое сравнение
+    «план — факт» тогда остаётся правдой.
     """
     plan = await session.get(Plan, plan_id)
     if plan is None:

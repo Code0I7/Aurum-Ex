@@ -47,15 +47,7 @@ class Plan(Base, TimestampMixin):
     kind: Mapped[PlanKind] = mapped_column(
         Enum(PlanKind, name="plan_kind", native_enum=False, length=10), nullable=False
     )
-    # Для ONE_OFF и MONTHLY — сумма на месяц, для DAILY — сумма на день.
-    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
-
-    # Период действия. Для ONE_OFF обе даты попадают в один месяц; для
-    # MONTHLY и DAILY `valid_to` пустая, пока план не отменён, — так одна
-    # запись покрывает сколько угодно лет вперёд.
-    valid_from: Mapped[date_] = mapped_column(Date, nullable=False)
-    valid_to: Mapped[date_ | None] = mapped_column(Date, nullable=True)
 
     # Только для DAILY: считать по отработанным дням вместо календарных.
     # Рабочая столовая по выходным не работает, и календарные дни завышали
@@ -87,3 +79,47 @@ class Plan(Base, TimestampMixin):
 
     category: Mapped["Category | None"] = relationship()
     participant: Mapped["Participant | None"] = relationship()
+    periods: Mapped[list["PlanPeriod"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", order_by="PlanPeriod.valid_from"
+    )
+
+
+class PlanPeriod(Base, TimestampMixin):
+    """Сумма плана на отрезке времени.
+
+    Раньше сумма и период жили прямо в плане, и смена тарифа означала второй
+    план: та же категория, тот же вид, другая сумма и другие даты. За
+    несколько лет от «связи 700 ₽» оставался десяток записей с одинаковым
+    названием, и понять, какая из них действует сейчас, можно было только
+    сверив даты у всех.
+
+    Теперь план — это категория и способ счёта, а суммы лежат внутри
+    списком. Заметка у периода отвечает на вопрос «почему поменялось»:
+    «подорожал тариф», «сменил оператора». У плана своя заметка осталась —
+    она про план целиком.
+
+    Отрезки не должны перекрываться — проверяется в схеме: на один месяц
+    приложение обязано знать одну сумму, а выбирать за человека, какая из
+    двух главнее, значило бы врать в таблице года.
+    """
+
+    __tablename__ = "plan_periods"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Для ONE_OFF и MONTHLY — сумма на месяц, для DAILY — сумма на день.
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+
+    # Для ONE_OFF обе даты попадают в один месяц; у последнего отрезка
+    # MONTHLY и DAILY `valid_to` пустая, пока план не отменён, — так один
+    # отрезок покрывает сколько угодно лет вперёд.
+    valid_from: Mapped[date_] = mapped_column(Date, nullable=False)
+    valid_to: Mapped[date_ | None] = mapped_column(Date, nullable=True)
+
+    # Причина смены суммы. Необязательна: через год «почему тут 900» —
+    # вопрос, на который никто уже не ответит, но заставлять писать ответ
+    # заранее значит получить в поле точку.
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    plan: Mapped["Plan"] = relationship(back_populates="periods")

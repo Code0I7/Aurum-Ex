@@ -10,12 +10,16 @@ from httpx import AsyncClient
 
 
 async def _plan(client: AsyncClient, **overrides) -> dict:
-    payload = {
-        "kind": "monthly",
-        "amount": "700.00",
-        "valid_from": "2026-01-01",
-        "currency": "RUB",
+    # Сумма и даты переехали в отрезки: у плана их может быть несколько.
+    # Помощник продолжает принимать их плоско — тесты вокруг про другое, и
+    # заставлять каждый писать список из одного элемента незачем.
+    period = {
+        "amount": overrides.pop("amount", "700.00"),
+        "valid_from": overrides.pop("valid_from", "2026-01-01"),
     }
+    if "valid_to" in overrides:
+        period["valid_to"] = overrides.pop("valid_to")
+    payload = {"kind": "monthly", "currency": "RUB", "periods": [period]}
     payload.update(overrides)
     resp = await client.post("/plans", json=payload)
     assert resp.status_code == 201, resp.text
@@ -76,10 +80,9 @@ async def test_workdays_only_is_rejected_on_a_non_daily_plan(client: AsyncClient
         "/plans",
         json={
             "kind": "monthly",
-            "amount": "700.00",
-            "valid_from": "2026-01-01",
             "workdays_only": True,
             "category_id": categories["Housing & Utilities"]["id"],
+            "periods": [{"amount": "700.00", "valid_from": "2026-01-01"}],
         },
     )
     assert resp.status_code == 422
@@ -104,7 +107,12 @@ async def test_ending_a_plan_leaves_the_past_untouched(client: AsyncClient, cate
     """План прекращают датой, а не удалением: прошлое сравнение «план —
     факт» должно остаться правдой."""
     plan = await _plan(client, category_id=categories["Housing & Utilities"]["id"])
-    await client.patch(f"/plans/{plan['id']}", json={"valid_to": "2026-06-30"})
+    # Отрезки присылаются целиком: список в форме виден весь, и «дополнить»
+    # означало бы, что удалённую строку нельзя удалить.
+    await client.patch(
+        f"/plans/{plan['id']}",
+        json={"periods": [{"amount": "700.00", "valid_from": "2026-01-01", "valid_to": "2026-06-30"}]},
+    )
 
     overview = (await client.get("/plans/overview?year=2026")).json()
     assert Decimal(_month(overview, "Housing & Utilities", 6)["planned"]) == Decimal("700")
@@ -226,9 +234,7 @@ async def test_valid_to_before_valid_from_is_rejected(client: AsyncClient):
         "/plans",
         json={
             "kind": "monthly",
-            "amount": "700.00",
-            "valid_from": "2026-06-01",
-            "valid_to": "2026-01-01",
+            "periods": [{"amount": "700.00", "valid_from": "2026-06-01", "valid_to": "2026-01-01"}],
         },
     )
     assert resp.status_code == 422
@@ -279,8 +285,7 @@ async def test_a_row_carries_its_path_and_its_depth(
             json={
                 "category_id": ivan["id"],
                 "kind": "monthly",
-                "amount": "200000.00",
-                "valid_from": "2026-01-01",
+                "periods": [{"amount": "200000.00", "valid_from": "2026-01-01"}],
             },
         )
     ).status_code == 201
@@ -327,8 +332,7 @@ async def test_a_plan_on_an_income_subcategory_does_not_flip_the_totals(
         json={
             "category_id": ivan["id"],
             "kind": "monthly",
-            "amount": "200000.00",
-            "valid_from": "2026-01-01",
+            "periods": [{"amount": "200000.00", "valid_from": "2026-01-01"}],
         },
     )
 
@@ -367,8 +371,7 @@ async def test_a_parent_row_shows_its_whole_branch(client: AsyncClient, account_
         json={
             "category_id": admin["id"],
             "kind": "monthly",
-            "amount": "20000.00",
-            "valid_from": "2026-01-01",
+            "periods": [{"amount": "20000.00", "valid_from": "2026-01-01"}],
         },
     )
     assert (
@@ -415,8 +418,7 @@ async def test_the_totals_are_not_doubled_by_the_rollup(client: AsyncClient, acc
         json={
             "category_id": ivan["id"],
             "kind": "monthly",
-            "amount": "20000.00",
-            "valid_from": "2026-01-01",
+            "periods": [{"amount": "20000.00", "valid_from": "2026-01-01"}],
         },
     )
     await client.post(

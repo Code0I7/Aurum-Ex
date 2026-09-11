@@ -13,14 +13,56 @@ from pydantic import BaseModel, Field, model_validator
 from app.models.enums import CategoryKind, PlanKind
 
 
+class PlanPeriodInput(BaseModel):
+    """Сумма плана на отрезке времени.
+
+    Отрезков у плана может быть несколько: тариф меняется, а категория и
+    способ счёта остаются теми же. Заметка отвечает на вопрос «почему тут
+    другое число» — через год его не вспомнит никто.
+    """
+
+    amount: Decimal = Field(gt=0)
+    valid_from: date_
+    valid_to: date_ | None = None
+    note: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def check_order(self) -> "PlanPeriodInput":
+        if self.valid_to is not None and self.valid_to < self.valid_from:
+            raise ValueError("valid_to must not be earlier than valid_from")
+        return self
+
+
+class PlanPeriodRead(PlanPeriodInput):
+    id: int
+
+    model_config = {"from_attributes": True}
+
+
+def _check_periods(periods: list[PlanPeriodInput]) -> None:
+    """Отрезки не должны перекрываться.
+
+    На один месяц приложение обязано знать одну сумму. Выбирать за человека,
+    какая из двух главнее, значило бы врать в таблице года — причём молча и
+    правдоподобно.
+
+    Открытый конец (valid_to пустая) считается уходящим в бесконечность,
+    поэтому такой отрезок может быть только последним.
+    """
+    if not periods:
+        raise ValueError("a plan needs at least one period")
+
+    ordered = sorted(periods, key=lambda period: period.valid_from)
+    for earlier, later in zip(ordered, ordered[1:]):
+        if earlier.valid_to is None or earlier.valid_to >= later.valid_from:
+            raise ValueError("plan periods must not overlap")
+
+
 class PlanBase(BaseModel):
     category_id: int | None = None
     participant_id: int | None = None
     kind: PlanKind
-    amount: Decimal = Field(gt=0)
     currency: str = Field(default="RUB", min_length=3, max_length=3)
-    valid_from: date_
-    valid_to: date_ | None = None
     workdays_only: bool = False
     weekdays_only: bool = False
     note: str | None = Field(default=None, max_length=200)
@@ -28,8 +70,6 @@ class PlanBase(BaseModel):
 
     @model_validator(mode="after")
     def check_period(self) -> "PlanBase":
-        if self.valid_to is not None and self.valid_to < self.valid_from:
-            raise ValueError("valid_to must not be earlier than valid_from")
         # Признак «только рабочие дни» имеет смысл лишь у ежедневного плана.
         # Молча его игнорировать нельзя: человек, поставивший галочку на
         # ежемесячном плане, ждал другого поведения.
@@ -46,25 +86,38 @@ class PlanBase(BaseModel):
 
 
 class PlanCreate(PlanBase):
-    pass
+    periods: list[PlanPeriodInput] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_periods(self) -> "PlanCreate":
+        _check_periods(self.periods)
+        return self
 
 
 class PlanUpdate(BaseModel):
     category_id: int | None = None
     participant_id: int | None = None
     kind: PlanKind | None = None
-    amount: Decimal | None = Field(default=None, gt=0)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
-    valid_from: date_ | None = None
-    valid_to: date_ | None = None
+    # Присланный список заменяет отрезки целиком, а не дополняет их: правка
+    # приходит из формы, где список виден весь, и «дополнить» означало бы,
+    # что удалённую строку нельзя удалить.
+    periods: list[PlanPeriodInput] | None = None
     workdays_only: bool | None = None
     weekdays_only: bool | None = None
     note: str | None = Field(default=None, max_length=200)
     is_active: bool | None = None
 
+    @model_validator(mode="after")
+    def check_periods(self) -> "PlanUpdate":
+        if self.periods is not None:
+            _check_periods(self.periods)
+        return self
+
 
 class PlanRead(PlanBase):
     id: int
+    periods: list[PlanPeriodRead] = []
     # Название категории кладётся рядом, чтобы список планов не требовал
     # второго запроса ради одной подписи.
     category_name: str | None = None
