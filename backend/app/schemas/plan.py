@@ -25,6 +25,8 @@ class PlanPeriodInput(BaseModel):
     valid_from: date_
     valid_to: date_ | None = None
     note: str | None = Field(default=None, max_length=200)
+    # Только про показ в форме: на расчёт не влияет.
+    is_archived: bool = False
 
     @model_validator(mode="after")
     def check_order(self) -> "PlanPeriodInput":

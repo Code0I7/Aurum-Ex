@@ -40,6 +40,8 @@ class ParticipantRead(ParticipantBase):
 class StoreBase(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     location: str | None = Field(default=None, max_length=200)
+    # Полка на странице справочников. Ни на что, кроме показа, не влияет.
+    group_name: str | None = Field(default=None, max_length=100)
     notes: str | None = None
 
 
@@ -50,6 +52,7 @@ class StoreCreate(StoreBase):
 class StoreUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     location: str | None = Field(default=None, max_length=200)
+    group_name: str | None = Field(default=None, max_length=100)
     notes: str | None = None
     is_archived: bool | None = None
 

@@ -362,6 +362,7 @@ class StoreBackup(BaseModel):
     id: int
     name: str
     location: str | None = None
+    group_name: str | None = None
     notes: str | None = None
     is_archived: bool = False
 
@@ -441,6 +442,7 @@ class PlanPeriodBackup(BaseModel):
     valid_from: date_
     valid_to: date_ | None = None
     note: str | None = None
+    is_archived: bool = False
 
 
 class WorkPeriodBackup(BaseModel):

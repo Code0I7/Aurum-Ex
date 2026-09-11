@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { currentZoom } from "@/lib/scale";
 
 /**
  * Выбор из длинного списка с поиском.
@@ -134,10 +135,26 @@ export function Combobox({
     function place() {
       const trigger = triggerRef.current;
       if (!trigger) return;
+      // Всё, что пришло с экрана, делится на множитель увеличения: ниже эти
+      // числа станут `top` и `left` элемента, лежащего внутри увеличенного
+      // корня, а там единицы другие.
+      //
+      // getBoundingClientRect() отдаёт пиксели экрана — уже увеличенные, —
+      // а `position: fixed` внутри увеличенного корня считает свои в
+      // неувеличенных. Подставить одно в другое значит промахнуться ровно
+      // во столько раз, во сколько увеличен интерфейс: при 150% список
+      // уезжал вбок, и тем сильнее, чем дальше поле от угла экрана.
+      const zoom = currentZoom();
       const view = window.visualViewport;
-      const viewportTop = view?.offsetTop ?? 0;
-      const viewportHeight = view?.height ?? window.innerHeight;
-      const rect = trigger.getBoundingClientRect();
+      const viewportTop = (view?.offsetTop ?? 0) / zoom;
+      const viewportHeight = (view?.height ?? window.innerHeight) / zoom;
+      const raw = trigger.getBoundingClientRect();
+      const rect = {
+        left: raw.left / zoom,
+        top: raw.top / zoom,
+        bottom: raw.bottom / zoom,
+        width: raw.width / zoom,
+      };
       const below = viewportTop + viewportHeight - rect.bottom;
       const above = rect.top - viewportTop;
       // Вниз, пока внизу есть куда: список у нижнего края экрана иначе

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
 import { Combobox } from "@/components/ui/Combobox";
 import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { Dialog } from "@/components/ui/Dialog";
@@ -36,10 +36,18 @@ interface PeriodRow {
   valid_from: string;
   valid_to: string;
   note: string;
+  is_archived: boolean;
 }
 
 function emptyPeriod(validFrom = ""): PeriodRow {
-  return { key: crypto.randomUUID(), amount: "", valid_from: validFrom, valid_to: "", note: "" };
+  return {
+    key: crypto.randomUUID(),
+    amount: "",
+    valid_from: validFrom,
+    valid_to: "",
+    note: "",
+    is_archived: false,
+  };
 }
 
 const EMPTY_FORM = {
@@ -58,6 +66,10 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [periods, setPeriods] = useState<PeriodRow[]>([emptyPeriod()]);
+  // Список отрезков растёт и не убывает: тариф менялся четыре раза за три
+  // года — строк четыре, живая одна. Убранные с глаз считаются ровно так
+  // же, просто не мозолят их, пока не попросят показать.
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,6 +90,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
           valid_from: period.valid_from,
           valid_to: period.valid_to ?? "",
           note: period.note ?? "",
+          is_archived: period.is_archived,
         }))
       );
     } else {
@@ -106,6 +119,9 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
     setPeriods((prev) => (prev.length > 1 ? prev.filter((row) => row.key !== key) : prev));
   }
 
+  const archivedCount = periods.filter((row) => row.is_archived).length;
+  const visiblePeriods = showArchived ? periods : periods.filter((row) => !row.is_archived);
+
   const isDaily = form.kind === "daily";
 
   async function handleSubmit(event: React.FormEvent) {
@@ -121,6 +137,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
         // Пустая дата окончания означает «пока не отменю», а не «сегодня».
         valid_to: row.valid_to || null,
         note: row.note || null,
+        is_archived: row.is_archived,
       })),
       // Признак имеет смысл только у ежедневного плана — бэкенд отклоняет
       // его на остальных, и посылать его оттуда было бы отправкой заведомой
@@ -201,9 +218,28 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
             )}
           </div>
 
+          {/* Переключатель показа — только когда есть что показывать:
+              галочка над пустотой заставляет искать, чего же она касается. */}
+          {archivedCount > 0 && (
+            <label className="flex items-center gap-2 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(event) => setShowArchived(event.target.checked)}
+                className="h-3.5 w-3.5 accent-text-primary"
+              />
+              {t("planning.showArchivedPeriods", { count: archivedCount })}
+            </label>
+          )}
+
           <ul className="space-y-2">
-            {periods.map((row, index) => (
-              <li key={row.key} className="rounded-lg border border-border p-2.5">
+            {visiblePeriods.map((row, index) => (
+              <li
+                key={row.key}
+                className={`rounded-lg border p-2.5 ${
+                  row.is_archived ? "border-dashed border-border opacity-60" : "border-border"
+                }`}
+              >
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
                     <Label htmlFor={`plan-amount-${row.key}`}>
@@ -256,21 +292,33 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
                   </div>
                 )}
 
-                {periods.length > 1 && (
+                <div className="mt-2 flex items-center gap-3">
+                  {/* Убрать с глаз, а не удалить: прошлые суммы нужны —
+                      без них таблица прошлых лет соврёт. */}
                   <button
                     type="button"
-                    onClick={() => removePeriod(row.key)}
-                    className="mt-2 flex items-center gap-1 text-xs text-text-muted hover:text-danger"
+                    onClick={() => updatePeriod(row.key, { is_archived: !row.is_archived })}
+                    className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary"
                   >
-                    <Trash2 size={13} />
-                    {t("planning.removePeriod")}
+                    {row.is_archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                    {t(row.is_archived ? "planning.unarchivePeriod" : "planning.archivePeriod")}
                   </button>
-                )}
+                  {periods.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removePeriod(row.key)}
+                      className="flex items-center gap-1 text-xs text-text-muted hover:text-danger"
+                    >
+                      <Trash2 size={13} />
+                      {t("planning.removePeriod")}
+                    </button>
+                  )}
+                </div>
 
                 {/* Подсказка про открытый конец — только у последнего:
                     у остальных пустая дата окончания означает перехлёст, и
                     сервер её не примет. */}
-                {index === periods.length - 1 && form.kind !== "one_off" && (
+                {index === visiblePeriods.length - 1 && form.kind !== "one_off" && (
                   <p className="mt-2 text-xs text-text-muted">{t("planning.validToHint")}</p>
                 )}
               </li>

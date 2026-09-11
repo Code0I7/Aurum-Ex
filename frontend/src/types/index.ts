@@ -149,6 +149,8 @@ export interface Store {
   id: number;
   name: string;
   location: string | null;
+  // Полка на странице справочников: ни в отчёты, ни в подстановку не идёт.
+  group_name: string | null;
   notes: string | null;
   is_archived: boolean;
 }
@@ -862,6 +864,9 @@ export interface PlanPeriod {
   valid_from: string;
   valid_to: string | null;
   note: string | null;
+  // Только про показ в форме: на расчёт не влияет и в таблице года отрезок
+  // остаётся на своём месте.
+  is_archived: boolean;
 }
 
 export interface Plan {

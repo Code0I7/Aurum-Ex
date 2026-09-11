@@ -91,8 +91,8 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: "nav.group.directories",
     items: [
       { labelKey: "nav.categories", to: "/categories", icon: Tags, hintKey: "help.categories" },
-      { labelKey: "nav.products", to: "/products", icon: ShoppingBasket, hintKey: "help.products" },
       { labelKey: "nav.directories", to: "/directories", icon: Users, hintKey: "help.directories" },
+      { labelKey: "nav.products", to: "/products", icon: ShoppingBasket, hintKey: "help.products" },
       { labelKey: "nav.settings", to: "/settings", icon: Settings, hintKey: "help.settings" },
     ],
   },

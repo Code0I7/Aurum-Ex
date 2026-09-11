@@ -26,5 +26,13 @@ class Store(Base, TimestampMixin):
     # Free-form: "улица и дом", "онлайн", город — нужен только человеку,
     # который потом вспоминает, тот ли это магазин.
     location: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Полка, на которую человек сам кладёт запись: «продуктовые»,
+    # «маркетплейсы», «игровые». Живёт только на странице справочников — ни
+    # в отчёты, ни в подстановку не идёт.
+    #
+    # Свободная строка, а не список: набор полок у каждого свой, и
+    # предлагать готовый значит навязать чужой. Имя колонки с суффиксом,
+    # потому что `group` в SQL — ключевое слово.
+    group_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

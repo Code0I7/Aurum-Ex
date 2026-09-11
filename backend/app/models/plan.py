@@ -122,4 +122,12 @@ class PlanPeriod(Base, TimestampMixin):
     # заранее значит получить в поле точку.
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # Пометка «убрать с глаз» — и только. Помеченный отрезок считается ровно
+    # так же и в таблице года стоит на своём месте: спрятать число и
+    # перестать его считать — разные вещи, и путать их в учёте нельзя.
+    #
+    # Нужна потому, что список отрезков растёт и не убывает: тариф менялся
+    # четыре раза за три года, в форме четыре строки, живая одна.
+    is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     plan: Mapped["Plan"] = relationship(back_populates="periods")

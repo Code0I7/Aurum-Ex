@@ -35,6 +35,9 @@ interface Entry {
   spent_year?: number | string;
   /** Человек или питомец — есть только у участников. */
   kind?: ParticipantKind;
+  /** Полка — есть только у магазинов. Задаётся человеком и служит
+   *  исключительно раскладке на этой странице. */
+  group_name?: string | null;
 }
 
 /**
@@ -122,16 +125,51 @@ export function DirectoriesPage() {
         entries={stores.data ?? []}
         isLoading={stores.isLoading}
         onCreate={async (name) => void (await createStore.mutateAsync({ name }))}
-        onRename={async (id, name) => void (await updateStore.mutateAsync({ id, input: { name } }))}
+        withGroup
+        onRename={async (id, name, groupName) =>
+          void (await updateStore.mutateAsync({ id, input: { name, group_name: groupName ?? null } }))
+        }
         onArchive={async (id, archived) =>
           void (await updateStore.mutateAsync({ id, input: { is_archived: archived } }))
         }
         onDelete={async (id) => void (await deleteStore.mutateAsync(id))}
       />
 
+      {/* Единицы в конце: их правят раз в жизни, а листать мимо них до
+          магазинов приходилось каждый раз. */}
       <UnitsCard />
     </div>
   );
+}
+
+/**
+ * Раскладывает записи по полкам. Без полок — один безымянный ряд, и
+ * список выглядит ровно как раньше.
+ *
+ * Записи без полки идут последними: «ещё не разложено» — это хвост, а не
+ * заголовок, и ставить его первым значит показывать неразобранное вместо
+ * разобранного.
+ */
+function groupEntries(entries: Entry[], withGroup: boolean) {
+  if (!withGroup) return [{ group: null, rows: entries }];
+
+  const byGroup = new Map<string | null, Entry[]>();
+  for (const entry of entries) {
+    const key = entry.group_name?.trim() || null;
+    const rows = byGroup.get(key);
+    if (rows) rows.push(entry);
+    else byGroup.set(key, [entry]);
+  }
+
+  const named = [...byGroup.entries()]
+    .filter(([group]) => group !== null)
+    .sort((left, right) => (left[0] as string).localeCompare(right[0] as string));
+  const rest = byGroup.get(null);
+
+  return [
+    ...named.map(([group, rows]) => ({ group, rows })),
+    ...(rest ? [{ group: null, rows: rest }] : []),
+  ];
 }
 
 interface DirectorySectionProps {
@@ -140,7 +178,7 @@ interface DirectorySectionProps {
   entries: Entry[];
   isLoading: boolean;
   onCreate: (name: string, kind: ParticipantKind) => Promise<void>;
-  onRename: (id: number, name: string) => Promise<void>;
+  onRename: (id: number, name: string, groupName?: string | null) => Promise<void>;
   onArchive: (id: number, archived: boolean) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   /**
@@ -153,6 +191,17 @@ interface DirectorySectionProps {
    */
   withKind?: boolean;
   onSetKind?: (id: number, kind: ParticipantKind) => Promise<void>;
+  /**
+   * Раскладывать по полкам. Только у магазинов: за год их набирается из
+   * всего сразу — продуктовый за углом, аптека, маркетплейс, игровая площадка, — и в
+   * одном алфавитном списке найти нужное можно, только зная название
+   * целиком.
+   *
+   * Полка ни на что не влияет, кроме этой страницы: в отчёты не идёт, в
+   * подстановку не идёт. Иначе пришлось бы отвечать, что показывать в
+   * отчёте по полке, и заводить её стало бы обязанностью.
+   */
+  withGroup?: boolean;
 }
 
 /** Три справочника устроены одинаково — одна карточка на все три, а не
@@ -168,11 +217,13 @@ function DirectorySection({
   onDelete,
   withKind = false,
   onSetKind,
+  withGroup = false,
 }: DirectorySectionProps) {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
+  const [groupDraft, setGroupDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   // Вид заводимой записи. Сбрасывается на «человека» после каждого
@@ -181,7 +232,7 @@ function DirectorySection({
 
   async function commitRename(id: number) {
     const trimmed = draft.trim();
-    if (trimmed) await onRename(id, trimmed);
+    if (trimmed) await onRename(id, trimmed, withGroup ? groupDraft.trim() || null : undefined);
     setEditingId(null);
   }
 
@@ -270,7 +321,15 @@ function DirectorySection({
           <p className="py-6 text-center text-sm text-text-muted">{t("directories.empty")}</p>
         ) : (
           <ul className="divide-y divide-gridline">
-            {entries.map((entry) => (
+            {groupEntries(entries, withGroup).map(({ group, rows }) => (
+              <li key={group ?? ""} className="contents">
+                {group !== null && (
+                  <p className="pt-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {group}
+                  </p>
+                )}
+                <ul className="divide-y divide-gridline">
+                  {rows.map((entry) => (
               <li key={entry.id} className="flex items-center gap-2 py-2">
                 {editingId === entry.id ? (
                   <>
@@ -283,6 +342,17 @@ function DirectorySection({
                         if (event.key === "Escape") setEditingId(null);
                       }}
                     />
+                    {withGroup && (
+                      <Input
+                        value={groupDraft}
+                        placeholder={t("directories.groupPlaceholder")}
+                        onChange={(event) => setGroupDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void commitRename(entry.id);
+                          if (event.key === "Escape") setEditingId(null);
+                        }}
+                      />
+                    )}
                     <button
                       type="button"
                       onClick={() => void commitRename(entry.id)}
@@ -345,6 +415,7 @@ function DirectorySection({
                       onClick={() => {
                         setEditingId(entry.id);
                         setDraft(entry.name);
+                        setGroupDraft(entry.group_name ?? "");
                       }}
                       aria-label={t("common.edit")}
                       title={t("directories.renameHint")}
@@ -389,6 +460,9 @@ function DirectorySection({
                     </button>
                   </>
                 )}
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>
