@@ -163,15 +163,37 @@ export function DashboardPage() {
 
       <MonthlyFlowCard points={data?.monthly ?? []} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <SpendingByCategoryCard items={data?.spending_by_category ?? []} />
-        <div className="space-y-4">
+      {/* Четыре карточки в две колонки.
+
+          Раньше «Последние транзакции» лежали во всю ширину под всем, и
+          справа от них оставалась пустая полоса в треть экрана. Теперь они
+          стоят под разбивкой по категориям, в той же колонке, а справа от
+          них — крупные траты.
+
+          Место каждой карточки задано явно (col-start/row-start), а не
+          порядком в разметке, и это не украшательство: на телефоне колонок
+          нет, и карточки идут так, как написаны — категории, счета,
+          транзакции, крупные траты. Раскладка в две колонки читается
+          по-другому, чем в одну, и связывать их одним порядком значило бы
+          испортить одну ради другой.
+
+          items-start: карточки сохраняют свою высоту вместо того, чтобы
+          растягиваться до соседней по строке. Пустоты внутри рамки видно
+          больше, чем неровного низа. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr] lg:items-start">
+        <div className="lg:col-start-1 lg:row-start-1">
+          <SpendingByCategoryCard items={data?.spending_by_category ?? []} />
+        </div>
+        <div className="lg:col-start-2 lg:row-start-1">
           <AccountBalancesCard accounts={data?.accounts ?? []} />
+        </div>
+        <div className="lg:col-start-1 lg:row-start-2">
+          <RecentTransactionsCard year={year} month={month} />
+        </div>
+        <div className="lg:col-start-2 lg:row-start-2">
           <LargestExpensesCard items={data?.largest_expenses ?? []} />
         </div>
       </div>
-
-      <RecentTransactionsCard year={year} month={month} />
     </div>
   );
 }
