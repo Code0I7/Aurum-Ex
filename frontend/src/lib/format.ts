@@ -33,18 +33,45 @@ export function formatCurrency(amount: number | string, currency: string = getCu
  * above a dollar). For the Crypto tab's per-coin price/holdings/avg-buy-price
  * cells and per-transaction price — anywhere a single coin's own value
  * needs to be told apart from zero, not just a portfolio-wide total. */
+function significantFractionDigits(value: number): number {
+  const abs = Math.abs(value);
+  return abs === 0 || abs >= 1
+    ? 2
+    : // Leading zeros right after the decimal point before the first
+      // significant digit, plus 4 more digits of real precision beyond
+      // that — e.g. 0.000000006894 has 8 leading zeros, so this shows
+      // 12 decimal places, landing exactly on "6894" and nothing more.
+      Math.min(20, Math.max(0, -Math.floor(Math.log10(abs)) - 1) + 4);
+}
+
 export function formatCryptoAmount(amount: number | string, currency: string = getCurrency()): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
-  const abs = Math.abs(value);
-  const maximumFractionDigits =
-    abs === 0 || abs >= 1
-      ? 2
-      : // Leading zeros right after the decimal point before the first
-        // significant digit, plus 4 more digits of real precision beyond
-        // that — e.g. 0.000000006894 has 8 leading zeros, so this shows
-        // 12 decimal places, landing exactly on "6894" and nothing more.
-        Math.min(20, Math.max(0, -Math.floor(Math.log10(abs)) - 1) + 4);
-  return new Intl.NumberFormat(getIntlLocale(), { style: "currency", currency, maximumFractionDigits }).format(value);
+  return new Intl.NumberFormat(getIntlLocale(), {
+    style: "currency",
+    currency,
+    maximumFractionDigits: significantFractionDigits(value),
+  }).format(value);
+}
+
+/**
+ * Курс валюты: столько единиц валюты установки за одну единицу другой.
+ *
+ * Не formatCurrency: тот показывает деньги, а деньги округляются до копеек
+ * — и до целых рублей, если человек выключил точное отображение. Курс так
+ * округлять нельзя: у слабых валют значащие цифры начинаются после
+ * запятой, и «0 ₽ за тенге» — это не округление, а ошибка на вид.
+ *
+ * Точность та же, что у крипты, и по той же причине: число может быть
+ * любой величины, а знаков нужно ровно столько, чтобы отличить его от
+ * нуля и от соседнего.
+ */
+export function formatRate(rate: number | string, currency: string = getCurrency()): string {
+  const value = typeof rate === "string" ? Number(rate) : rate;
+  return new Intl.NumberFormat(getIntlLocale(), {
+    style: "currency",
+    currency,
+    maximumFractionDigits: significantFractionDigits(value),
+  }).format(value);
 }
 
 export function formatSignedCurrency(amount: number | string, currency: string = getCurrency()): string {

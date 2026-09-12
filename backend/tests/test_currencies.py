@@ -78,16 +78,23 @@ def test_a_base_the_source_does_not_quote_is_refused():
     with pytest.raises(CbrUnavailable):
         to_base_rates({"USD": Decimal("81.2")}, "ZWL")
 
-async def test_only_the_base_currency_is_seeded(client: AsyncClient):
-    """Раньше засев клал ещё доллар, евро, юань и бат — «на всякий случай»,
-    и в рублёвой установке они годами стояли в справочнике, ничего не значили
-    и попадались на глаза как намёк, что приложение чего-то ждёт. Валюта
-    появляется тогда, когда ею действительно платят."""
+async def test_the_seed_is_the_base_currency_plus_the_watchlist(client: AsyncClient):
+    """Справочник стал списком наблюдения: строка в нём означает «за курсом
+    этой валюты я слежу».
+
+    Раньше засев клал доллар, евро, юань и бат просто «на всякий случай», и
+    в рублёвой установке они годами стояли в справочнике, ничего не значили
+    и попадались на глаза как намёк, что приложение чего-то ждёт. Теперь у
+    трёх из них появился смысл: их курс показывается на обзоре, и следят за
+    ним независимо от своих счетов. Бата среди них нет — он и был лишним.
+
+    Для расчётов справочник по-прежнему ничего не решает: курс валюты счёта
+    загрузится и без строки здесь (см. currencies_in_use)."""
     base = (await client.get("/settings")).json()["currency"]
 
     resp = await client.get("/currencies")
     assert resp.status_code == 200
-    assert {row["code"] for row in resp.json()} == {base}
+    assert {row["code"] for row in resp.json()} == {base, "USD", "EUR", "CNY"}
 
 
 async def test_base_currency_always_has_rate_one(client: AsyncClient):

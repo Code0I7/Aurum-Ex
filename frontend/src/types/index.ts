@@ -1325,3 +1325,52 @@ export interface CategoryUsage {
   /** Операции в ветке ниже — удаление они переживут. */
   descendant_transactions: number;
 }
+
+/**
+ * Строка блока «Курсы»: сколько стоит одна единица валюты в валюте
+ * установки.
+ */
+export interface CurrencyRate {
+  code: string;
+  rate: string | null;
+  rate_date: string | null;
+  /**
+   * Предыдущий известный курс и его дата. Дата здесь не украшение: курсы
+   * хранятся только за те дни, когда их грузили, и «прошлый» может
+   * оказаться позавчерашним, а может и трёхмесячной давности. Без даты
+   * разница читалась бы как дневное движение.
+   */
+  previous: string | null;
+  previous_date: string | null;
+  /** Валютой ведётся счёт или записана операция: курс нужен расчётам, и
+   *  убрать её из списка наблюдения нельзя. */
+  in_use: boolean;
+}
+
+/** Валюта в списке наблюдения — так он приходит из справочника. */
+export interface WatchedCurrency {
+  code: string;
+  symbol: string | null;
+  name: string | null;
+  is_active: boolean;
+  rate: string | null;
+  rate_date: string | null;
+}
+
+/** Итог загрузки курсов на дату. */
+export interface RateSyncResult {
+  saved: number;
+  rate_date: string;
+  message: string;
+  /** Операций, досчитанных загруженными курсами. */
+  recomputed: number;
+}
+
+/** Итог добора курсов за прошедшие даты. */
+export interface BackfillResult {
+  dates: number;
+  saved: number;
+  recomputed: number;
+  /** Осталось дат без курса: больше нуля — стоит нажать ещё раз. */
+  remaining: number;
+}

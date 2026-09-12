@@ -5,6 +5,7 @@ import { SpendingByCategoryCard } from "@/components/dashboard/SpendingByCategor
 import { RecentTransactionsCard } from "@/components/dashboard/RecentTransactionsCard";
 import { AccountBalancesCard } from "@/components/dashboard/AccountBalancesCard";
 import { LargestExpensesCard } from "@/components/dashboard/LargestExpensesCard";
+import { RatesCard } from "@/components/dashboard/RatesCard";
 import { MonthlyFlowCard } from "@/components/dashboard/MonthlyFlowCard";
 import { AlertBanner } from "@/components/insights/AlertBanner";
 import { useDashboardSummary } from "@/hooks/useDashboard";
@@ -170,27 +171,31 @@ export function DashboardPage() {
 
       <MonthlyFlowCard points={data?.monthly ?? []} />
 
-      {/* Четыре карточки в две колонки.
+      {/* Пять карточек в две колонки.
 
           Раньше «Последние транзакции» лежали во всю ширину под всем, и
           справа от них оставалась пустая полоса в треть экрана. Теперь они
           стоят под разбивкой по категориям, в той же колонке.
 
-          Справа — стопка: крупные траты сразу под счетами. Выравнивать их по
-          строкам с левой колонкой нельзя, пробовали: тогда крупные траты
-          отъезжают вниз, к «Последним транзакциям», и между ними и счетами
-          зияет дыра.
+          Справа — стопка на всю высоту обеих левых карточек: курсы, счета,
+          крупные траты. Выравнивать их по строкам с левой колонкой нельзя,
+          пробовали: тогда крупные траты отъезжают вниз, к «Последним
+          транзакциям», и между ними и счетами зияет дыра. Стопка во всю
+          высоту закрывает и то пустое место справа от транзакций, ради
+          которого она и растянута.
 
-          Категории тянутся на всю высоту этой стопки — иначе пустота
-          появляется уже под ними. Пусто остаётся только справа от
-          транзакций, и это то место, куда встанут курсы валют.
+          Категории тянутся на всю высоту своей строки — иначе пустота
+          появляется уже под ними.
 
-          Порядок на телефоне свой: категории, счета, транзакции, крупные
-          траты. В один столбец раскладка читается не так, как в два, и
-          связывать их одним порядком значило бы испортить одну ради другой.
-          Отсюда `contents`: на узком экране обёртка правой колонки исчезает,
-          её карточки становятся соседями остальных, и порядок задаётся
-          числами. На широком она снова обычный блок, а порядок — сеткой. */}
+          Порядок на телефоне свой: категории, счета, курсы, транзакции,
+          крупные траты. В один столбец раскладка читается не так, как в
+          два, и связывать их одним порядком значило бы испортить одну ради
+          другой — на широком экране курсы стоят первыми в своей колонке, а
+          на узком вперёд просится ответ на вопрос «сколько у меня денег».
+          Отсюда `contents`: на узком экране обёртка правой колонки
+          исчезает, её карточки становятся соседями остальных, и порядок
+          задаётся числами. На широком она снова обычный блок, а порядок —
+          сеткой, то есть порядком в разметке. */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[1.4fr_1fr]">
         <div className="order-1 lg:col-start-1 lg:row-start-1">
           <SpendingByCategoryCard
@@ -199,16 +204,19 @@ export function DashboardPage() {
           />
         </div>
 
-        <div className="contents lg:col-start-2 lg:row-start-1 lg:block lg:space-y-4">
+        <div className="contents lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:block lg:space-y-4">
+          <div className="order-3">
+            <RatesCard />
+          </div>
           <div className="order-2">
             <AccountBalancesCard accounts={data?.accounts ?? []} />
           </div>
-          <div className="order-4">
+          <div className="order-5">
             <LargestExpensesCard items={data?.largest_expenses ?? []} />
           </div>
         </div>
 
-        <div className="order-3 lg:col-start-1 lg:row-start-2">
+        <div className="order-4 lg:col-start-1 lg:row-start-2">
           <RecentTransactionsCard year={year} month={month} />
         </div>
       </div>

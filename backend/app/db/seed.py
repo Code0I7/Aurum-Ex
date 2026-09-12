@@ -27,7 +27,18 @@ from app.models.unit import Unit
 # ею действительно платят.
 #
 # Нулевой курс к самой себе нигде не хранится (см. models/currency.py).
-DEFAULT_CURRENCIES: list[tuple[str, str | None, str | None, int]] = []
+# Список наблюдения на пустой установке: валюты, курс которых интересен и
+# тому, у кого нет ни одного валютного счёта. Дальше список принадлежит
+# человеку — см. seed_default_currencies.
+#
+# Названия и символы не заполняются намеренно: подписи валют живут в
+# интерфейсе, сразу на двух языках, и вторая их копия здесь разошлась бы с
+# первой при первой же правке.
+DEFAULT_CURRENCIES: list[tuple[str, str | None, str | None, int]] = [
+    ("USD", None, None, 1),
+    ("EUR", None, None, 1),
+    ("CNY", None, None, 1),
+]
 
 # (name, kind, factor, is_base) — по одной базовой единице на вид измерения.
 # Коэффициент приводит к базе: килограмм — это 1000 граммов, литр — 1000
@@ -98,14 +109,22 @@ async def seed_default_currencies(session: AsyncSession) -> None:
     """Следит, чтобы базовая валюта была в справочнике.
 
     Установка без собственной валюты — сломанная: все суммы приводятся
-    именно к ней. Остальные не заводятся заранее; курсы загружаются по
-    валютам, которыми человек действительно пользуется, — справочник для
-    этого не нужен (см. services/currency_service.currencies_in_use)."""
+    именно к ней.
+
+    Справочник заодно служит списком наблюдения: строка в нём означает «за
+    курсом этой валюты я слежу» (см. services/currency_service). Поэтому
+    доллар, евро и юань заводятся только на совсем пустой установке —
+    дальше список принадлежит человеку, и валюта, убранная им, не должна
+    возвращаться при следующем запуске.
+
+    Для расчётов справочник по-прежнему не нужен: курсы загружаются и по
+    валютам, которыми человек действительно пользуется, даже если в
+    справочник они не попали (см. currencies_in_use)."""
     existing = await session.execute(select(Currency.code))
     known = {code for (code,) in existing.all()}
 
-    for code, symbol, name, nominal in DEFAULT_CURRENCIES:
-        if code not in known:
+    if not known:
+        for code, symbol, name, nominal in DEFAULT_CURRENCIES:
             session.add(Currency(code=code, symbol=symbol, name=name, cbr_nominal=nominal))
             known.add(code)
 

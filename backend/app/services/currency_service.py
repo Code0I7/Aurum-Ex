@@ -19,6 +19,7 @@ GOOGLEFINANCE и возвращала 0,9999995974, из-за чего кажд�
 умножалась на почти-единицу и накапливала копеечное расхождение, которое
 пользователю приходилось править вручную.
 """
+from dataclasses import dataclass
 from datetime import date as date_
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -27,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.asset import Asset
-from app.models.currency import ExchangeRate
+from app.models.currency import Currency, ExchangeRate
 from app.models.investment import InvestmentHolding
 from app.models.plan import Plan
 from app.models.transaction import Transaction
@@ -69,6 +70,91 @@ async def currencies_in_use(session: AsyncSession) -> set[str]:
         found.update(code.upper() for (code,) in rows.all() if code)
     found.discard(base)
     return found
+
+
+async def watched_currencies(session: AsyncSession) -> set[str]:
+    """Валюты, за курсом которых человек просто следит.
+
+    Это другой список, чем currencies_in_use: там валюты, которыми он
+    пользуется, и их курс нужен для расчётов, хочет он того или нет. Здесь —
+    те, на которые он хочет смотреть: доллар, евро и юань у рублёвой
+    установки, даже если ни одного долларового счёта нет.
+
+    Справочник валют и есть этот список. Отдельной таблицы он не заслужил:
+    строка в справочнике ровно и означает «эта валюта мне интересна».
+    """
+    base = (await get_base_currency(session)).upper()
+    rows = await session.execute(select(Currency.code).where(Currency.is_active.is_(True)))
+    found = {code.upper() for (code,) in rows.all() if code}
+    found.discard(base)
+    return found
+
+
+@dataclass(slots=True)
+class RateSnapshot:
+    """Курс валюты сейчас и насколько он сдвинулся с прошлого раза."""
+
+    code: str
+    rate: Decimal | None
+    rate_date: date_ | None
+    # Предыдущий известный курс — и его дата. Дата здесь не украшение:
+    # курсы хранятся только за те дни, когда их грузили, и «прошлый» может
+    # оказаться позавчерашним, а может и трёхмесячной давности. Без даты
+    # разница читалась бы как дневное движение.
+    previous: Decimal | None
+    previous_date: date_ | None
+    # Нужен ли этот курс расчётам или человек просто смотрит.
+    in_use: bool
+
+
+async def rate_overview(session: AsyncSession) -> list[RateSnapshot]:
+    """Курсы валют, за которыми следят, плюс те, что нужны расчётам.
+
+    Одним списком, потому что вопрос у человека один: «сколько сейчас
+    стоит». Разделять «мои» и «интересные» пришлось бы прямо на экране, а
+    пользы от этого деления там никакой.
+    """
+    base = (await get_base_currency(session)).upper()
+    used = await currencies_in_use(session)
+    codes = sorted(used | await watched_currencies(session))
+    if not codes:
+        return []
+
+    rows = (
+        await session.execute(
+            select(ExchangeRate.code, ExchangeRate.rate_date, ExchangeRate.rate)
+            .where(ExchangeRate.code.in_(codes))
+            .order_by(ExchangeRate.code, ExchangeRate.rate_date.desc())
+        )
+    ).all()
+
+    history: dict[str, list[tuple[date_, Decimal]]] = {}
+    for code, rate_date, rate in rows:
+        # Хватает двух свежайших на валюту: остальное здесь не спрашивают, а
+        # тянуть всю историю ради двух чисел — лишняя работа на каждом
+        # открытии обзора.
+        known = history.setdefault(code.upper(), [])
+        if len(known) < 2:
+            known.append((rate_date, rate))
+
+    snapshots = []
+    for code in codes:
+        known = history.get(code, [])
+        current = known[0] if known else None
+        earlier = known[1] if len(known) > 1 else None
+        snapshots.append(
+            RateSnapshot(
+                code=code,
+                rate=current[1] if current else None,
+                rate_date=current[0] if current else None,
+                previous=earlier[1] if earlier else None,
+                previous_date=earlier[0] if earlier else None,
+                in_use=code in used,
+            )
+        )
+    # Базовой валюты в списке нет вовсе: её курс к самой себе всегда единица,
+    # и строка «1 ₽ = 1 ₽» отвечает на вопрос, которого никто не задавал.
+    return [snapshot for snapshot in snapshots if snapshot.code != base]
 
 
 async def get_rate(session: AsyncSession, currency: str, on_date: date_) -> Decimal | None:

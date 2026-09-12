@@ -31,7 +31,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.currency import ExchangeRate
-from app.services.currency_service import currencies_in_use, get_base_currency
+from app.services.currency_service import (
+    currencies_in_use,
+    get_base_currency,
+    watched_currencies,
+)
 
 CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
 
@@ -167,12 +171,16 @@ async def sync_rates_for_date(session: AsyncSession, on_date: date_) -> int:
     каждый день ради двух используемых — ровно та ошибка, из-за которой
     самодельные таблицы с курсами становятся неповоротливыми.
 
-    Набор берётся из самих записей, а не из справочника валют: справочник —
-    это подписи и символы, и валюта, забытая в нём, означала бы молча не
-    загруженный курс. Доллар, посчитанный по единице, выглядит как обычное
-    число, и заметен он только по итогам года.
+    Набор берётся из самих записей, а не только из справочника валют:
+    валюта, забытая в справочнике, означала бы молча не загруженный курс.
+    Доллар, посчитанный по единице, выглядит как обычное число, и заметен он
+    только по итогам года.
+
+    К ним добавляются те, за курсом которых человек просто следит: у
+    рублёвой установки это доллар, евро и юань, и своих счетов в них может
+    не быть вовсе. Расчётам они не нужны, но блок «Курсы» без них пуст.
     """
-    known = await currencies_in_use(session)
+    known = await currencies_in_use(session) | await watched_currencies(session)
     if not known:
         return 0
 
