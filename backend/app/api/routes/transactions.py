@@ -1,9 +1,9 @@
 from datetime import date as date_
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -92,6 +92,39 @@ async def _ensure_category_matches_type(
             detail=f"Category '{category.name}' is a {category.kind.value} category and cannot be used for a {transaction_type.value} transaction",
         )
     return category
+
+
+def _amount_search(text: str):
+    """Условие поиска по сумме, если в строке набрано число.
+
+    Сумму помнят чаще, чем описание: «что это было за 2 300» — вопрос, с
+    которого начинается разбор выписки, а раньше на него отвечали
+    пролистыванием месяца.
+
+    Целое число ищет рубли, копейки любые: 1250 находит и 1250,00, и
+    1250,49. Человек, помнящий сумму, помнит её до рубля, и требовать от
+    него копейки значило бы не находить ничего. Набранное с копейками
+    ищется точно — раз уж их назвали, они и есть уточнение.
+
+    Запятая и точка равноправны: на телефоне под рукой одна, на клавиатуре
+    другая, и разбираться, какая «правильная», человек не должен.
+
+    None, когда в строке не число: тогда ищется только по словам.
+    """
+    cleaned = text.strip().replace(",", ".").replace(" ", "").replace("\u00a0", "")
+    if not cleaned:
+        return None
+    try:
+        value = Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return None
+    if value < 0:
+        # Знак у суммы не хранится — он в виде операции. Минус в строке
+        # поиска означал бы «расход», а это отдельный фильтр.
+        return None
+    if "." in cleaned:
+        return Transaction.amount == value
+    return and_(Transaction.amount >= value, Transaction.amount < value + 1)
 
 
 async def _item_amount(session: AsyncSession, item: TransactionItemInput) -> Decimal | None:
@@ -327,10 +360,14 @@ async def list_transactions(
         # описывало ровно то же, что описание, вторым способом, и не было
         # заполнено ни в одной операции.
         pattern = f"%{search.strip()}%"
-        search_clause = or_(
-            Transaction.description.ilike(pattern),
-            Transaction.merchant.ilike(pattern),
-        )
+        # Сумма ищется наравне со словами, а не вместо них: «2300» в
+        # описании тоже встречается, и выбрасывать такие строки из ответа
+        # значило бы решать за человека, что он имел в виду.
+        by_amount = _amount_search(search)
+        parts = [Transaction.description.ilike(pattern), Transaction.merchant.ilike(pattern)]
+        if by_amount is not None:
+            parts.append(by_amount)
+        search_clause = or_(*parts)
         stmt = stmt.where(search_clause)
         count_stmt = count_stmt.where(search_clause)
 

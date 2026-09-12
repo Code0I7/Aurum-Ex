@@ -21,7 +21,7 @@ import {
 } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
 import { useAccounts } from "@/hooks/useAccounts";
-import { useCounterparties } from "@/hooks/useDirectories";
+import { useCounterparties, useStores } from "@/hooks/useDirectories";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useViewDefault } from "@/hooks/useViewDefault";
@@ -93,6 +93,10 @@ export function TransactionsPage() {
   // «сколько я ему передал» — вопрос к списку операций, а не к сводке, и
   // искать их глазами по месяцам занимает больше времени, чем сам разговор.
   const [counterpartyId, setCounterpartyId] = useSessionState<string>("aurum:tx-counterparty", "");
+  // Где куплено. Того же товара в разных магазинах хватает, чтобы сравнить
+  // цены, — а до сих пор выписку по одному магазину нельзя было получить
+  // вовсе, хотя поле в операции есть с самого начала.
+  const [storeId, setStoreId] = useSessionState<string>("aurum:tx-store", "");
   const [categoryId, setCategoryId] = useSessionState<string>("aurum:tx-category", "");
   // Выписка по одному счёту. Без неё распутать пару счетов вроде «карта и
   // рассрочка того же магазина» невозможно: движения между ними видно
@@ -180,6 +184,7 @@ export function TransactionsPage() {
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
   const { data: counterparties } = useCounterparties();
+  const { data: stores } = useStores();
   const { data: years } = useTransactionYears();
   // Человека спрашивают только у расчётов: у покупки в магазине контрагента
   // нет, и пустой список там обещал бы отбор, которого не существует.
@@ -200,6 +205,7 @@ export function TransactionsPage() {
     // не видно нигде.
     counterparty_id: showPartyFilter && counterpartyId ? Number(counterpartyId) : undefined,
     category_id: categoryId ? Number(categoryId) : undefined,
+    store_id: storeId ? Number(storeId) : undefined,
     account_id: accountId ? Number(accountId) : undefined,
     tag_id: tagId ? Number(tagId) : undefined,
     sort,
@@ -428,6 +434,26 @@ export function TransactionsPage() {
           placeholder={t("transactions.allCategories")}
           emptyLabel={t("transactions.allCategories")}
         />
+        {/* Место — сразу за категорией: «куда ушли деньги» и «где это
+            купили» человек спрашивает подряд. Показывается, только когда
+            магазины заведены: пустой список обещал бы отбор, которого нет. */}
+        {stores && stores.length > 0 && (
+          <Select
+            value={storeId}
+            onChange={(event) => {
+              setStoreId(event.target.value);
+              setPage(1);
+            }}
+            className="sm:w-44"
+          >
+            <option value="">{t("transactions.allStores")}</option>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>
+                {store.name}
+              </option>
+            ))}
+          </Select>
+        )}
         {tags && tags.length > 0 && (
           <Select
             value={tagId}
