@@ -69,9 +69,16 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
       {open && (
         // Ширина ограничена, а не тянется по содержимому: подсказка на всю
         // ширину экрана читается хуже колонки в сорок слов.
+        //
+        // Ограничение шириной экрана стояло здесь и раньше, но было записано
+        // как `calc(100vw-2rem)` — без пробелов вокруг минуса, а их в calc()
+        // требует сам язык. Правило целиком не разбиралось, и ограничения не
+        // было никакого. Ширина экрана взята в единицах разметки (--app-vw):
+        // `100vw` внутри увеличенного корня умножается на масштаб ещё раз, и
+        // при 300% на телефоне подсказка вышла бы втрое шире экрана.
         <span
           role="tooltip"
-          className="absolute left-0 top-8 z-50 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-border bg-surface-1 p-3 text-xs font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-lg"
+          className="absolute left-0 top-8 z-50 w-72 max-w-[min(18rem,calc(var(--app-vw)_-_2rem))] rounded-lg border border-border bg-surface-1 p-3 text-xs font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-lg"
         >
           {t(hintKey)}
         </span>

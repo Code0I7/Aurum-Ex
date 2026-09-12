@@ -45,6 +45,7 @@ function apply(scale: Scale): void {
   const root = document.documentElement;
   if (scale === DEFAULT) root.style.removeProperty("zoom");
   else root.style.setProperty("zoom", String(scale / 100));
+  applyViewportSize();
 }
 
 let current: Scale = readInitial();
@@ -86,5 +87,51 @@ export function useScale() {
 export function currentZoom(): number {
   return current / 100;
 }
+
+/**
+ * Видимая часть страницы в единицах разметки.
+ *
+ * Деление на масштаб живёт здесь одно на всех: из окна всё приходит в
+ * экранных пикселях (innerWidth, visualViewport, getBoundingClientRect), а
+ * ставится потом в разметочных — в `top`, в `left`, в `max-height`. Каждое
+ * место, где это делалось само по себе, рано или поздно оказывалось тем
+ * местом, где про деление забыли.
+ *
+ * visualViewport вместо окна там, где он есть: на телефоне он уменьшается
+ * на высоту клавиатуры, и «видимое» перестаёт означать «спрятанное под
+ * ней». `top` — насколько видимая часть сдвинута вниз: у fixed-элемента
+ * отсчёт от неё, а не от окна.
+ */
+export function layoutViewport(): { top: number; width: number; height: number } {
+  const zoom = currentZoom();
+  const view = window.visualViewport;
+  return {
+    top: (view?.offsetTop ?? 0) / zoom,
+    width: (view?.width ?? window.innerWidth) / zoom,
+    height: (view?.height ?? window.innerHeight) / zoom,
+  };
+}
+
+/**
+ * Те же размеры для разметки: `--app-vw` и `--app-vh`.
+ *
+ * `vw` и `vh` для этого не годятся. Они считаются от экрана и про
+ * увеличение ничего не знают, а применяются внутри увеличенного корня — и
+ * умножаются на масштаб второй раз. «50vh» при 150% занимает три четверти
+ * экрана, при 300% — полтора экрана. Запасные значения стоят в index.css:
+ * при обычном масштабе они и есть верные.
+ */
+function applyViewportSize(): void {
+  const { width, height } = layoutViewport();
+  const root = document.documentElement;
+  root.style.setProperty("--app-vw", `${width}px`);
+  root.style.setProperty("--app-vh", `${height}px`);
+}
+
+// Размер окна меняется и без участия масштаба: поворот телефона, край окна
+// браузера, выехавшая клавиатура. Последняя не вызывает ни resize окна, ни
+// прокрутку — только своё событие у видимой части.
+window.addEventListener("resize", applyViewportSize);
+window.visualViewport?.addEventListener("resize", applyViewportSize);
 
 apply(current);

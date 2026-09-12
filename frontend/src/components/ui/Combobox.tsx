@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { currentZoom } from "@/lib/scale";
+import { currentZoom, layoutViewport } from "@/lib/scale";
 
 /**
  * Выбор из длинного списка с поиском.
@@ -145,9 +145,7 @@ export function Combobox({
       // во столько раз, во сколько увеличен интерфейс: при 150% список
       // уезжал вбок, и тем сильнее, чем дальше поле от угла экрана.
       const zoom = currentZoom();
-      const view = window.visualViewport;
-      const viewportTop = (view?.offsetTop ?? 0) / zoom;
-      const viewportHeight = (view?.height ?? window.innerHeight) / zoom;
+      const { top: viewportTop, height: viewportHeight } = layoutViewport();
       const raw = trigger.getBoundingClientRect();
       const rect = {
         left: raw.left / zoom,

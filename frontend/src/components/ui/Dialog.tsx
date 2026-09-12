@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { currentZoom } from "@/lib/scale";
+import { layoutViewport } from "@/lib/scale";
 import { useTranslation } from "@/lib/i18n";
 
 interface DialogProps extends PropsWithChildren {
@@ -32,8 +32,7 @@ interface DialogProps extends PropsWithChildren {
  * же кнопки.
  */
 function visibleHeight(): number {
-  const view = window.visualViewport;
-  return (view?.height ?? window.innerHeight) / currentZoom();
+  return layoutViewport().height;
 }
 
 export function Dialog({ open, onClose, title, wide, children }: DialogProps) {

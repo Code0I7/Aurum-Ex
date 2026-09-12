@@ -177,7 +177,10 @@ function WatchlistPicker({
         )}
       </div>
 
-      <div className="max-h-[50vh] space-y-0.5 overflow-y-auto">
+      {/* Половина экрана — в единицах разметки: `50vh` внутри увеличенного
+          корня умножается на масштаб второй раз, и при 150% список занимал
+          три четверти экрана, а при 300% не помещался в него вовсе. */}
+      <div className="max-h-[calc(var(--app-vh)*0.5)] space-y-0.5 overflow-y-auto">
         {visible.length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">{t("watchlist.nothingFound")}</p>
         ) : (

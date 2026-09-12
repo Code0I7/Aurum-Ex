@@ -5,6 +5,7 @@ import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import { useReservations } from "@/hooks/useGoals";
+import { currentZoom, layoutViewport } from "@/lib/scale";
 import { useNetWorthSummary } from "@/hooks/useNetWorth";
 import type { AccountReservation, DashboardAccountBalance } from "@/types";
 
@@ -195,9 +196,24 @@ function BarTooltip({ label, amount, x, y }: { label: string; amount: number; x:
     if (node) setBox({ width: node.offsetWidth, height: node.offsetHeight });
   }, [label, amount]);
 
+  // Координаты указателя приходят с экрана — уже увеличенные, — а станут
+  // `left` и `top` элемента внутри увеличенного корня, где единицы другие.
+  // Без деления подсказка отъезжала вниз и вправо ровно во столько раз, во
+  // сколько увеличен интерфейс, и при 150% уже вылетала за край экрана: со
+  // стороны выглядело так, будто подсказки на полосе просто нет.
+  //
+  // Размер самой подсказки делить не нужно: offsetWidth и offsetHeight, в
+  // отличие от getBoundingClientRect, отдают разметочные.
+  const zoom = currentZoom();
+  const pointerX = x / zoom;
+  const pointerY = y / zoom;
+  const room = layoutViewport().width;
+
   const GAP = 12;
-  const left = box && x + GAP + box.width > window.innerWidth ? x - GAP - box.width : x + GAP;
-  const top = box && y - box.height - GAP < 0 ? y + GAP : y - (box?.height ?? 0) - GAP;
+  const left =
+    box && pointerX + GAP + box.width > room ? pointerX - GAP - box.width : pointerX + GAP;
+  const top =
+    box && pointerY - box.height - GAP < 0 ? pointerY + GAP : pointerY - (box?.height ?? 0) - GAP;
 
   return createPortal(
     <div
