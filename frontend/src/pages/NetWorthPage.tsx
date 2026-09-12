@@ -19,7 +19,7 @@ import { useSessionState } from "@/hooks/useSessionState";
 import type { Asset, NetWorthRange } from "@/types";
 
 export function NetWorthPage() {
-  const { t } = useTranslation();
+  const { t, currency: base } = useTranslation();
   // Defaults to 5 years: a short window can show a dip whenever spending
   // briefly outpaces recorded income, which reads as decline even though
   // the long-run trend is up — 5y is long enough to make that trend visible.
@@ -43,6 +43,9 @@ export function NetWorthPage() {
     custom.endDate,
     currency || undefined
   );
+  // Валюта показанных чисел: из ответа, пока он есть; иначе выбранная, а
+  // на первом открытии — своя.
+  const shownCurrency = summary?.currency || currency || base;
   const { data: assets, isLoading: isAssetsLoading } = useAssets();
   const deleteAsset = useDeleteAsset();
   const confirm = useConfirm();
@@ -87,23 +90,23 @@ export function NetWorthPage() {
 
       {/* Валюта берётся из ответа, а не из выбранного переключателя: пока
           ответ не пришёл, выбранной может уже не быть той, в которой
-          посчитаны показанные числа. */}
+          посчитаны показанные числа. Пока нет и ответа — своя. */}
       <AssetAllocationCard
         breakdown={summary?.breakdown ?? []}
         isLoading={isSummaryLoading}
-        currency={summary?.currency ?? ""}
+        currency={shownCurrency}
       />
 
       <CapitalRoleSummaryCard
         roles={summary?.capital_roles ?? []}
         isLoading={isSummaryLoading}
-        currency={summary?.currency ?? ""}
+        currency={shownCurrency}
       />
 
       <RiskAllocationCard
         riskLevels={summary?.risk_levels ?? []}
         isLoading={isSummaryLoading}
-        currency={summary?.currency ?? ""}
+        currency={shownCurrency}
       />
 
       <Card>

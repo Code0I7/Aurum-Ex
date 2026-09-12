@@ -5,10 +5,25 @@ export function getIntlLocale(language: Language = getLanguage()): string {
   return language === "ru" ? "ru-RU" : "en-US";
 }
 
+/**
+ * Валюта, в которой печатать сумму, — с запасным вариантом.
+ *
+ * Пустая строка сюда приходит буднично: у карточки капитала валюта берётся
+ * из ответа сервера, а пока ответ не пришёл, её нет. Intl на пустой код
+ * отвечает не пустой подписью, а исключением — и страница не открывается
+ * вовсе. Вкладка «Капитал» так и упала.
+ *
+ * Поэтому проверка живёт здесь, одна на все места форматирования: место,
+ * забывшее подставить валюту, покажет сумму в валюте установки, но покажет.
+ */
+function resolveCurrency(currency: string | null | undefined): string {
+  return currency && currency.trim() ? currency : getCurrency();
+}
+
 // `currency` defaults to the app's primary currency setting (Settings page)
 // — call sites only need to pass it explicitly when formatting a value known
 // to be in a *different* currency than that setting.
-export function formatCurrency(amount: number | string, currency: string = getCurrency()): string {
+export function formatCurrency(amount: number | string, currency?: string): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   // Копейки — настройка (Настройки → Точное отображение). В самой операции
   // они и есть данные: 36,99, показанные как 37, — уже не то, что
@@ -18,7 +33,7 @@ export function formatCurrency(amount: number | string, currency: string = getCu
   const cents = getShowCents() ? 2 : 0;
   return new Intl.NumberFormat(getIntlLocale(), {
     style: "currency",
-    currency,
+    currency: resolveCurrency(currency),
     minimumFractionDigits: cents,
     maximumFractionDigits: cents,
   }).format(value);
@@ -44,11 +59,11 @@ function significantFractionDigits(value: number): number {
       Math.min(20, Math.max(0, -Math.floor(Math.log10(abs)) - 1) + 4);
 }
 
-export function formatCryptoAmount(amount: number | string, currency: string = getCurrency()): string {
+export function formatCryptoAmount(amount: number | string, currency?: string): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   return new Intl.NumberFormat(getIntlLocale(), {
     style: "currency",
-    currency,
+    currency: resolveCurrency(currency),
     maximumFractionDigits: significantFractionDigits(value),
   }).format(value);
 }
@@ -65,16 +80,16 @@ export function formatCryptoAmount(amount: number | string, currency: string = g
  * любой величины, а знаков нужно ровно столько, чтобы отличить его от
  * нуля и от соседнего.
  */
-export function formatRate(rate: number | string, currency: string = getCurrency()): string {
+export function formatRate(rate: number | string, currency?: string): string {
   const value = typeof rate === "string" ? Number(rate) : rate;
   return new Intl.NumberFormat(getIntlLocale(), {
     style: "currency",
-    currency,
+    currency: resolveCurrency(currency),
     maximumFractionDigits: significantFractionDigits(value),
   }).format(value);
 }
 
-export function formatSignedCurrency(amount: number | string, currency: string = getCurrency()): string {
+export function formatSignedCurrency(amount: number | string, currency?: string): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   const sign = value > 0 ? "+" : "";
   return `${sign}${formatCurrency(value, currency)}`;
