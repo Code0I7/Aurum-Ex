@@ -75,7 +75,9 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                     дня операции. Только у валютной операции. */}
                 {tx.currency !== base && (
                   <span className="block text-xs font-normal text-text-muted">
-                    {formatCurrency(tx.amount_base, base)}
+                    {tx.amount_base === null
+                      ? t("transactions.rateMissing")
+                      : formatCurrency(tx.amount_base, base)}
                   </span>
                 )}
               </span>

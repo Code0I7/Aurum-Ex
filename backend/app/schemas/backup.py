@@ -95,7 +95,7 @@ class TransactionBackup(BaseModel):
     # исходной. Ровно тот случай, ради которого в файл пишется версия
     # приложения (см. APP_VERSION в core/config.py).
     currency: str = "RUB"
-    exchange_rate: Decimal = Decimal("1")
+    exchange_rate: Decimal | None = Decimal("1")
     amount_base: Decimal | None = None
     participant_id: int | None = None
     store_id: int | None = None
@@ -109,7 +109,12 @@ class TransactionBackup(BaseModel):
     def _fill_amount_base(self) -> "TransactionBackup":
         # Старый бэкап не знает о сумме в базовой валюте — для однвалютной
         # установки она совпадает с самой суммой.
-        if self.amount_base is None:
+        #
+        # Отсутствующее поле и пустое теперь разные вещи: пустое означает
+        # «курс на дату не загружен», и подставить туда сумму значило бы
+        # придумать курс один к одному. Отличаем по тому, было ли поле в
+        # файле вообще.
+        if self.amount_base is None and "amount_base" not in self.model_fields_set:
             self.amount_base = self.amount
         return self
 

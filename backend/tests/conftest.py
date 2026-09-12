@@ -148,6 +148,16 @@ TEST_PASSWORD = "test-password-123"
 
 
 @pytest_asyncio.fixture
+async def session(test_sessionmaker) -> AsyncGenerator[AsyncSession, None]:
+    """Прямой доступ к базе — для записей, которых нет в API.
+
+    Курс валюты на дату заводится именно так: загрузка ходит на сайт ЦБ, а
+    тесты не должны зависеть от того, жив ли он.
+    """
+    async with test_sessionmaker() as db:
+        yield db
+
+@pytest_asyncio.fixture
 async def anon_client(test_sessionmaker) -> AsyncGenerator[AsyncClient, None]:
     """Клиент без входа — для проверок самой защиты: что закрытый эндпоинт
     отвечает 401, что первичная настройка отрабатывает один раз, что перебор

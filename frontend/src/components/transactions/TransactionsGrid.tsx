@@ -320,7 +320,9 @@ export function TransactionsGrid({
                 списке; одного второго мало — оно врёт про ценник. */}
             {tx.currency !== base && (
               <span className="block text-xs font-normal text-text-muted">
-                {formatCurrency(tx.amount_base, base)}
+                {tx.amount_base === null
+                  ? t("transactions.rateMissing")
+                  : formatCurrency(tx.amount_base, base)}
               </span>
             )}
           </span>

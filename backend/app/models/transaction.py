@@ -110,8 +110,17 @@ class Transaction(Base, TimestampMixin):
     # настроек приложения (см. services/currency_service.get_base_currency)
     # или со счёта операции.
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
-    exchange_rate: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False, default=Decimal("1"))
-    amount_base: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    # Пустые, когда курса на дату операции нет.
+    #
+    # Раньше здесь молча стояла единица: покупка на 50 $ становилась 50 ₽ в
+    # отчётах, и число выглядело как обычное. Пустота говорит правду —
+    # «пересчитать пока не из чего», — и такая операция в итоги не входит, а
+    # под ними сказано, сколько таких пропущено.
+    #
+    # Курс прошедшего дня не меняется никогда, поэтому дотянуть его позже и
+    # пересчитать — не «переписать прошлое», а записать его впервые.
+    exchange_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
+    amount_base: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
     # Необязательно. В исходной таблице это была вторая строка записи, а не
     # заметка к ней: у большинства покупок сказать сверх категории нечего.

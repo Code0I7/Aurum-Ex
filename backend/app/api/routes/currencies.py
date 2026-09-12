@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_session
 from app.models.currency import Currency, ExchangeRate
 from app.services.cbr_service import CbrUnavailable, sync_rates_for_date
-from app.services.currency_service import get_base_currency, get_current_rates
+from app.services.currency_service import (
+    dates_awaiting_rates,
+    get_base_currency,
+    get_current_rates,
+    recompute_missing_base_amounts,
+)
 
 router = APIRouter(prefix="/currencies", tags=["currencies"])
 
@@ -39,6 +44,22 @@ class RateSyncResult(BaseModel):
     saved: int
     rate_date: date_
     message: str
+    # Сколько операций удалось досчитать загруженными курсами. Обычно ноль:
+    # непересчитанные появляются, только если в день ввода сайт ЦБ был
+    # недоступен.
+    recomputed: int = 0
+
+
+class BackfillResult(BaseModel):
+    """Итог добора курсов за прошедшие даты."""
+
+    # Дат, за которые ходили на сайт, и сколько курсов из этого сохранилось.
+    dates: int
+    saved: int
+    recomputed: int
+    # Осталось дат без курса. Больше нуля — значит, за один раз всё не
+    # уместилось и нажать стоит ещё раз.
+    remaining: int
 
 
 @router.get("", response_model=list[CurrencyRead])
@@ -95,10 +116,49 @@ async def sync_rates(
             last_error = str(error)
             break
         if saved:
-            return RateSyncResult(saved=saved, rate_date=attempt, message="ok")
+            # Загруженные курсы сразу пускаются в дело: операции, которые
+            # ждали именно их, досчитываются тем же нажатием.
+            recomputed = await recompute_missing_base_amounts(session)
+            return RateSyncResult(
+                saved=saved, rate_date=attempt, message="ok", recomputed=recomputed
+            )
 
     if last_error:
         # 502, а не 500: сломалась внешняя система, а не приложение.
         raise HTTPException(status_code=502, detail=last_error)
 
     return RateSyncResult(saved=0, rate_date=target, message="Курсы уже загружены или валют для обновления нет")
+
+
+# Сколько дат добирать за одно нажатие. Каждая — отдельный поход на сайт ЦБ,
+# и сотня дат превратила бы одно нажатие в минуту ожидания. Оставшиеся
+# добираются повторным нажатием, и сколько их — сказано в ответе.
+MAX_BACKFILL_DATES = 30
+
+
+@router.post("/rates/backfill", response_model=BackfillResult)
+async def backfill_rates(session: AsyncSession = Depends(get_session)) -> BackfillResult:
+    """Добирает курсы за даты операций, оставшихся без пересчёта.
+
+    Операция сохраняется даже тогда, когда курса на её дату взять неоткуда —
+    потерять запись хуже, чем не знать её курс. Такая операция помечена в
+    списке и в итоги не входит, а это нажатие возвращает её в расчёты.
+
+    Курс прошедшего дня не меняется никогда, поэтому добор задним числом не
+    переписывает прошлое: он записывает его впервые.
+    """
+    dates = await dates_awaiting_rates(session, MAX_BACKFILL_DATES)
+    saved = 0
+    for day in dates:
+        try:
+            saved += await sync_rates_for_date(session, day)
+        except CbrUnavailable:
+            # Сайт лёг посреди обхода — то, что успели, уже сохранено, и
+            # досчитать по нему стоит. Оставшееся доберётся следующим разом.
+            break
+
+    recomputed = await recompute_missing_base_amounts(session)
+    remaining = len(await dates_awaiting_rates(session, MAX_BACKFILL_DATES + 1))
+    return BackfillResult(
+        dates=len(dates), saved=saved, recomputed=recomputed, remaining=remaining
+    )

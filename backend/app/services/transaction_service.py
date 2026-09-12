@@ -67,15 +67,19 @@ def _signed_amount() -> object:
                 Transaction.is_excluded.is_(True),
                 Decimal("0"),
             ),
+            # Сумма в валюте счёта, а не в валюте установки. Остаток — это
+            # состояние: сто долларов на карте остаются ста долларами, и
+            # подпись у числа стоит долларовая. Пересчёт — вопрос другой, и
+            # ответ на него даёт карточка счёта.
             (
                 Transaction.type.in_([TransactionType.INCOME, TransactionType.EXTERNAL_IN]),
-                Transaction.amount_base,
+                Transaction.amount,
             ),
             (
                 Transaction.type.in_(
                     [TransactionType.EXPENSE, TransactionType.EXTERNAL_OUT, TransactionType.TRANSFER]
                 ),
-                -Transaction.amount_base,
+                -Transaction.amount,
             ),
             else_=Decimal("0"),
         )
@@ -229,7 +233,8 @@ async def running_balances(
                 Transaction.transfer_account_id,
                 Transaction.date,
                 Transaction.id,
-                Transaction.amount_base,
+                # Тоже в валюте счёта — см. running_balance выше.
+                Transaction.amount,
             ).where(
                 Transaction.type == TransactionType.TRANSFER,
                 Transaction.is_excluded.is_(False),

@@ -86,6 +86,10 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
         party = counterparties.get(counterparty_id)
         if party is None:
             continue
+        # Без курса на дату складывать нечего: единица на её месте означала
+        # бы, что сто долларов долга равны ста рублям.
+        if amount is None:
+            continue
 
         # Транзит в расчёты с человеком не входит вовсе — ни в долг, ни в
         # оборот.

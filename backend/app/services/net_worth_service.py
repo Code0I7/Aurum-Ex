@@ -146,6 +146,11 @@ async def _cash_cumulative_events(
     for tx_date, tx_type, amount, account_id, transfer_account_id, is_excluded in txns_result.all():
         if is_excluded:
             continue
+        # Операция без курса на свою дату в итог не входит: раньше на её
+        # месте стояла единица, и валютная покупка попадала в капитал своей
+        # цифрой, как будто она в рублях.
+        if amount is None:
+            continue
         if tx_type in (TransactionType.INCOME, TransactionType.EXTERNAL_IN) and account_id in cash_account_ids:
             delta_by_date[tx_date] += amount
         elif tx_type in (TransactionType.EXPENSE, TransactionType.EXTERNAL_OUT) and account_id in cash_account_ids:

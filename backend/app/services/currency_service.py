@@ -97,16 +97,73 @@ async def to_base(
     amount: Decimal,
     currency: str,
     on_date: date_,
-) -> tuple[Decimal, Decimal]:
-    """Возвращает пару «курс, сумма в базовой валюте» для записи в транзакцию.
+) -> tuple[Decimal | None, Decimal | None]:
+    """Пара «курс, сумма в валюте установки» для записи в операцию.
 
-    Если курса на дату нет, берётся 1, а сумма переносится как есть: потерять
-    операцию из-за отсутствующей котировки хуже, чем показать её неточно —
-    пересчитать потом можно, восстановить незаписанное нельзя.
+    Курса на дату нет — пара пустая, и это главное. Раньше здесь бралась
+    единица, и покупка на 50 $ становилась 50 ₽: число выглядело как
+    обычное, ни пометки, ни ошибки, а заметно это только по годовым итогам.
+
+    Саму операцию терять нельзя ни в каком случае — потерять запись хуже,
+    чем не знать её курс. Она сохраняется целиком, помечается в списке и не
+    входит в итоги; сколько таких пропущено, сказано под ними.
+
+    Курс прошедшего дня не меняется никогда, поэтому дотянуть его позже и
+    пересчитать — не «переписать прошлое», а записать его впервые.
     """
-    rate = await get_rate(session, currency, on_date) or Decimal("1")
+    rate = await get_rate(session, currency, on_date)
+    if rate is None:
+        return None, None
     amount_base = (Decimal(amount) * rate).quantize(_CENTS, rounding=ROUND_HALF_UP)
     return rate, amount_base
+
+
+async def recompute_missing_base_amounts(session: AsyncSession) -> int:
+    """Досчитывает операции, у которых курса на их дату не было.
+
+    Курс прошедшего дня не меняется никогда — ЦБ отдаёт архив с 1992 года, —
+    поэтому пересчёт задним числом не переписывает прошлое, а записывает его
+    впервые. Уже посчитанные операции не трогаются вовсе: вот они как раз
+    заморожены навсегда.
+
+    Возвращает число досчитанных. Те, чей курс так и не нашёлся, остаются
+    пустыми и ждут следующего раза.
+    """
+    pending = (
+        (await session.execute(select(Transaction).where(Transaction.amount_base.is_(None))))
+        .scalars()
+        .all()
+    )
+    filled = 0
+    for transaction in pending:
+        rate, amount_base = await to_base(
+            session, transaction.amount, transaction.currency, transaction.date
+        )
+        if rate is None:
+            continue
+        transaction.exchange_rate = rate
+        transaction.amount_base = amount_base
+        filled += 1
+    if filled:
+        await session.commit()
+    return filled
+
+
+async def dates_awaiting_rates(session: AsyncSession, limit: int) -> list[date_]:
+    """Даты операций, которым не хватает курса, от новых к старым.
+
+    Новые вперёд: они на виду, и их чинить важнее. Число ограничено —
+    каждая дата это отдельный поход на сайт ЦБ, и сотня дат превратила бы
+    одно нажатие в минуту ожидания.
+    """
+    rows = await session.execute(
+        select(Transaction.date)
+        .where(Transaction.amount_base.is_(None))
+        .distinct()
+        .order_by(Transaction.date.desc())
+        .limit(limit)
+    )
+    return [row for (row,) in rows.all()]
 
 
 def quantize_money(amount: Decimal) -> Decimal:
