@@ -281,8 +281,17 @@ async def list_transactions(
         stmt = stmt.where(Transaction.store_id == store_id)
         count_stmt = count_stmt.where(Transaction.store_id == store_id)
     if counterparty_id is not None:
-        stmt = stmt.where(Transaction.counterparty_id == counterparty_id)
-        count_stmt = count_stmt.where(Transaction.counterparty_id == counterparty_id)
+        # Обе стороны, а не только контрагент. У транзита их две: деньги
+        # брата, переданные маме, стоят у мамы в counterparty и у брата в
+        # transit_party, и фильтр по одной колонке показывал бы половину
+        # истории с человеком — ровно ту половину, которой не хватает, когда
+        # разговор идёт о долге.
+        party_filter = or_(
+            Transaction.counterparty_id == counterparty_id,
+            Transaction.transit_party_id == counterparty_id,
+        )
+        stmt = stmt.where(party_filter)
+        count_stmt = count_stmt.where(party_filter)
     if not include_excluded:
         stmt = stmt.where(Transaction.is_excluded.is_(False))
         count_stmt = count_stmt.where(Transaction.is_excluded.is_(False))

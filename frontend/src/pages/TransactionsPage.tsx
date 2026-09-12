@@ -21,6 +21,7 @@ import {
 } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useCounterparties } from "@/hooks/useDirectories";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useViewDefault } from "@/hooks/useViewDefault";
@@ -88,6 +89,10 @@ export function TransactionsPage() {
     "month"
   );
   const [type, setType] = useSessionState<TransactionType | "">("aurum:tx-type", "");
+  // Человек, с которым шёл расчёт. Спрашивают о нём тогда же, когда о долге:
+  // «сколько я ему передал» — вопрос к списку операций, а не к сводке, и
+  // искать их глазами по месяцам занимает больше времени, чем сам разговор.
+  const [counterpartyId, setCounterpartyId] = useSessionState<string>("aurum:tx-counterparty", "");
   const [categoryId, setCategoryId] = useSessionState<string>("aurum:tx-category", "");
   // Выписка по одному счёту. Без неё распутать пару счетов вроде «карта и
   // рассрочка того же магазина» невозможно: движения между ними видно
@@ -174,7 +179,11 @@ export function TransactionsPage() {
 
   const { data: categories } = useCategories();
   const { data: tags } = useTags();
+  const { data: counterparties } = useCounterparties();
   const { data: years } = useTransactionYears();
+  // Человека спрашивают только у расчётов: у покупки в магазине контрагента
+  // нет, и пустой список там обещал бы отбор, которого не существует.
+  const showPartyFilter = type === "external_out" || type === "external_in";
   // Фильтры общие для обоих режимов; различается только то, как запрашиваются
   // страницы — по одной или с накоплением.
   const commonFilters = {
@@ -186,6 +195,10 @@ export function TransactionsPage() {
     month: isSearching || scope !== "month" ? undefined : month,
     search: isSearching ? search : undefined,
     type: type || undefined,
+    // Только когда поле видно. Фильтр, который не показан, но продолжает
+    // сужать список, читается как поломанный период: строк мало, а почему —
+    // не видно нигде.
+    counterparty_id: showPartyFilter && counterpartyId ? Number(counterpartyId) : undefined,
     category_id: categoryId ? Number(categoryId) : undefined,
     account_id: accountId ? Number(accountId) : undefined,
     tag_id: tagId ? Number(tagId) : undefined,
@@ -353,6 +366,9 @@ export function TransactionsPage() {
           value={type}
           onChange={(event) => {
             setType(event.target.value as TransactionType | "");
+            // Уходя с расчётов, снимаем и человека: иначе он остался бы
+            // висеть в сессии и сузил бы следующий отбор молча.
+            setCounterpartyId("");
             setPage(1);
           }}
           className="sm:w-48"
@@ -367,6 +383,25 @@ export function TransactionsPage() {
           <option value="external_out">{t("transactions.form.typeExternalOut")}</option>
           <option value="external_in">{t("transactions.form.typeExternalIn")}</option>
         </Select>
+        {/* Человек — сразу за видом операции: он уточняет именно его, и
+            между ними не должно стоять ничего постороннего. */}
+        {showPartyFilter && (
+          <Select
+            value={counterpartyId}
+            onChange={(event) => {
+              setCounterpartyId(event.target.value);
+              setPage(1);
+            }}
+            className="sm:w-44"
+          >
+            <option value="">{t("transactions.allCounterparties")}</option>
+            {(counterparties ?? []).map((counterparty) => (
+              <option key={counterparty.id} value={counterparty.id}>
+                {counterparty.name}
+              </option>
+            ))}
+          </Select>
+        )}
         <Select
           value={accountId}
           onChange={(event) => {
