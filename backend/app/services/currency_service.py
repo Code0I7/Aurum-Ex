@@ -25,7 +25,12 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.account import Account
+from app.models.asset import Asset
 from app.models.currency import ExchangeRate
+from app.models.investment import InvestmentHolding
+from app.models.plan import Plan
+from app.models.transaction import Transaction
 from app.services.settings_service import get_or_create_app_settings
 
 # Точность хранения сумм — два знака, как у Numeric(18, 2) в моделях.
@@ -38,6 +43,32 @@ async def get_base_currency(session: AsyncSession) -> str:
     пользователя, а не администратора сервера."""
     settings = await get_or_create_app_settings(session)
     return settings.currency
+
+
+async def currencies_in_use(session: AsyncSession) -> set[str]:
+    """Валюты, которыми человек действительно пользуется, кроме своей.
+
+    Берутся из самих записей, а не из справочника валют. Справочник — это
+    подписи и символы; валюта, в него не попавшая, означала бы молча не
+    загруженный курс, то есть доллар, посчитанный по единице, — и ошибку
+    видно было бы только по итогам года.
+
+    Плановые суммы считаются наравне с фактическими: план в долларах — это
+    обещание, которое тоже надо привести к своей валюте.
+    """
+    base = (await get_base_currency(session)).upper()
+    found: set[str] = set()
+    for column in (
+        Account.currency,
+        Transaction.currency,
+        Asset.currency,
+        InvestmentHolding.currency,
+        Plan.currency,
+    ):
+        rows = await session.execute(select(column).distinct())
+        found.update(code.upper() for (code,) in rows.all() if code)
+    found.discard(base)
+    return found
 
 
 async def get_rate(session: AsyncSession, currency: str, on_date: date_) -> Decimal | None:

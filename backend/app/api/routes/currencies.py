@@ -84,14 +84,13 @@ async def sync_rates(
     обходной путь, а нормальный порядок: в выходные и действует курс
     последнего рабочего дня.
     """
-    base = await get_base_currency(session)
     target = on_date or date_.today()
 
     last_error: str | None = None
     for offset in range(MAX_LOOKBACK_DAYS):
         attempt = target - timedelta(days=offset)
         try:
-            saved = await sync_rates_for_date(session, attempt, base)
+            saved = await sync_rates_for_date(session, attempt)
         except CbrUnavailable as error:
             last_error = str(error)
             break

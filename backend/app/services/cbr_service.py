@@ -30,7 +30,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.currency import Currency, ExchangeRate
+from app.models.currency import ExchangeRate
+from app.services.currency_service import currencies_in_use
 
 CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
 
@@ -115,20 +116,20 @@ async def fetch_rates(on_date: date_) -> tuple[dict[str, Decimal], date_]:
     return rates, published_for
 
 
-async def sync_rates_for_date(session: AsyncSession, on_date: date_, base_currency: str) -> int:
+async def sync_rates_for_date(session: AsyncSession, on_date: date_) -> int:
     """Загружает курсы на дату и сохраняет те, что относятся к валютам,
     которыми пользователь действительно пользуется.
 
-    Возвращает число сохранённых курсов. Валюты, которых нет в справочнике,
-    пропускаются: хранить полторы сотни котировок на каждый день ради двух
-    используемых — ровно та ошибка, из-за которой самодельные таблицы с
-    курсами становятся неповоротливыми.
+    Возвращает число сохранённых курсов. Хранить полторы сотни котировок на
+    каждый день ради двух используемых — ровно та ошибка, из-за которой
+    самодельные таблицы с курсами становятся неповоротливыми.
+
+    Набор берётся из самих записей, а не из справочника валют: справочник —
+    это подписи и символы, и валюта, забытая в нём, означала бы молча не
+    загруженный курс. Доллар, посчитанный по единице, выглядит как обычное
+    число, и заметен он только по итогам года.
     """
-    known = {
-        code
-        for (code,) in (await session.execute(select(Currency.code).where(Currency.is_active.is_(True)))).all()
-        if code.upper() != base_currency.upper()
-    }
+    known = await currencies_in_use(session)
     if not known:
         return 0
 

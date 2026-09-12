@@ -49,12 +49,16 @@ def test_broken_xml_raises_a_typed_error():
         parse_cbr_xml("<html><body>сайт на профилактике")
 
 
-async def test_currencies_endpoint_lists_seeded_currencies(client: AsyncClient):
+async def test_only_the_base_currency_is_seeded(client: AsyncClient):
+    """Раньше засев клал ещё доллар, евро, юань и бат — «на всякий случай»,
+    и в рублёвой установке они годами стояли в справочнике, ничего не значили
+    и попадались на глаза как намёк, что приложение чего-то ждёт. Валюта
+    появляется тогда, когда ею действительно платят."""
+    base = (await client.get("/settings")).json()["currency"]
+
     resp = await client.get("/currencies")
     assert resp.status_code == 200
-    codes = {row["code"] for row in resp.json()}
-    # Засев кладёт основные валюты и обязательно базовую.
-    assert {"RUB", "USD", "EUR"} <= codes
+    assert {row["code"] for row in resp.json()} == {base}
 
 
 async def test_base_currency_always_has_rate_one(client: AsyncClient):
