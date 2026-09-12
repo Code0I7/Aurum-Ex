@@ -113,7 +113,14 @@ export function DashboardPage() {
           висит половинкой рядом с пустотой. Правило через nth-child, а не
           через счёт карточек в коде: их число зависит от данных, и держать
           два места в согласии пришлось бы вручную. */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1">
+      {/* Пять в ряд — только когда на них правда есть место. Раньше пятая
+          колонка появлялась уже на 1024, и на ширине раскладки 1280 (это
+          монитор 2560 при 200%) на карточку оставалось меньше двухсот
+          точек: суммы в семь знаков налезали друг на друга. Промежуточная
+          ступень в три колонки закрывает весь этот диапазон, а пятая
+          карточка в ней встаёт во всю оставшуюся ширину тем же правилом,
+          что и на телефоне. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-5 [&>*:last-child:nth-child(odd)]:col-span-2 2xl:[&>*:last-child:nth-child(odd)]:col-span-1">
         <StatCard
           label={t("dashboard.statRealIncomeLabel")}
           value={isLoading ? "…" : formatCurrency(data?.real_income ?? 0)}
