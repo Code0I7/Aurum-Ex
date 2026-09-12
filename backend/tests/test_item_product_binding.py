@@ -93,4 +93,6 @@ async def test_bound_lines_reach_the_price_curve(client: AsyncClient, account_id
         await _receipt(client, account_id, [{"name": "Хлеб бородинский", "quantity": "1", "amount": amount}])
 
     history = (await client.get(f"/products/{bread['id']}/prices")).json()
-    assert len(history["points"]) == 3
+    # Кривая одна: все три покупки записаны штуками.
+    assert len(history["series"]) == 1
+    assert len(history["series"][0]["points"]) == 3

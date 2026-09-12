@@ -399,6 +399,8 @@ class TransactionItemBackup(BaseModel):
     name: str
     quantity: Decimal | None = None
     unit_id: int | None = None
+    pack_size: Decimal | None = None
+    pack_unit_id: int | None = None
     price: Decimal | None = None
     amount: Decimal | None = None
     note: str | None = None

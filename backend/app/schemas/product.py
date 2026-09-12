@@ -61,6 +61,12 @@ class ProductRead(ProductBase):
     # Подставлять надо вторую: чек заполняют по чеку.
     last_quantity: Decimal | None = None
     last_unit_id: int | None = None
+    # Размер упаковки для подстановки — только когда он устоялся: последние
+    # две покупки с записанным размером совпали. У молока в литровых пакетах
+    # совпадают всегда, у сыра, расфасованного в магазине, — никогда, и
+    # подставлять там нечего: вес каждой упаковки свой.
+    last_pack_size: Decimal | None = None
+    last_pack_unit_id: int | None = None
     # Сколько раз товар встречался в чеках и когда в последний раз. Список
     # товаров без этого — просто список слов: непонятно, что живое, а что
     # заведено однажды по ошибке.
@@ -84,14 +90,41 @@ class PricePoint(BaseModel):
     """Одна покупка товара: когда, почём, где."""
 
     date: date_
-    # Цена за базовую единицу своего рода — грамм, миллилитр, штука. Именно
+    # Цена за базовую единицу своего рода — килограмм, литр, штука. Именно
     # она делает 1,5 л за 120 ₽ и 500 мл за 55 ₽ сравнимыми.
     price_per_base_unit: Decimal
     quantity: Decimal
     unit_name: str | None
+    # Размер упаковки, если он был записан: строка читается как «2 шт ×
+    # 0,9 л». Без него штуки остались бы штуками.
+    pack_size: Decimal | None = None
+    pack_unit_name: str | None = None
     amount: Decimal
     store_name: str | None
     transaction_id: int
+
+
+class PriceSeries(BaseModel):
+    """Кривая цены в одной мере.
+
+    Их у товара столько, сколько мер в нём встретилось. Смешивать нельзя:
+    штука и килограмм — разные величины, и одна кривая на обе показывала
+    падение цены на 91% там, где человек просто записал покупку по-другому.
+    """
+
+    # Род меры: mass, volume, count… Пусто, когда единицы у покупки не было
+    # вовсе — тогда цена считается за то, что человек написал количеством.
+    unit_kind: str | None = None
+    base_unit_name: str | None = None
+    points: list[PricePoint]
+    # Минимум, максимум и последняя цена за базовую единицу. Считаются здесь,
+    # а не в интерфейсе: одно место на все способы показать цену.
+    min_price: Decimal | None = None
+    max_price: Decimal | None = None
+    last_price: Decimal | None = None
+    # Изменение последней цены к первой, в процентах. None, когда точек
+    # меньше двух: рост считать не от чего.
+    change_percent: float | None = None
 
 
 class ProductPriceHistory(BaseModel):
@@ -104,16 +137,13 @@ class ProductPriceHistory(BaseModel):
 
     product_id: int
     product_name: str
-    base_unit_name: str | None
-    points: list[PricePoint]
-    # Минимум, максимум и последняя цена за базовую единицу. Считаются здесь,
-    # а не в интерфейсе: одно место на все способы показать цену.
-    min_price: Decimal | None = None
-    max_price: Decimal | None = None
-    last_price: Decimal | None = None
-    # Изменение последней цены к первой, в процентах. None, когда точек
-    # меньше двух: рост считать не от чего.
-    change_percent: float | None = None
+    # Кривые по мерам, сначала та, в которой покупок больше: ею человек и
+    # пользуется, а вторая — след того раза, когда записал иначе.
+    series: list[PriceSeries] = []
+    # Покупки, у которых цену за меру посчитать не из чего — без цены или
+    # без количества. В кривую они не идут, но молчать о них нельзя: иначе
+    # непонятно, почему покупок восемь, а точек пять.
+    unmeasured: int = 0
 
 
 class TransactionItemInput(BaseModel):
@@ -123,6 +153,12 @@ class TransactionItemInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
     unit_id: int | None = None
+    # Размер одной упаковки: «2 шт × 0,9 л». Мост между штуками и мерой —
+    # без него первое со вторым несравнимо. Необязателен: у развесного
+    # товара, расфасованного в магазине, вес каждой упаковки свой, и
+    # забытый вес не повод придумывать его из прошлой покупки.
+    pack_size: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=4)
+    pack_unit_id: int | None = None
     # Цена за БАЗОВУЮ меру своего вида — за килограмм, за литр, за штуку.
     # Так написано на ценнике; цена за введённую единицу давала бы «0,074»
     # у пол-литра воды. Сумма считается как quantity × factor × price.
@@ -143,6 +179,7 @@ class TransactionItemRead(TransactionItemInput):
     model_config = ConfigDict(from_attributes=True)
 
     quantity: Decimal | None = None
+    pack_size: Decimal | None = None
 
     id: int
     position: int

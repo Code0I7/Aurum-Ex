@@ -38,6 +38,37 @@ function baseUnitName(units: Unit[] | undefined, unitId: number | null | undefin
   return base ? `₽ / ${base.name}` : null;
 }
 
+/** Коэффициент единицы к базовой мере. Единица не выбрана — единица. */
+function factorOf(units: Unit[] | undefined, unitId: number | null | undefined): number {
+  const unit = units?.find((item) => item.id === unitId);
+  return Number(unit?.factor ?? 1) || 1;
+}
+
+/**
+ * Считается ли позиция штуками.
+ *
+ * Только у штучных единиц спрашивается размер упаковки: у гречи в граммах
+ * спрашивать нечего — она и так в мере, а лишнее поле в каждой строке чека
+ * человек читает как «заполни меня».
+ */
+function isCounted(units: Unit[] | undefined, unitId: number | null | undefined): boolean {
+  return units?.find((item) => item.id === unitId)?.kind === "count";
+}
+
+/**
+ * Сколько это в базовой мере: 500 мл → 0,5 л, «2 шт × 0,9 л» → 1,8 л.
+ *
+ * Размер упаковки — второй множитель, и появляется только когда задан
+ * целиком, с единицей: «340» без единицы не размер.
+ */
+function measuredQuantity(units: Unit[] | undefined, item: TransactionItemInput): number {
+  const quantity = Number(item.quantity ?? 0);
+  if (!quantity) return 0;
+  const size = Number(item.pack_size ?? 0);
+  const pack = size > 0 && item.pack_unit_id ? size * factorOf(units, item.pack_unit_id) : 1;
+  return quantity * factorOf(units, item.unit_id) * pack;
+}
+
 export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
   const { t } = useTranslation();
   const { data: units } = useUnits();
@@ -57,14 +88,21 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
     // бутылку воды в чек просто не занести. Теперь там 73,98 за литр —
     // ровно то, что написано на ценнике.
     //
-    // Отсюда коэффициент в обеих формулах: сумма = количество × коэффициент
-    // × цена. Для 500 мл по 73,98 это 500 × 0,001 × 73,98 = 36,99.
-    const factor = Number(units?.find((unit) => unit.id === item.unit_id)?.factor ?? 1) || 1;
-    if (("price" in patch || "quantity" in patch || "unit_id" in patch) && item.price && item.quantity) {
-      item.amount = (Number(item.price) * Number(item.quantity) * factor).toFixed(2);
-    } else if ("amount" in patch && item.amount && item.quantity && Number(item.quantity) !== 0) {
+    // Отсюда приведение в обеих формулах: сумма = цена × количество в
+    // базовой мере. Для 500 мл по 73,98 это 500 × 0,001 × 73,98 = 36,99, а
+    // для «2 шт × 0,9 л» по 100 — 180, а не 200.
+    const base = measuredQuantity(units, item);
+    const touchesQuantity =
+      "price" in patch ||
+      "quantity" in patch ||
+      "unit_id" in patch ||
+      "pack_size" in patch ||
+      "pack_unit_id" in patch;
+    if (touchesQuantity && item.price && base) {
+      item.amount = (Number(item.price) * base).toFixed(2);
+    } else if ("amount" in patch && item.amount && base) {
       // Вписали сумму — цена за базовую меру выводится из неё.
-      item.price = (Number(item.amount) / (Number(item.quantity) * factor)).toFixed(4);
+      item.price = (Number(item.amount) / base).toFixed(4);
     }
     onChange(next);
   }
@@ -119,6 +157,15 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                         // было, берётся справочник.
                         quantity: product.last_quantity ?? null,
                         unit_id: product.last_unit_id ?? product.unit_id,
+                        // Размер упаковки подставляется только когда он
+                        // устоялся: сервер отдаёт его, лишь если последние
+                        // две покупки с размером совпали. У молока в
+                        // литровых пакетах он совпадает всегда, у сыра,
+                        // расфасованного в магазине, — никогда, и
+                        // подставленный прошлый вес выглядел бы как
+                        // переписанный с ценника.
+                        pack_size: product.last_pack_size ?? null,
+                        pack_unit_id: product.last_pack_unit_id ?? null,
                       })
                     }
                   />
@@ -160,6 +207,35 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                 />
               </div>
 
+              {/* Размер упаковки — только у штучных единиц. «2 шт × 0,9 л»
+                  переводит штуки в литры, и без этого мостика штучная
+                  покупка того же товара живёт на отдельной кривой цены.
+                  У весового товара строка не показывается вовсе: он и так
+                  в мере. */}
+              {isCounted(units, item.unit_id) && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder={t("items.packSize")}
+                    value={item.pack_size ?? ""}
+                    onChange={(event) => update(index, { pack_size: event.target.value || null })}
+                  />
+                  <Combobox
+                    options={(units ?? [])
+                      // Штуки в штуках — не размер: «1 шт × 1 шт» ничего не
+                      // добавляет, а в списке выглядит как выбор.
+                      .filter((unit) => unit.kind !== "count" && unit.kind !== "service")
+                      .map((unit) => ({ value: String(unit.id), label: unit.name }))}
+                    value={item.pack_unit_id ? String(item.pack_unit_id) : ""}
+                    onChange={(value) => update(index, { pack_unit_id: value ? Number(value) : null })}
+                    placeholder={t("items.packUnit")}
+                    emptyLabel={t("items.packUnit")}
+                  />
+                </div>
+              )}
+
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Input
                   type="number"
@@ -177,7 +253,10 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
                     // Подпись называет базовую меру: «₽ / л» вместо
                     // безликого «Цена за ед.», за которым приходилось
                     // догадываться, за что именно.
-                    baseUnitName(units, item.unit_id) ?? t("items.price")
+                    //
+                    // Размер упаковки перебивает единицу количества: «2 шт
+                    // × 0,9 л» — это про литры, и цена тут за литр.
+                    baseUnitName(units, item.pack_unit_id ?? item.unit_id) ?? t("items.price")
                   }
                   value={item.price ?? ""}
                   onChange={(event) => update(index, { price: event.target.value || null })}

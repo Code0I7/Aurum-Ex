@@ -237,6 +237,27 @@ class TransactionItem(Base):
 
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"), nullable=True)
+
+    # Размер одной упаковки: «2 шт × 0,9 л». Нужен, чтобы штуки было с чем
+    # сравнивать: без него «1 шт за 89 ₽» и «900 мл за 89 ₽» — числа разных
+    # родов, и общей кривой цены у них нет.
+    #
+    # Лежит здесь, а не в товаре, и это главное решение. В товаре это было
+    # бы одно число на всю историю: производитель ужал литр до 900 мл — и
+    # прошлые покупки пересчитались бы по новому размеру, спрятав ровно то
+    # подорожание, ради которого учёт цен и ведут. Здесь размер остаётся
+    # тем, что был в день покупки, навсегда.
+    #
+    # Необязателен, и это тоже намеренно. Развесной товар, расфасованный в
+    # магазине, каждый раз весит по-своему: раз человек переписал вес с
+    # ценника, другой раз забыл. Забытый вес — не повод придумывать его из
+    # прошлой покупки; такая позиция просто не даёт точки на кривой «за
+    # килограмм», оставаясь на кривой «за упаковку».
+    pack_size: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    pack_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("units.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Цена за БАЗОВУЮ меру своего вида — за килограмм, за литр, за штуку, —
     # а не за введённую единицу.
     #
@@ -260,4 +281,7 @@ class TransactionItem(Base):
 
     transaction: Mapped["Transaction"] = relationship(back_populates="items")
     product: Mapped["Product | None"] = relationship()
-    unit: Mapped["Unit | None"] = relationship()
+    # Две ссылки на один справочник — единицу приходится называть явно,
+    # иначе SQLAlchemy не знает, по какой из них строить связь.
+    unit: Mapped["Unit | None"] = relationship(foreign_keys=[unit_id])
+    pack_unit: Mapped["Unit | None"] = relationship(foreign_keys=[pack_unit_id])

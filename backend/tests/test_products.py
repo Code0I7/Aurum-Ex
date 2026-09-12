@@ -14,6 +14,17 @@ from decimal import Decimal
 from httpx import AsyncClient
 
 
+def _series(history: dict) -> dict:
+    """Единственная кривая товара.
+
+    Кривых у товара столько, сколько мер в нём встретилось: штуку с
+    килограммом на одну ось складывать нельзя. В проверках ниже мера одна, и
+    вытаскивать её каждый раз руками незачем.
+    """
+    assert len(history["series"]) == 1, history["series"]
+    return history["series"][0]
+
+
 async def _units(client: AsyncClient) -> dict[str, dict]:
     return {row["name"]: row for row in (await client.get("/units")).json()}
 
@@ -163,14 +174,15 @@ async def test_price_history_compares_litres_with_millilitres(client: AsyncClien
     )
 
     history = (await client.get(f"/products/{juice['id']}/prices")).json()
-    assert len(history["points"]) == 2
+    series = _series(history)
+    assert len(series["points"]) == 2
     # Базовая мера — литр, а не миллилитр: «0,08 за миллилитр»
     # арифметически верно и бесполезно, в магазине сравнивают рубли за литр.
     # 120 / (1,5 × 1) = 80 ₽ за литр; 55 / (500 × 0,001) = 110.
-    assert Decimal(history["points"][0]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("80.00")
-    assert Decimal(history["points"][1]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("110.00")
-    assert history["change_percent"] == 37.5
-    assert history["base_unit_name"] == "л"
+    assert Decimal(series["points"][0]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("80.00")
+    assert Decimal(series["points"][1]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("110.00")
+    assert series["change_percent"] == 37.5
+    assert series["base_unit_name"] == "л"
 
 
 async def test_items_without_a_price_never_reach_the_chart(client: AsyncClient, account_id, categories):
@@ -196,9 +208,9 @@ async def test_items_without_a_price_never_reach_the_chart(client: AsyncClient, 
     )
 
     history = (await client.get(f"/products/{bread['id']}/prices")).json()
-    assert len(history["points"]) == 1
+    assert len(_series(history)["points"]) == 1
     # Рост считать не от чего — точка одна.
-    assert history["change_percent"] is None
+    assert _series(history)["change_percent"] is None
 
 
 async def test_excluded_receipts_stay_out_of_the_price_curve(client: AsyncClient, account_id, categories):
@@ -225,7 +237,7 @@ async def test_excluded_receipts_stay_out_of_the_price_curve(client: AsyncClient
     assert resp.status_code == 201, resp.text
 
     history = (await client.get(f"/products/{bread['id']}/prices")).json()
-    assert history["points"] == []
+    assert history["series"] == []
 
 
 async def test_product_list_shows_how_alive_each_row_is(client: AsyncClient, account_id, categories):
@@ -282,7 +294,7 @@ async def test_archived_products_are_hidden_but_keep_their_history(client: Async
     assert len((await client.get("/products?include_archived=true")).json()) == 1
     # История цен у архивного товара остаётся: покупки были.
     history = (await client.get(f"/products/{bread['id']}/prices")).json()
-    assert len(history["points"]) == 1
+    assert len(_series(history)["points"]) == 1
 
 
 async def test_deleting_a_product_keeps_the_receipt_line(client: AsyncClient, account_id, categories):
@@ -354,5 +366,7 @@ async def test_bottle_of_water_by_price_per_litre(client: AsyncClient, account_i
     assert Decimal(item["amount"]).quantize(Decimal("0.01")) == Decimal("36.99")
 
     history = (await client.get(f"/products/{water['id']}/prices")).json()
-    assert history["base_unit_name"] == "л"
-    assert Decimal(history["points"][0]["price_per_base_unit"]).quantize(Decimal("0.01")) == Decimal("73.98")
+    assert _series(history)["base_unit_name"] == "л"
+    assert Decimal(_series(history)["points"][0]["price_per_base_unit"]).quantize(
+        Decimal("0.01")
+    ) == Decimal("73.98")

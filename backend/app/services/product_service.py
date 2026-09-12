@@ -19,16 +19,27 @@
 120 ₽» и «500 мл сока за 55 ₽» несравнимы, и в исходной таблице колонки
 количества пустовали в 89% записей — единицы там были подписями без
 арифметики.
+
+Рода при этом не смешиваются, и это не придирка. Штука и килограмм —
+разные меры, и одна кривая на обе врёт крупно: шоколад, купленный раз как
+«90 г за 89 ₽» (989 ₽/кг) и раз как «1 шт за 89 ₽» (89 ₽/шт), показывал
+падение цены на 91%, которого не было. Поэтому у товара столько кривых,
+сколько мер в нём встретилось, и подписаны они каждая своей.
+
+Мостом между ними служит размер упаковки в позиции чека: «2 шт × 0,9 л»
+считается как 1,8 л и попадает на объёмную кривую. Размер не указан —
+покупка остаётся на штучной кривой и в объёмную не идёт: придумывать вес
+за человека нельзя, у развесного товара он каждый раз свой.
 """
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date as date_, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.models.product import Product
 from app.models.store import Store
@@ -36,6 +47,7 @@ from app.models.transaction import Transaction, TransactionItem
 from app.models.unit import Unit
 from app.schemas.product import (
     PricePoint,
+    PriceSeries,
     ProductCreate,
     ProductPriceHistory,
     ProductRead,
@@ -44,10 +56,43 @@ from app.schemas.product import (
 from app.services.transaction_service import counted_only
 
 
+def measured_quantity(
+    quantity: Decimal | None,
+    unit_factor: Decimal | None,
+    pack_size: Decimal | None = None,
+    pack_factor: Decimal | None = None,
+) -> Decimal | None:
+    """Сколько это в базовой мере: 500 мл → 0,5 л, «2 шт × 0,9 л» → 1,8 л.
+
+    Размер упаковки — второй множитель и появляется только когда он задан.
+    «2 шт» без размера остаются двумя штуками: перевести их в литры не во
+    что, и подставить прошлый размер значило бы придумать его.
+    """
+    if quantity is None or quantity <= 0:
+        return None
+    factor = unit_factor if unit_factor and unit_factor > 0 else Decimal("1")
+    base = quantity * factor
+    if pack_size is not None and pack_size > 0:
+        pack = pack_factor if pack_factor and pack_factor > 0 else Decimal("1")
+        base = base * pack_size * pack
+    return base if base > 0 else None
+
+
+def measured_kind(unit_kind, pack_unit_kind):
+    """В какой мере выражена покупка.
+
+    Размер упаковки перебивает единицу количества: «2 шт × 0,9 л» — это про
+    литры, а штуки в нём лишь счёт упаковок.
+    """
+    return pack_unit_kind if pack_unit_kind is not None else unit_kind
+
+
 def price_per_base_unit(
     amount: Decimal | None,
     quantity: Decimal | None,
     unit_factor: Decimal | None,
+    pack_size: Decimal | None = None,
+    pack_factor: Decimal | None = None,
 ) -> Decimal | None:
     """Цена за базовую единицу — то, что делает литры сравнимыми с
     миллилитрами.
@@ -56,10 +101,10 @@ def price_per_base_unit(
     без количества — воспоминание, а не измерение, и в график она просто не
     попадает.
     """
-    if amount is None or quantity is None or quantity <= 0:
+    base = measured_quantity(quantity, unit_factor, pack_size, pack_factor)
+    if amount is None or base is None:
         return None
-    factor = unit_factor if unit_factor and unit_factor > 0 else Decimal("1")
-    return amount / (quantity * factor)
+    return amount / base
 
 
 @dataclass
@@ -69,13 +114,39 @@ class ProductStats:
     purchases: int = 0
     last_bought: object = None
     last_price: Decimal | None = None
+    # В какой мере выражена последняя цена. Без этого «89» у товара,
+    # записанного в граммах, но купленного однажды штукой, подписывалось бы
+    # как «₽ / кг» — то есть числом за килограмм назывался бы ценник за
+    # упаковку.
+    last_price_kind: object = None
     # Количество и единица последней покупки — подставляются в новую
     # позицию. Хлеб берут по одной штуке, молоко по литру, и вводить одно и
     # то же в каждом чеке незачем.
     last_quantity: Decimal | None = None
     last_unit_id: int | None = None
+    # Размер упаковки последней покупки — тоже для подстановки.
+    last_pack_size: Decimal | None = None
+    last_pack_unit_id: int | None = None
+    # Размеры упаковок в базовой мере, по порядку покупок. Нужны только
+    # чтобы решить, можно ли подставлять размер: см. pack_size_stable.
+    pack_sizes: list[Decimal] = field(default_factory=list)
     spent_total: Decimal = Decimal("0")
     spent_year: Decimal = Decimal("0")
+
+    @property
+    def pack_size_stable(self) -> bool:
+        """Можно ли подставлять размер упаковки в новую позицию.
+
+        Только когда последние два известных размера совпали. У молока в
+        литровых пакетах они совпадают всегда, и человек перестаёт вводить
+        «0,9 л» в каждом чеке. У сыра, расфасованного в магазине, они не
+        совпадают никогда — и подставлять там нечего: вес каждой упаковки
+        свой, а подставленный прошлый выглядел бы как записанный с ценника.
+        Одного известного размера недостаточно: по одной покупке постоянную
+        фасовку от развесной не отличить, а придуманный вес портит кривую
+        цены молча.
+        """
+        return len(self.pack_sizes) >= 2 and self.pack_sizes[-1] == self.pack_sizes[-2]
 
 
 async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
@@ -85,6 +156,7 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
     отдельный запрос на каждую превратил бы открытие страницы в минуту
     ожидания.
     """
+    pack_unit = aliased(Unit)
     rows = (
         await session.execute(
             select(
@@ -94,9 +166,15 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
                 TransactionItem.quantity,
                 TransactionItem.unit_id,
                 Unit.factor,
+                Unit.kind,
+                TransactionItem.pack_size,
+                TransactionItem.pack_unit_id,
+                pack_unit.factor,
+                pack_unit.kind,
             )
             .join(Transaction, Transaction.id == TransactionItem.transaction_id)
             .outerjoin(Unit, Unit.id == TransactionItem.unit_id)
+            .outerjoin(pack_unit, pack_unit.id == TransactionItem.pack_unit_id)
             .where(TransactionItem.product_id.is_not(None), counted_only())
             .order_by(Transaction.date)
         )
@@ -107,7 +185,19 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
     year_ago = date_.today() - timedelta(days=365)
 
     stats: dict[int, ProductStats] = defaultdict(ProductStats)
-    for product_id, tx_date, amount, quantity, unit_id, factor in rows:
+    for (
+        product_id,
+        tx_date,
+        amount,
+        quantity,
+        unit_id,
+        factor,
+        unit_kind,
+        pack_size,
+        pack_unit_id,
+        pack_factor,
+        pack_kind,
+    ) in rows:
         item = stats[product_id]
         item.purchases += 1
         # Запрос отсортирован по дате, поэтому последняя строка и есть
@@ -121,9 +211,18 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
             item.last_quantity = quantity
         if unit_id is not None:
             item.last_unit_id = unit_id
-        price = price_per_base_unit(amount, quantity, factor)
+        # Размер упаковки запоминается так же, как количество: пустой не
+        # стирает прошлый, потому что «не переписал вес с ценника» — это не
+        # «упаковки больше нет».
+        if pack_size is not None:
+            item.last_pack_size = pack_size
+            item.last_pack_unit_id = pack_unit_id
+            normalised = pack_size * (pack_factor if pack_factor and pack_factor > 0 else Decimal("1"))
+            item.pack_sizes.append(normalised)
+        price = price_per_base_unit(amount, quantity, factor, pack_size, pack_factor)
         if price is not None:
             item.last_price = price
+            item.last_price_kind = measured_kind(unit_kind, pack_kind)
         # Сумма позиции бывает не заполнена: в чеке её могли не разносить
         # по строкам вовсе. Такая покупка считается фактом покупки, но
         # деньгами не считается — придумывать их за человека нельзя.
@@ -138,11 +237,15 @@ def _to_read(
     product: Product, stats: ProductStats | None, base_units: dict[str, str] | None = None
 ) -> ProductRead:
     stats = stats or ProductStats()
-    # Подпись берётся по виду единицы самого товара: «кг» для сыра, «л» для
-    # сока. Товар без единицы цены за базовую меру и не имеет.
+    # Подпись берётся по мере ПОСЛЕДНЕЙ покупки, а не по единице товара.
+    # Товар записан в граммах, а куплен однажды штукой — и цена за упаковку
+    # подписывалась бы как «₽ / кг». Пока покупок нет, берётся единица
+    # справочника: там она про то же самое.
     base_name = None
-    if product.unit is not None and base_units:
+    kind = stats.last_price_kind
+    if kind is None and product.unit is not None:
         kind = product.unit.kind
+    if kind is not None and base_units:
         base_name = base_units.get(str(kind.value if hasattr(kind, "value") else kind))
     return ProductRead(
         id=product.id,
@@ -155,6 +258,10 @@ def _to_read(
         purchases=stats.purchases,
         last_quantity=stats.last_quantity,
         last_unit_id=stats.last_unit_id,
+        # Размер упаковки подставляется только когда он устоялся — см.
+        # ProductStats.pack_size_stable.
+        last_pack_size=stats.last_pack_size if stats.pack_size_stable else None,
+        last_pack_unit_id=stats.last_pack_unit_id if stats.pack_size_stable else None,
         last_bought=stats.last_bought,
         last_price_per_base_unit=stats.last_price,
         spent_total=stats.spent_total,
@@ -236,6 +343,7 @@ async def get_price_history(session: AsyncSession, product_id: int) -> ProductPr
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    pack_unit = aliased(Unit)
     rows = (
         await session.execute(
             select(
@@ -246,65 +354,89 @@ async def get_price_history(session: AsyncSession, product_id: int) -> ProductPr
                 Unit.name,
                 Unit.factor,
                 Unit.kind,
+                TransactionItem.pack_size,
+                pack_unit.name,
+                pack_unit.factor,
+                pack_unit.kind,
                 Store.name,
             )
             .join(Transaction, Transaction.id == TransactionItem.transaction_id)
             .outerjoin(Unit, Unit.id == TransactionItem.unit_id)
+            .outerjoin(pack_unit, pack_unit.id == TransactionItem.pack_unit_id)
             .outerjoin(Store, Store.id == Transaction.store_id)
             .where(TransactionItem.product_id == product_id, counted_only())
             .order_by(Transaction.date, Transaction.id)
         )
     ).all()
 
-    points: list[PricePoint] = []
-    base_unit_name: str | None = None
-    for transaction_id, tx_date, amount, quantity, unit_name, factor, unit_kind, store_name in rows:
-        price = price_per_base_unit(amount, quantity, factor)
+    # По одной кривой на меру. Складывать штуки с килограммами нельзя: это
+    # разные величины, и общий график из них показывал обвал цены там, где
+    # человек просто записал покупку иначе.
+    by_kind: dict[object, list[PricePoint]] = defaultdict(list)
+    unmeasured = 0
+    for (
+        transaction_id,
+        tx_date,
+        amount,
+        quantity,
+        unit_name,
+        factor,
+        unit_kind,
+        pack_size,
+        pack_unit_name,
+        pack_factor,
+        pack_kind,
+        store_name,
+    ) in rows:
+        price = price_per_base_unit(amount, quantity, factor, pack_size, pack_factor)
         if price is None:
             # Позиция без цены или количества — воспоминание, а не измерение.
+            unmeasured += 1
             continue
-        if base_unit_name is None and unit_kind is not None:
-            base_unit_name = await _base_unit_name(session, unit_kind)
-        points.append(
+        by_kind[measured_kind(unit_kind, pack_kind)].append(
             PricePoint(
                 date=tx_date,
                 price_per_base_unit=price,
                 quantity=quantity,
                 unit_name=unit_name,
+                pack_size=pack_size,
+                pack_unit_name=pack_unit_name,
                 amount=amount,
                 store_name=store_name,
                 transaction_id=transaction_id,
             )
         )
 
-    prices = [point.price_per_base_unit for point in points]
-    change_percent = None
-    if len(prices) >= 2 and prices[0] > 0:
-        change_percent = float(round((prices[-1] - prices[0]) / prices[0] * 100, 1))
+    base_names = await _base_unit_names(session)
+    series: list[PriceSeries] = []
+    for kind, points in by_kind.items():
+        prices = [point.price_per_base_unit for point in points]
+        change_percent = None
+        if len(prices) >= 2 and prices[0] > 0:
+            change_percent = float(round((prices[-1] - prices[0]) / prices[0] * 100, 1))
+        key = str(kind.value if hasattr(kind, "value") else kind) if kind is not None else None
+        series.append(
+            PriceSeries(
+                unit_kind=key,
+                base_unit_name=base_names.get(key) if key is not None else None,
+                points=points,
+                min_price=min(prices),
+                max_price=max(prices),
+                last_price=prices[-1],
+                change_percent=change_percent,
+            )
+        )
+
+    # Сначала та мера, в которой покупок больше: ею человек и пользуется, а
+    # вторая — след того раза, когда записал по-другому.
+    series.sort(key=lambda item: (-len(item.points), item.base_unit_name or ""))
 
     return ProductPriceHistory(
         product_id=product.id,
         product_name=product.name,
-        base_unit_name=base_unit_name,
-        points=points,
-        min_price=min(prices) if prices else None,
-        max_price=max(prices) if prices else None,
-        last_price=prices[-1] if prices else None,
-        change_percent=change_percent,
+        series=series,
+        unmeasured=unmeasured,
     )
-
-
-async def _base_unit_name(session: AsyncSession, unit_kind) -> str | None:
-    """Название базовой единицы для рода — грамм, миллилитр, штука.
-
-    Нужно только для подписи оси: «₽ за грамм» понятнее, чем «₽ за базовую
-    единицу».
-    """
-    return (
-        await session.execute(
-            select(Unit.name).where(Unit.kind == unit_kind, Unit.is_base.is_(True)).limit(1)
-        )
-    ).scalar_one_or_none()
 
 
 async def suggest_products(session: AsyncSession, query: str, limit: int = 10) -> list[ProductRead]:

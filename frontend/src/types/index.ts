@@ -1082,6 +1082,11 @@ export interface Product {
   // Количество и единица последней покупки — подставляются в новую позицию.
   last_quantity: string | null;
   last_unit_id: number | null;
+  // Размер упаковки для подстановки — только когда он устоялся: последние
+  // две покупки с записанным размером совпали. У молока в литровых пакетах
+  // совпадают всегда, у сыра, расфасованного в магазине, — никогда.
+  last_pack_size: string | null;
+  last_pack_unit_id: number | null;
   last_bought: string | null;
   last_price_per_base_unit: string | null;
   // В каких единицах выражена цена выше: «74 ₽ / л» читается, а
@@ -1107,20 +1112,39 @@ export interface PricePoint {
   price_per_base_unit: string;
   quantity: string;
   unit_name: string | null;
+  // Размер упаковки, если он был записан: строка читается как «2 шт × 0,9 л».
+  pack_size: string | null;
+  pack_unit_name: string | null;
   amount: string;
   store_name: string | null;
   transaction_id: number;
 }
 
-export interface ProductPriceHistory {
-  product_id: number;
-  product_name: string;
+/**
+ * Кривая цены в одной мере.
+ *
+ * Их у товара столько, сколько мер в нём встретилось. Смешивать нельзя:
+ * штука и килограмм — разные величины, и одна кривая на обе показывала
+ * падение цены на 91% там, где человек просто записал покупку по-другому.
+ */
+export interface PriceSeries {
+  unit_kind: string | null;
   base_unit_name: string | null;
   points: PricePoint[];
   min_price: string | null;
   max_price: string | null;
   last_price: string | null;
   change_percent: number | null;
+}
+
+export interface ProductPriceHistory {
+  product_id: number;
+  product_name: string;
+  // Сначала та мера, в которой покупок больше.
+  series: PriceSeries[];
+  // Покупки без цены или количества: в кривую не идут, но молчать о них
+  // нельзя — иначе непонятно, почему покупок восемь, а точек пять.
+  unmeasured: number;
 }
 
 // Позиция чека — «что лежало в пакете». Отдельно от разбивки по категориям:
@@ -1134,6 +1158,10 @@ export interface TransactionItem {
   quantity: string | null;
   unit_id: number | null;
   unit_name: string | null;
+  // Размер одной упаковки: «2 шт × 0,9 л». Пусто, когда его не
+  // записывали, — у развесного товара это обычное дело.
+  pack_size: string | null;
+  pack_unit_id: number | null;
   price: string | null;
   amount: string | null;
   note: string | null;
@@ -1144,6 +1172,12 @@ export interface TransactionItemInput {
   name: string;
   quantity?: string | null;
   unit_id?: number | null;
+  // Размер одной упаковки: «2 шт × 0,9 л». Мост между штуками и мерой —
+  // без него первое со вторым несравнимо. Необязателен: у развесного
+  // товара вес каждой упаковки свой, и забытый вес не повод придумывать
+  // его из прошлой покупки.
+  pack_size?: string | null;
+  pack_unit_id?: number | null;
   price?: string | null;
   amount?: string | null;
   note?: string | null;

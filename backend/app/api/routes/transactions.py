@@ -32,7 +32,7 @@ from app.models.product import Product
 from app.schemas.product import TransactionItemInput
 from app.services.category_tree import load_category_tree
 from app.services.currency_service import get_base_currency, to_base
-from app.services.product_service import find_product_by_name
+from app.services.product_service import find_product_by_name, measured_quantity
 from app.services.transaction_service import (
     find_similar_transactions,
     next_day_order,
@@ -99,15 +99,28 @@ async def _item_amount(session: AsyncSession, item: TransactionItemInput) -> Dec
 
     None, когда считать не из чего: половина позиций в чеках заполняется
     без цены вовсе — «купили хлеб и молоко» помнят и без неё.
+
+    Размер упаковки, если он задан, входит вторым множителем: «2 шт × 0,9 л
+    по 100 ₽ за литр» — это 180 ₽, а не 200. Считается тем же
+    measured_quantity, которым считается и цена за меру, чтобы сумма и
+    кривая цены не разошлись на округлении.
     """
     if item.price is None or item.quantity is None:
         return None
-    factor = Decimal("1")
-    if item.unit_id is not None:
-        unit = await session.get(Unit, item.unit_id)
-        if unit is not None and unit.factor and unit.factor > 0:
-            factor = unit.factor
-    return item.price * item.quantity * factor
+
+    async def factor_of(unit_id: int | None) -> Decimal | None:
+        if unit_id is None:
+            return None
+        unit = await session.get(Unit, unit_id)
+        return unit.factor if unit is not None else None
+
+    base = measured_quantity(
+        item.quantity,
+        await factor_of(item.unit_id),
+        item.pack_size,
+        await factor_of(item.pack_unit_id),
+    )
+    return item.price * base if base is not None else None
 
 
 async def _build_items(
@@ -147,6 +160,18 @@ async def _build_items(
                 name=item.name,
                 quantity=item.quantity,
                 unit_id=item.unit_id,
+                # Размер упаковки — мост между штуками и мерой: «2 шт ×
+                # 0,9 л». Запоминается в позиции, а не в товаре: фасовку
+                # ужимают, и прошлые покупки не должны пересчитываться по
+                # новому размеру.
+                #
+                # Половина пары ничего не значит: «340» без единицы — не
+                # размер. Такая половина отбрасывается, а не отвергается
+                # четырёхсотым: единицу могли удалить из справочника уже
+                # после покупки, и ронять из-за этого чтение операции
+                # нельзя.
+                pack_size=item.pack_size if item.pack_unit_id is not None else None,
+                pack_unit_id=item.pack_unit_id if item.pack_size is not None else None,
                 price=item.price,
                 # Сумма позиции: если не задана, но известны цена и
                 # количество, считается сама — заставлять человека
