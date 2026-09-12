@@ -129,7 +129,9 @@ async def test_transfer_rejects_a_category(client: AsyncClient, account_id, cate
 
 
 async def test_valid_transfer_between_two_accounts_succeeds(client: AsyncClient, account_id):
-    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "USD"})
+    # Обе карты в одной валюте: перевод между разными требует второй суммы,
+    # и это проверяется отдельно (tests/test_transfer_currencies.py).
+    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "RUB"})
     other_id = other.json()["id"]
     resp = await client.post(
         "/transactions", json=_txn(account_id, type="transfer", amount="50.00", transfer_account_id=other_id)

@@ -317,14 +317,22 @@ export function TransactionsGrid({
             {/* Вторым числом — сколько это в валюте установки, по курсу дня
                 операции. Только у валютной: у своей это было бы одно и то же
                 число дважды. Одного первого мало — его не с чем сравнить в
-                списке; одного второго мало — оно врёт про ценник. */}
-            {tx.currency !== base && (
+                списке; одного второго мало — оно врёт про ценник.
+
+                У перевода между валютами вместо него стоит пришедшая сумма:
+                она важнее пересчёта, потому что именно она легла на второй
+                счёт. */}
+            {tx.transfer_amount !== null && tx.transfer_currency !== null ? (
+              <span className="block text-xs font-normal text-text-muted">
+                → {formatCurrency(tx.transfer_amount, tx.transfer_currency)}
+              </span>
+            ) : tx.currency !== base ? (
               <span className="block text-xs font-normal text-text-muted">
                 {tx.amount_base === null
                   ? t("transactions.rateMissing")
                   : formatCurrency(tx.amount_base, base)}
               </span>
-            )}
+            ) : null}
           </span>
         );
       }

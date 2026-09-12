@@ -72,14 +72,20 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                 {amountSign(tx.type)}
                 {formatCurrency(tx.amount, tx.currency)}
                 {/* Вторым числом — сколько это в валюте установки, по курсу
-                    дня операции. Только у валютной операции. */}
-                {tx.currency !== base && (
+                    дня операции. Только у валютной операции. А у перевода
+                    между валютами — пришедшая сумма: она важнее пересчёта,
+                    потому что именно она легла на второй счёт. */}
+                {tx.transfer_amount !== null && tx.transfer_currency !== null ? (
+                  <span className="block text-xs font-normal text-text-muted">
+                    → {formatCurrency(tx.transfer_amount, tx.transfer_currency)}
+                  </span>
+                ) : tx.currency !== base ? (
                   <span className="block text-xs font-normal text-text-muted">
                     {tx.amount_base === null
                       ? t("transactions.rateMissing")
                       : formatCurrency(tx.amount_base, base)}
                   </span>
-                )}
+                ) : null}
               </span>
 
               <span className="flex shrink-0 gap-1">

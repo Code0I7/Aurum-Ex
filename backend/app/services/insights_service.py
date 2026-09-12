@@ -106,6 +106,7 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
             Transaction.account_id,
             Transaction.transfer_account_id,
             Transaction.date,
+            Transaction.transfer_amount,
         ).where(counted_only())
     )
     balances: dict[int, Decimal] = defaultdict(Decimal)
@@ -115,7 +116,7 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
         if account_id in eligible_ids and (account_id not in last_activity or tx_date > last_activity[account_id]):
             last_activity[account_id] = tx_date
 
-    for tx_type, amount, account_id, transfer_account_id, tx_date in rows.all():
+    for tx_type, amount, account_id, transfer_account_id, tx_date, transfer_amount in rows.all():
         if tx_type == TransactionType.INCOME:
             balances[account_id] += amount
         elif tx_type == TransactionType.EXPENSE:
@@ -123,7 +124,11 @@ async def _idle_cash_account_count(session: AsyncSession, threshold_amount: Deci
         elif tx_type == TransactionType.TRANSFER:
             balances[account_id] -= amount
             if transfer_account_id is not None:
-                balances[transfer_account_id] += amount
+                # См. account_service: между валютами приходит не то, что
+                # ушло.
+                balances[transfer_account_id] += (
+                    transfer_amount if transfer_amount is not None else amount
+                )
         touch(account_id, tx_date)
         touch(transfer_account_id, tx_date)
 

@@ -794,6 +794,10 @@ const ru = {
   "transactions.form.accountLabel": "Счёт",
   "transactions.form.selectAccount": "Выберите счёт",
   "transactions.form.transferAccountLabel": "Счёт назначения",
+  "transactions.form.transferAmountLabel": "Сколько пришло, {{currency}}",
+  "transactions.form.transferAmountHint":
+    "Счета в разных валютах: {{from}} уходят, {{to}} приходят. Перепишите обе суммы из выписки — курс и комиссию банк считает по-своему, и вывести вторую из первой нельзя.",
+  "transactions.form.errorTransferAmount": "Укажите, сколько пришло на счёт назначения.",
   "transactions.form.categoryLabel": "Категория",
   "transactions.form.noCategory": "Без категории",
   "transactions.form.merchantLabel": "Продавец (необязательно)",
@@ -1859,6 +1863,10 @@ const en: Record<keyof typeof ru, string> = {
   "transactions.form.accountLabel": "Account",
   "transactions.form.selectAccount": "Select account",
   "transactions.form.transferAccountLabel": "Destination account",
+  "transactions.form.transferAmountLabel": "Amount received, {{currency}}",
+  "transactions.form.transferAmountHint":
+    "The accounts hold different currencies: {{from}} leaves, {{to}} arrives. Copy both amounts from the statement — the bank uses its own rate and fee, and the second cannot be derived from the first.",
+  "transactions.form.errorTransferAmount": "Enter how much arrived on the destination account.",
   "transactions.form.categoryLabel": "Category",
   "transactions.form.noCategory": "No category",
   "transactions.form.merchantLabel": "Merchant (optional)",

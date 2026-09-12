@@ -233,8 +233,10 @@ async def running_balances(
                 Transaction.transfer_account_id,
                 Transaction.date,
                 Transaction.id,
-                # Тоже в валюте счёта — см. running_balance выше.
-                Transaction.amount,
+                # Тоже в валюте счёта — см. running_balance выше. Для
+                # перевода между валютами это пришедшая сумма: на счёт
+                # получателя легло именно столько.
+                func.coalesce(Transaction.transfer_amount, Transaction.amount),
             ).where(
                 Transaction.type == TransactionType.TRANSFER,
                 Transaction.is_excluded.is_(False),

@@ -122,6 +122,23 @@ class Transaction(Base, TimestampMixin):
     exchange_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
     amount_base: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
+    # Вторая сторона перевода между разными валютами: сколько пришло, в чём
+    # и сколько это в валюте установки.
+    #
+    # Пока обе карты в одной валюте, второй суммы не существует: сколько
+    # ушло, столько и пришло, и колонки пустые. Между валютами равенство
+    # ломается — сто евро уходят с евровой карты, а на рублёвую приходит
+    # столько, сколько решил банк своим курсом и своей комиссией. Вывести
+    # это число из курса ЦБ нельзя: оно ему не равно и равняться не обязано,
+    # а разница между сторонами и есть цена перевода, которую видно только
+    # так.
+    #
+    # Поэтому вторая сумма — данные, а не расчёт: её переписывают из
+    # выписки. Пустота означает «равна первой», а не «неизвестна».
+    transfer_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    transfer_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    transfer_amount_base: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+
     # Необязательно. В исходной таблице это была вторая строка записи, а не
     # заметка к ней: у большинства покупок сказать сверх категории нечего.
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)

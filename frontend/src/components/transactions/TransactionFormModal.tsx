@@ -83,6 +83,9 @@ const EMPTY_FORM = {
   category_id: "",
   transfer_account_id: "",
   amount: "",
+  // Сколько пришло на счёт получателя. Заполняется только у перевода между
+  // разными валютами — см. поле в разметке ниже.
+  transfer_amount: "",
   description: "",
   date: todayIso(),
   // Кто, где и с кем. Все три необязательны: быстрый ввод не должен требовать
@@ -160,6 +163,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         category_id: !hasSplits && transaction.category_id ? String(transaction.category_id) : "",
         transfer_account_id: transaction.transfer_account_id ? String(transaction.transfer_account_id) : "",
         amount: transaction.amount,
+        transfer_amount: transaction.transfer_amount ?? "",
         description: transaction.description ?? "",
         date: transaction.date,
         participant_id: transaction.participant_id ? String(transaction.participant_id) : "",
@@ -264,6 +268,19 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     });
   }
 
+  // Перевод между счетами в разных валютах. Только тогда «сколько ушло» и
+  // «сколько пришло» — два разных числа: внутри одной валюты это одно и то
+  // же, и второе поле означало бы возможность разойтись с самим собой.
+  const sourceAccount = accounts?.find((account) => String(account.id) === form.account_id);
+  const destinationAccount = accounts?.find(
+    (account) => String(account.id) === form.transfer_account_id
+  );
+  const crossCurrencyTransfer =
+    form.type === "transfer" &&
+    sourceAccount !== undefined &&
+    destinationAccount !== undefined &&
+    sourceAccount.currency !== destinationAccount.currency;
+
   const isSettlement = SETTLEMENT_TYPES.includes(form.type);
   const isTransit = isSettlement && form.settlement_kind === "transit";
   // Разбивка — это просто «строк больше одной». Отдельного признака нет:
@@ -282,6 +299,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     }
     if (form.type === "transfer" && !form.transfer_account_id) {
       setError(t("transactions.form.errorSelectDestination"));
+      return;
+    }
+    if (crossCurrencyTransfer && !form.transfer_amount) {
+      setError(t("transactions.form.errorTransferAmount"));
       return;
     }
     if (form.type === "transfer" && form.transfer_account_id === form.account_id) {
@@ -338,6 +359,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             : null,
       transfer_account_id: form.type === "transfer" ? Number(form.transfer_account_id) : null,
       amount: form.amount,
+      // Только когда валюты счетов правда разные: у обычного перевода это
+      // была бы копия суммы, а копия однажды разойдётся с оригиналом.
+      transfer_amount: crossCurrencyTransfer ? form.transfer_amount : null,
       description: form.description.trim() || null,
       date: form.date,
       tag_ids: tags.map((tag) => tag.id),
@@ -636,6 +660,39 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                   </option>
                 ))}
             </Select>
+
+            {/* Вторая сумма — только между разными валютами.
+
+                Вывести её из курса ЦБ нельзя: банк меняет по своему курсу и
+                берёт свою комиссию, и сколько дошло — знает только выписка.
+                Поэтому оба числа переписываются оттуда, а приложение ничего
+                не додумывает: разница между ними и есть цена перевода. */}
+            {crossCurrencyTransfer && (
+              <div className="mt-3">
+                <Label htmlFor="transfer_amount">
+                  {t("transactions.form.transferAmountLabel", {
+                    currency: destinationAccount?.currency ?? "",
+                  })}
+                </Label>
+                <Input
+                  id="transfer_amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={form.transfer_amount}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, transfer_amount: event.target.value }))
+                  }
+                />
+                <p className="mt-1 text-xs text-text-muted">
+                  {t("transactions.form.transferAmountHint", {
+                    from: sourceAccount?.currency ?? "",
+                    to: destinationAccount?.currency ?? "",
+                  })}
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div>

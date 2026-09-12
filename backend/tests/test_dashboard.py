@@ -44,7 +44,9 @@ async def test_income_expense_and_net_only_count_the_selected_month(client: Asyn
 
 
 async def test_transfers_are_excluded_from_income_and_spent(client: AsyncClient, account_id, categories):
-    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "USD"})
+    # Обе карты в одной валюте: речь здесь про заработок и траты, а не про
+    # курсы, и вторая сумма перевода только мешала бы читать тест.
+    other = await client.post("/accounts", json={"name": "Savings", "kind": "savings", "currency": "RUB"})
     other_id = other.json()["id"]
     await client.post(
         "/transactions",

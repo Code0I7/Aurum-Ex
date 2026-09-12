@@ -139,11 +139,24 @@ async def _cash_cumulative_events(
             Transaction.account_id,
             Transaction.transfer_account_id,
             Transaction.is_excluded,
+            # Пришедшая сумма — тоже в валюте установки. Разница между
+            # сторонами после пересчёта и есть то, во что обошёлся перевод:
+            # курс банка и его комиссия. Это настоящая потеря, и капиталу
+            # положено её увидеть.
+            Transaction.transfer_amount_base,
         )
     )
 
     delta_by_date: dict[date_, Decimal] = defaultdict(Decimal)
-    for tx_date, tx_type, amount, account_id, transfer_account_id, is_excluded in txns_result.all():
+    for (
+        tx_date,
+        tx_type,
+        amount,
+        account_id,
+        transfer_account_id,
+        is_excluded,
+        transfer_amount_base,
+    ) in txns_result.all():
         if is_excluded:
             continue
         # Операция без курса на свою дату в итог не входит: раньше на её
@@ -159,7 +172,9 @@ async def _cash_cumulative_events(
             if account_id in cash_account_ids:
                 delta_by_date[tx_date] -= amount
             if transfer_account_id in cash_account_ids:
-                delta_by_date[tx_date] += amount
+                delta_by_date[tx_date] += (
+                    transfer_amount_base if transfer_amount_base is not None else amount
+                )
 
     # Начальные остатки — стартовая точка ряда: они были на счетах ещё до
     # первой записи.

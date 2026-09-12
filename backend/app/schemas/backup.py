@@ -97,6 +97,12 @@ class TransactionBackup(BaseModel):
     currency: str = "RUB"
     exchange_rate: Decimal | None = Decimal("1")
     amount_base: Decimal | None = None
+    # Вторая сторона перевода между валютами. Пусто в бэкапе, снятом до их
+    # появления, — и это верно: тогда перевод между разными валютами
+    # записать было нельзя.
+    transfer_amount: Decimal | None = None
+    transfer_currency: str | None = None
+    transfer_amount_base: Decimal | None = None
     participant_id: int | None = None
     store_id: int | None = None
     counterparty_id: int | None = None

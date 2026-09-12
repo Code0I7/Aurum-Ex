@@ -101,6 +101,14 @@ class TransactionFields(BaseModel):
     # признак живёт здесь, а не в Transaction.currency с его дефолтом.
     currency: str | None = Field(default=None, min_length=3, max_length=3)
 
+    # Сколько пришло на счёт получателя, в его валюте. Нужно и обязательно
+    # только для перевода между разными валютами: там «сколько ушло» и
+    # «сколько пришло» — два разных числа, и второе знает только банк.
+    # У перевода внутри одной валюты не указывается: там это одно и то же.
+    transfer_amount: Decimal | None = Field(
+        default=None, gt=0, max_digits=18, decimal_places=2
+    )
+
     # Измерения, все необязательные (см. models/transaction.py): комиссия
     # банка не относится ни к кому, у подписки нет магазина, а контрагент
     # осмыслен только для операций с внешними людьми.
@@ -194,6 +202,13 @@ class TransactionUpdate(BaseModel):
     # Пропущена -> валюта не меняется; передана -> курс и сумма в базовой
     # валюте пересчитываются (см. routes/transactions.py, _apply_currency).
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    # Сколько пришло на счёт получателя. Пропущена -> остаётся прежней;
+    # передана -> заменяет прежнюю и пересчитывается в валюту установки.
+    # У перевода внутри одной валюты снимается вовсе: там пришло ровно
+    # столько же, сколько ушло (см. routes/transactions.py).
+    transfer_amount: Decimal | None = Field(
+        default=None, gt=0, max_digits=18, decimal_places=2
+    )
     participant_id: int | None = None
     store_id: int | None = None
     counterparty_id: int | None = None
@@ -261,6 +276,11 @@ class TransactionRead(TransactionFields):
     # строки пометку: молчаливая единица на её месте выглядела бы обычным
     # числом.
     amount_base: Decimal | None = None
+    # Вторая сторона перевода между валютами: сколько пришло, в чём и
+    # сколько это в валюте установки. Пусто у обычного перевода — там
+    # пришло ровно столько же, сколько ушло.
+    transfer_currency: str | None = None
+    transfer_amount_base: Decimal | None = None
     description: str | None
 
     id: int

@@ -53,9 +53,19 @@ async def get_balances_by_account(session: AsyncSession) -> dict[int, Decimal]:
             Transaction.account_id,
             Transaction.transfer_account_id,
             Transaction.is_excluded,
+            # Сколько пришло на счёт получателя. Пусто у перевода внутри
+            # одной валюты — там это ровно та же сумма.
+            Transaction.transfer_amount,
         )
     )
-    for tx_type, amount, account_id, transfer_account_id, is_excluded in result.all():
+    for (
+        tx_type,
+        amount,
+        account_id,
+        transfer_account_id,
+        is_excluded,
+        transfer_amount,
+    ) in result.all():
         # Записи, помеченные "не учитывать", видны в истории, но на деньги
         # не влияют — возвращённый товар, отменённая операция.
         if is_excluded:
@@ -69,7 +79,13 @@ async def get_balances_by_account(session: AsyncSession) -> dict[int, Decimal]:
         elif tx_type == TransactionType.TRANSFER:
             balances[account_id] -= amount
             if transfer_account_id is not None:
-                balances[transfer_account_id] += amount
+                # Между валютами уходит одно, приходит другое: сто евро с
+                # евровой карты превращаются в те рубли, которые дал банк.
+                # Прибавить сюда отправленную сумму значило бы записать на
+                # рублёвую карту сто рублей.
+                balances[transfer_account_id] += (
+                    transfer_amount if transfer_amount is not None else amount
+                )
     return balances
 
 
@@ -227,7 +243,51 @@ async def _change_currency(session: AsyncSession, account: Account, currency: st
         transaction.exchange_rate = rate
         transaction.amount_base = amount_base
 
+    await _recurrency_incoming_transfers(session, account, previous, target)
     account.currency = target
+
+
+async def _recurrency_incoming_transfers(
+    session: AsyncSession, account: Account, previous: str, target: str
+) -> None:
+    """Переводы НА этот счёт — вторая половина смены валюты.
+
+    Перевод записан одной строкой, со стороны отправителя, и валюту
+    получателя несёт отдельное поле. Со счётом меняется и оно, иначе на
+    рублёвую карту, ставшую долларовой, продолжали бы приходить рубли.
+
+    Второй случай хитрее. Пока обе карты были в одной валюте, пришедшая
+    сумма не хранилась вовсе: она равнялась отправленной. После смены
+    валюты равенство перестаёт быть правдой — и что именно пришло, не знает
+    никто, включая приложение. Поэтому сумма записывается прежней, той же,
+    что и была: смена валюты обещает не трогать числа, а только подпись под
+    ними, и остаток счёта от неё не должен сдвинуться ни на копейку. Если
+    на самом деле пришло другое, это правится в самой операции — там для
+    того и появилось второе поле.
+    """
+    incoming = (
+        await session.execute(
+            select(Transaction).where(
+                Transaction.transfer_account_id == account.id,
+                Transaction.type == TransactionType.TRANSFER,
+            )
+        )
+    ).scalars().all()
+
+    for transaction in incoming:
+        stated = (transaction.transfer_currency or "").upper()
+        if stated == previous:
+            transaction.transfer_currency = target
+        elif not stated and transaction.currency.upper() != target:
+            # Раньше валюты совпадали, теперь нет: пришедшую сумму надо
+            # назвать явно, иначе её примут за отправленную.
+            transaction.transfer_currency = target
+            transaction.transfer_amount = transaction.amount
+        else:
+            continue
+        _, transaction.transfer_amount_base = await to_base(
+            session, transaction.transfer_amount, target, transaction.date
+        )
 
 
 async def update_account(session: AsyncSession, account_id: int, payload: AccountUpdate) -> AccountWithBalance:

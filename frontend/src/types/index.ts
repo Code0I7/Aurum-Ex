@@ -194,6 +194,15 @@ export interface Transaction {
   // пометка, а в итоги она не входит. Молчаливая единица на её месте
   // выглядела бы обычным числом.
   amount_base: string | null;
+  /**
+   * Вторая сторона перевода между разными валютами: сколько пришло на счёт
+   * получателя, в его валюте, и сколько это в валюте установки. Пусто у
+   * обычного перевода — там пришло ровно столько же, сколько ушло, и
+   * второе число было бы копией первого.
+   */
+  transfer_amount: string | null;
+  transfer_currency: string | null;
+  transfer_amount_base: string | null;
   // Необязательно: у большинства покупок сказать сверх категории нечего.
   description: string | null;
   merchant: string | null;
@@ -230,6 +239,9 @@ export interface TransactionPage {
 
 export interface TransactionInput {
   account_id: number;
+  /** Сколько пришло на счёт получателя, в его валюте. Обязательно для
+   *  перевода между разными валютами, не нужно во всех остальных случаях. */
+  transfer_amount?: string | null;
   category_id: number | null;
   transfer_account_id: number | null;
   type: TransactionType;

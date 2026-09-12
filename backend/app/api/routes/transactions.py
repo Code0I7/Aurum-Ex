@@ -417,6 +417,49 @@ async def list_transaction_years(session: AsyncSession = Depends(get_session)) -
     return list(range(min_date.year, max(max_date.year, current_year) + 1))
 
 
+async def _apply_transfer_currency(
+    session: AsyncSession, transaction: Transaction, transfer_amount: Decimal | None
+) -> None:
+    """Вторая сторона перевода: сколько пришло на счёт получателя.
+
+    Пока обе карты в одной валюте, второй суммы не существует — сколько
+    ушло, столько и пришло, — и все три колонки остаются пустыми. Хранить
+    одно число дважды значит однажды разойтись с самим собой.
+
+    Между валютами равенство ломается, и вывести пришедшую сумму из курса
+    ЦБ нельзя: банк меняет по своему курсу и берёт свою комиссию. Поэтому
+    она спрашивается, а не считается, и без неё операция не сохраняется —
+    подставить сюда что-нибудь значит выдумать сумму на чужом счёте.
+    """
+    if transaction.type is not TransactionType.TRANSFER or transaction.transfer_account_id is None:
+        transaction.transfer_amount = None
+        transaction.transfer_currency = None
+        transaction.transfer_amount_base = None
+        return
+
+    destination = await session.get(Account, transaction.transfer_account_id)
+    currency = destination.currency.upper() if destination is not None else transaction.currency
+    if currency == transaction.currency:
+        transaction.transfer_amount = None
+        transaction.transfer_currency = None
+        transaction.transfer_amount_base = None
+        return
+
+    if transfer_amount is None:
+        raise HTTPException(
+            status_code=400,
+            detail="transfer_amount is required when the accounts hold different currencies",
+        )
+
+    transaction.transfer_amount = transfer_amount
+    transaction.transfer_currency = currency
+    # Курс дня — для итогов в валюте установки. Разница между сторонами
+    # после пересчёта и есть то, во что обошёлся перевод.
+    _, transaction.transfer_amount_base = await to_base(
+        session, transfer_amount, currency, transaction.date
+    )
+
+
 async def _apply_currency(session: AsyncSession, transaction: Transaction, explicit_currency: str | None) -> None:
     """Заполняет валюту, курс и сумму в базовой валюте перед сохранением.
 
@@ -481,7 +524,7 @@ async def read_similar_transactions(
 @router.post("", response_model=TransactionRead, status_code=201)
 async def create_transaction(payload: TransactionCreate, session: AsyncSession = Depends(get_session)) -> Transaction:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    fields = payload.model_dump(exclude={"tag_ids", "splits", "items", "currency"})
+    fields = payload.model_dump(exclude={"tag_ids", "splits", "items", "currency", "transfer_amount"})
     transaction = Transaction(**fields)
     # Порядок внутри дня проставляется сам, по времени ввода: человеку не за
     # чем его набирать, а без него операции одного дня раскладываются
@@ -489,6 +532,7 @@ async def create_transaction(payload: TransactionCreate, session: AsyncSession =
     # этого не было (см. services/transaction_service.py).
     transaction.day_order = await next_day_order(session, transaction.date)
     await _apply_currency(session, transaction, payload.currency)
+    await _apply_transfer_currency(session, transaction, payload.transfer_amount)
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits:
         transaction.splits = await _build_splits(session, payload.splits, payload.type)
@@ -514,9 +558,12 @@ async def bulk_create_transactions(
 
     transactions = []
     for item in payload.items:
-        transaction = Transaction(**item.model_dump(exclude={"tag_ids", "splits", "items", "currency"}))
+        transaction = Transaction(
+            **item.model_dump(exclude={"tag_ids", "splits", "items", "currency", "transfer_amount"})
+        )
         transaction.day_order = await next_day_order(session, transaction.date)
         await _apply_currency(session, transaction, item.currency)
+        await _apply_transfer_currency(session, transaction, item.transfer_amount)
         transaction.tags = await _resolve_tags(session, item.tag_ids)
         if item.splits:
             transaction.splits = await _build_splits(session, item.splits, item.type)
@@ -546,7 +593,9 @@ async def update_transaction(
     )
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    updates = payload.model_dump(exclude_unset=True, exclude={"tag_ids", "splits", "items", "currency"})
+    updates = payload.model_dump(
+        exclude_unset=True, exclude={"tag_ids", "splits", "items", "currency", "transfer_amount"}
+    )
     # Checks run against the row as it would look after the patch, not just
     # the fields sent: switching type alone can invalidate fields left
     # untouched.
@@ -594,6 +643,21 @@ async def update_transaction(
     # дата": курс берётся на дату операции, поэтому сдвиг даты меняет и его.
     if {"amount", "date", "account_id"} & updates.keys() or payload.currency is not None:
         await _apply_currency(session, transaction, payload.currency)
+    # Вторая сторона пересчитывается шире: её меняет и смена счёта
+    # получателя, и смена типа операции — перевод, ставший расходом, свою
+    # вторую сумму теряет.
+    if (
+        {"amount", "date", "account_id", "transfer_account_id", "type"} & updates.keys()
+        or payload.currency is not None
+        or payload.transfer_amount is not None
+    ):
+        await _apply_transfer_currency(
+            session,
+            transaction,
+            payload.transfer_amount
+            if payload.transfer_amount is not None
+            else transaction.transfer_amount,
+        )
     if payload.tag_ids is not None:
         transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits is not None:
