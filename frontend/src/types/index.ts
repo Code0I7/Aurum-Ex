@@ -55,6 +55,10 @@ export interface Account {
 // a silent `undefined` at runtime.
 export interface AccountWithBalance extends Account {
   balance: string;
+  // Тот же остаток в валюте установки, по сегодняшнему курсу. У счёта в
+  // своей валюте совпадает с balance — так читающему не нужна отдельная
+  // ветка на «а вдруг валюта та же».
+  balance_base: string;
   // Отложено под цели и доступно к трате. Резерв НЕ уменьшает баланс:
   // деньги лежат там же, просто часть обещана другой задаче.
   reserved: string;
@@ -64,6 +68,10 @@ export interface AccountWithBalance extends Account {
 export interface AccountInput {
   name: string;
   kind: AccountKind;
+  // Валюта счёта. У счёта с операциями сервер её менять не даст: остаток
+  // складывается из сумм операций, а у каждой своя валюта, записанная при
+  // вводе.
+  currency: string;
 }
 
 export interface Category {
@@ -175,10 +183,11 @@ export interface Transaction {
   transfer_account_id: number | null;
   type: TransactionType;
   amount: string;
-  // Валюта операции и её сумма в базовой валюте по курсу на дату операции.
-  // Курс заморожен в записи: пересчёт по сегодняшнему курсу переписывал бы
-  // прошлое.
+  // Валюта операции и её сумма в валюте установки по курсу на дату
+  // операции. Курс заморожен в записи: пересчёт по сегодняшнему переписывал
+  // бы прошлое.
   currency: string;
+  amount_base: string;
   // Необязательно: у большинства покупок сказать сверх категории нечего.
   description: string | null;
   merchant: string | null;

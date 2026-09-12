@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Account, AccountKind } from "@/types";
 
@@ -14,10 +15,10 @@ interface AccountFormModalProps {
 
 const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "crypto", "loan", "other"];
 
-const EMPTY_FORM = { name: "", kind: "checking" as AccountKind };
+const EMPTY_FORM = { name: "", kind: "checking" as AccountKind, currency: "" };
 
 export function AccountFormModal({ open, onClose, account }: AccountFormModalProps) {
-  const { t } = useTranslation();
+  const { t, language, currency } = useTranslation();
   const createAccount = useCreateAccount();
   const updateAccount = useUpdateAccount();
 
@@ -26,7 +27,13 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
 
   useEffect(() => {
     if (!open) return;
-    setForm(account ? { name: account.name, kind: account.kind } : EMPTY_FORM);
+    // У нового счёта валюта установки: карта в своей валюте — обычный
+    // случай, а валютная заводится раз в несколько лет.
+    setForm(
+      account
+        ? { name: account.name, kind: account.kind, currency: account.currency }
+        : { ...EMPTY_FORM, currency }
+    );
     setError(null);
   }, [open, account]);
 
@@ -60,6 +67,28 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
             value={form.name}
             onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
           />
+        </div>
+
+        {/* Валюта счёта. Менять её у счёта с операциями сервер не даст:
+            баланс складывается из сумм операций, а у каждой своя валюта,
+            записанная при вводе, — смена задним числом превратила бы
+            остаток в сумму рублей с долларами. */}
+        <div>
+          <Label htmlFor="account-currency">{t("account.form.currencyLabel")}</Label>
+          <Select
+            id="account-currency"
+            value={form.currency}
+            onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}
+          >
+            {CURRENCIES.map((option) => (
+              <option key={option.code} value={option.code}>
+                {getCurrencyLabel(option.code, language)}
+              </option>
+            ))}
+          </Select>
+          {account && (
+            <p className="mt-1 text-xs text-text-muted">{t("account.form.currencyLockedHint")}</p>
+          )}
         </div>
 
         <div>

@@ -18,7 +18,7 @@ interface TransactionsTableProps {
 }
 
 export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: TransactionsTableProps) {
-  const { t } = useTranslation();
+  const { t, currency: base } = useTranslation();
   const { data: categories } = useCategories();
 
   if (items.length === 0) {
@@ -70,7 +70,14 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                 className={`shrink-0 text-sm font-medium tabular-nums ${amountColorClass(tx.type)}`}
               >
                 {amountSign(tx.type)}
-                {formatCurrency(tx.amount)}
+                {formatCurrency(tx.amount, tx.currency)}
+                {/* Вторым числом — сколько это в валюте установки, по курсу
+                    дня операции. Только у валютной операции. */}
+                {tx.currency !== base && (
+                  <span className="block text-xs font-normal text-text-muted">
+                    {formatCurrency(tx.amount_base, base)}
+                  </span>
+                )}
               </span>
 
               <span className="flex shrink-0 gap-1">

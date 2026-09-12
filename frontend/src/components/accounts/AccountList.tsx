@@ -24,7 +24,7 @@ const KIND_ICONS: Record<AccountKind, LucideIcon> = {
 };
 
 export function AccountList({ items, onEdit, onToggleArchived, onDelete }: AccountListProps) {
-  const { t } = useTranslation();
+  const { t, currency: base } = useTranslation();
 
   if (items.length === 0) {
     return <p className="py-10 text-center text-sm text-text-muted">{t("account.empty")}</p>;
@@ -60,7 +60,7 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
                 {reserved > 0 && (
                   <>
                     {" · "}
-                    {t("account.reservedShort", { amount: formatCurrency(reserved) })}
+                    {t("account.reservedShort", { amount: formatCurrency(reserved, account.currency) })}
                   </>
                 )}
               </span>
@@ -70,11 +70,24 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
                 className="block text-sm font-medium tabular-nums"
                 style={{ color: balance < 0 ? "var(--danger)" : "var(--text-primary)" }}
               >
-                {formatCurrency(balance)}
+                {formatCurrency(balance, account.currency)}
               </span>
+              {/* Второе число — тот же остаток в валюте установки, по
+                  сегодняшнему курсу. Показывается только у валютного счёта:
+                  у рублёвого это было бы то же самое число дважды.
+
+                  По сегодняшнему, а не по курсу дня операции: сто долларов
+                  на карте стоят столько, сколько стоят сейчас. Трата
+                  прошлого года так и осталась тратой прошлого года — это
+                  разные вопросы, и отвечают на них по-разному. */}
+              {account.currency !== base && (
+                <span className="block text-xs tabular-nums text-text-muted">
+                  ≈ {formatCurrency(account.balance_base, base)}
+                </span>
+              )}
               {reserved > 0 && (
                 <span className="block text-xs tabular-nums text-text-muted">
-                  {t("account.availableShort", { amount: formatCurrency(account.available) })}
+                  {t("account.availableShort", { amount: formatCurrency(account.available, account.currency) })}
                 </span>
               )}
             </span>

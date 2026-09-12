@@ -979,6 +979,8 @@ const ru = {
   "account.form.nameLabel": "Название",
   "account.form.namePlaceholder": "Основной счёт, накопления, наличные…",
   "account.form.typeLabel": "Тип",
+  "account.form.currencyLabel": "Валюта",
+  "account.form.currencyLockedHint": "Сменить можно, пока по счёту нет операций: остаток складывается из их сумм, и у каждой своя валюта, записанная при вводе.",
   "account.form.saveError": "Не удалось сохранить счёт. Проверьте данные и попробуйте снова.",
 
   "category.expenseSectionTitle": "Категории расходов",
@@ -2015,6 +2017,8 @@ const en: Record<keyof typeof ru, string> = {
   "account.form.nameLabel": "Name",
   "account.form.namePlaceholder": "Main account, savings, cash…",
   "account.form.typeLabel": "Type",
+  "account.form.currencyLabel": "Currency",
+  "account.form.currencyLockedHint": "Can be changed while the account has no transactions: the balance is summed from their amounts, and each keeps the currency it was entered in.",
   "account.form.saveError": "Failed to save the account. Check the data and try again.",
 
   "category.expenseSectionTitle": "Expense categories",

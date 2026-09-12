@@ -67,7 +67,7 @@ export function TransactionsGrid({
   dayDividers,
   chronological,
 }: TransactionsGridProps) {
-  const { t } = useTranslation();
+  const { t, currency: base } = useTranslation();
   const { data: categories } = useCategories();
   const { data: rates } = useHourlyRates();
   const { data: participants } = useParticipants();
@@ -314,6 +314,15 @@ export function TransactionsGrid({
           >
             {sign}
             {formatCurrency(amount, tx.currency)}
+            {/* Вторым числом — сколько это в валюте установки, по курсу дня
+                операции. Только у валютной: у своей это было бы одно и то же
+                число дважды. Одного первого мало — его не с чем сравнить в
+                списке; одного второго мало — оно врёт про ценник. */}
+            {tx.currency !== base && (
+              <span className="block text-xs font-normal text-text-muted">
+                {formatCurrency(tx.amount_base, base)}
+              </span>
+            )}
           </span>
         );
       }

@@ -8,7 +8,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
@@ -155,11 +155,44 @@ async def create_account(session: AsyncSession, payload: AccountCreate) -> Accou
     return _to_read(account, account.opening_balance or Decimal("0"))
 
 
+async def _refuse_currency_change(session: AsyncSession, account: Account, currency: str) -> None:
+    """Валюту счёта меняют, только пока по нему нет операций.
+
+    Баланс счёта складывается из сумм операций, а у каждой операции своя
+    валюта, записанная в момент ввода. Сменить валюту счёта задним числом
+    значит получить счёт, где к рублям прибавляются доллары как голые числа:
+    остаток станет неправильным молча, без единой ошибки на экране.
+
+    Пока операций нет, менять нечего и незачем запрещать: человек завёл
+    карту и тут же заметил, что выбрал не ту валюту.
+    """
+    if currency.upper() == account.currency.upper():
+        return
+
+    used = await session.scalar(
+        select(func.count())
+        .select_from(Transaction)
+        .where(
+            or_(
+                Transaction.account_id == account.id,
+                Transaction.transfer_account_id == account.id,
+            )
+        )
+    )
+    if used:
+        raise HTTPException(
+            status_code=400,
+            detail="Currency cannot change once the account has transactions",
+        )
+
+
 async def update_account(session: AsyncSession, account_id: int, payload: AccountUpdate) -> AccountWithBalance:
     account = await session.get(Account, account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
     changes = payload.model_dump(exclude_unset=True)
+    if changes.get("currency"):
+        await _refuse_currency_change(session, account, changes["currency"])
     # Смена вида счёта без явного указания природы переводит и природу —
     # иначе карта, ставшая кредитной, продолжила бы считаться активом.
     if "kind" in changes and "nature" not in changes:
