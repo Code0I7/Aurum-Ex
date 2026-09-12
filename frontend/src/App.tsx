@@ -47,7 +47,7 @@ export default function App() {
     // Слот главного действия объявлен выше и шапки, и страниц: шапка его
     // предоставляет, страница заполняет.
     <PageActionsProvider>
-    <div className="flex min-h-screen bg-surface-0">
+    <div className="flex min-h-[var(--app-vh)] bg-surface-0">
       <Sidebar
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed(!collapsed)}

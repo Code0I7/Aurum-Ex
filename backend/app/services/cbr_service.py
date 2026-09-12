@@ -188,23 +188,43 @@ async def sync_rates_for_date(session: AsyncSession, on_date: date_) -> int:
     rates = to_base_rates(quotes, await get_base_currency(session))
 
     existing = {
-        code
-        for (code,) in (
+        row.code: row
+        for row in (
             await session.execute(
-                select(ExchangeRate.code).where(
+                select(ExchangeRate).where(
                     ExchangeRate.rate_date == on_date, ExchangeRate.code.in_(known)
                 )
             )
-        ).all()
+        )
+        .scalars()
+        .all()
     }
 
     saved = 0
     for code in known:
         rate = rates.get(code)
-        if rate is None or code in existing:
+        if rate is None:
             continue
-        session.add(ExchangeRate(code=code, rate_date=on_date, rate=rate, published_for=published_for))
-        saved += 1
+        stored = existing.get(code)
+        if stored is None:
+            session.add(
+                ExchangeRate(code=code, rate_date=on_date, rate=rate, published_for=published_for)
+            )
+            saved += 1
+            continue
+        # Записанный курс переписывается ровно в одном случае: когда в
+        # прошлый раз сюда лёг курс предыдущего рабочего дня — ЦБ на эту
+        # дату ещё не опубликовал, источник отдал последний известный, — а
+        # теперь публикация появилась. Это не «переписать прошлое», а
+        # заменить временную подстановку настоящим значением.
+        #
+        # Всё остальное заморожено навсегда. Дата публикации неизвестна
+        # (старые записи) — значит, сравнивать не с чем, и запись не
+        # трогается: лучше оставить как есть, чем переписать наугад.
+        if stored.published_for is not None and published_for > stored.published_for:
+            stored.rate = rate
+            stored.published_for = published_for
+            saved += 1
 
     if saved:
         await session.commit()

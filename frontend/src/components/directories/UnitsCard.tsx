@@ -66,7 +66,7 @@ export function UnitsCard() {
       </CardHeader>
       <CardContent>
         {adding && (
-          <div className="mb-3 grid gap-1.5 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
+          <div className="mb-3 grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
             <Input
               value={draft.name}
               onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}

@@ -12,7 +12,10 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.models.currency import ExchangeRate
+from app.services import cbr_service
 from app.services.cbr_service import CbrUnavailable, parse_cbr_xml, to_base_rates
 
 # Фрагмент настоящего ответа ЦБ. Важны три вещи, которые здесь и
@@ -152,3 +155,58 @@ async def test_rouble_account_reports_the_same_number_twice(client: AsyncClient,
     rows = (await client.get("/accounts")).json()
     row = next(row for row in rows if row["id"] == account_id)
     assert row["balance"] == row["balance_base"]
+
+
+async def _stored_usd(session: AsyncSession) -> ExchangeRate:
+    rows = await session.execute(
+        select(ExchangeRate).where(
+            ExchangeRate.code == "USD", ExchangeRate.rate_date == date(2026, 9, 12)
+        )
+    )
+    return rows.scalar_one()
+
+
+async def test_a_stand_in_rate_is_replaced_once_the_bank_publishes(
+    session: AsyncSession, monkeypatch
+):
+    """ЦБ публикует не мгновенно, и запрос на сегодня до публикации отдаёт
+    курс последнего рабочего дня. Он и ложится в базу как курс на сегодня —
+    это правильно, пока настоящего нет. Но как только публикация появилась,
+    временная подстановка должна уступить ей место: иначе операция этого дня
+    навсегда останется посчитанной по вчерашнему курсу."""
+
+    async def before_publication(_on_date):
+        return {"USD": Decimal("84.35")}, date(2026, 9, 11)
+
+    async def after_publication(_on_date):
+        return {"USD": Decimal("84.25")}, date(2026, 9, 12)
+
+    monkeypatch.setattr(cbr_service, "fetch_rates", before_publication)
+    assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 1
+    assert (await _stored_usd(session)).published_for == date(2026, 9, 11)
+
+    monkeypatch.setattr(cbr_service, "fetch_rates", after_publication)
+    assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 1
+
+    stored = await _stored_usd(session)
+    assert stored.rate == Decimal("84.25")
+    assert stored.published_for == date(2026, 9, 12)
+
+
+async def test_a_published_rate_is_never_touched_again(session: AsyncSession, monkeypatch):
+    """Курс прошедшего дня не меняется никогда — вот он как раз заморожен.
+    Второе нажатие «обновить» ничего не переписывает и ничего не сохраняет."""
+
+    async def published(_on_date):
+        return {"USD": Decimal("84.25")}, date(2026, 9, 12)
+
+    async def nonsense(_on_date):
+        return {"USD": Decimal("99.99")}, date(2026, 9, 12)
+
+    monkeypatch.setattr(cbr_service, "fetch_rates", published)
+    assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 1
+
+    monkeypatch.setattr(cbr_service, "fetch_rates", nonsense)
+    assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 0
+
+    assert (await _stored_usd(session)).rate == Decimal("84.25")

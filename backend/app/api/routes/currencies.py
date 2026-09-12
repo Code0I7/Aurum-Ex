@@ -6,7 +6,7 @@
 Загрузка запускается, когда её результат кому-то понадобился.
 """
 from dataclasses import asdict
-from datetime import date as date_, timedelta
+from datetime import date as date_
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -27,12 +27,6 @@ from app.services.currency_service import (
 )
 
 router = APIRouter(prefix="/currencies", tags=["currencies"])
-
-# Сколько дней назад имеет смысл искать курс, если на сегодня его ещё нет.
-# Длинные новогодние праздники — самый долгий перерыв в публикации; десяти
-# дней хватает с запасом.
-MAX_LOOKBACK_DAYS = 10
-
 
 class CurrencyRead(BaseModel):
     code: str
@@ -119,36 +113,33 @@ async def sync_rates(
     on_date: date_ | None = Query(default=None, description="Дата курсов; по умолчанию сегодня"),
     session: AsyncSession = Depends(get_session),
 ) -> RateSyncResult:
-    """Загружает курсы с сайта ЦБ.
+    """Загружает курсы с сайта ЦБ на одну дату — и только на неё.
 
-    Если на запрошенную дату курсов нет — а по выходным и праздникам их не
-    публикуют, — отступаем назад по дням до последнего рабочего. Это не
-    обходной путь, а нормальный порядок: в выходные и действует курс
-    последнего рабочего дня.
+    По выходным и праздникам ЦБ не публикует ничего, и запрос на воскресенье
+    возвращает котировки пятницы. Это не обходной путь, а нормальный
+    порядок: в выходные и действует пятничный курс. Разбирается с этим сам
+    источник, отступать по дням здесь не нужно.
+
+    Раньше отступ был: если на дату ничего не сохранилось, запрос повторялся
+    за вчера, позавчера и дальше вглубь. Беда в том, что «ничего не
+    сохранилось» означало и «курс на эту дату уже есть»: второе нажатие в
+    тот же день уходило за вчера, третье за позавчера — и кнопка
+    «обновить» молча набирала историю задним числом. Со стороны это
+    выглядело так, будто курсы меняются сами. Для истории есть добор, и он
+    ходит ровно по тем датам, которым курса правда не хватает.
     """
     target = on_date or date_.today()
 
-    last_error: str | None = None
-    for offset in range(MAX_LOOKBACK_DAYS):
-        attempt = target - timedelta(days=offset)
-        try:
-            saved = await sync_rates_for_date(session, attempt)
-        except CbrUnavailable as error:
-            last_error = str(error)
-            break
-        if saved:
-            # Загруженные курсы сразу пускаются в дело: операции, которые
-            # ждали именно их, досчитываются тем же нажатием.
-            recomputed = await recompute_missing_base_amounts(session)
-            return RateSyncResult(
-                saved=saved, rate_date=attempt, message="ok", recomputed=recomputed
-            )
-
-    if last_error:
+    try:
+        saved = await sync_rates_for_date(session, target)
+    except CbrUnavailable as error:
         # 502, а не 500: сломалась внешняя система, а не приложение.
-        raise HTTPException(status_code=502, detail=last_error)
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
-    return RateSyncResult(saved=0, rate_date=target, message="Курсы уже загружены или валют для обновления нет")
+    # Загруженные курсы сразу пускаются в дело: операции, которые ждали
+    # именно их, досчитываются тем же нажатием.
+    recomputed = await recompute_missing_base_amounts(session)
+    return RateSyncResult(saved=saved, rate_date=target, message="ok", recomputed=recomputed)
 
 
 # Сколько дат добирать за одно нажатие. Каждая — отдельный поход на сайт ЦБ,

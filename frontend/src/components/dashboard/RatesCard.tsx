@@ -108,13 +108,15 @@ function RateRow({ row, language }: { row: CurrencyRate; language: Language }) {
         <span className="block text-sm font-medium tabular-nums">
           {row.rate === null ? t("dashboard.ratesUnknown") : formatRate(row.rate)}
         </span>
-        {/* Изменение без цвета намеренно. Зелёное и красное здесь означали
-            бы «хорошо» и «плохо», а выросший доллар — это плохо для того,
-            кто держит рубли, и хорошо для того, кто держит доллары. Одно и
-            то же число, два противоположных смысла: приложение не знает,
-            какой из них сейчас у человека, и выдумывать его не должно. */}
+        {/* Вверх зелёное, вниз красное — как в любом приложении, где
+            показывают курс. Значение у цвета здесь не «хорошо» и «плохо», а
+            направление: спорить с привычкой, сложившейся у всех остальных,
+            дороже, чем следовать ей. */}
         {change !== null && change !== 0 && (
-          <span className="block text-xs tabular-nums text-text-muted">
+          <span
+            className="block text-xs tabular-nums"
+            style={{ color: change > 0 ? "var(--success)" : "var(--danger)" }}
+          >
             {change > 0 ? "↑ +" : "↓ −"}
             {formatRate(Math.abs(change))}
           </span>

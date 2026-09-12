@@ -135,7 +135,14 @@ export function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobil
       {/* Desktop: persistent rail, collapsible between icon-only and full width. */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-surface-1 transition-[width] duration-150 lg:flex",
+          // Высота — видимая часть страницы, а не `h-screen`. `100vh`
+          // считается от экрана и про увеличение интерфейса не знает, а
+          // применяется внутри увеличенного корня: при 200% меню выходило
+          // вдвое выше экрана. Само оно прилипшее, поэтому нижние пункты и
+          // кнопка сворачивания оказывались за нижним краем, и добраться до
+          // них можно было, только прокрутив до конца страницу — на
+          // вкладке с сотней строк это далеко.
+          "sticky top-0 hidden h-[var(--app-vh)] shrink-0 flex-col border-r border-border bg-surface-1 transition-[width] duration-150 lg:flex",
           collapsed ? "w-[72px]" : "w-56"
         )}
       >

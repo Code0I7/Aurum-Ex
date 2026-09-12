@@ -67,7 +67,7 @@ export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mo
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface-0 px-4 py-8">
+    <div className="flex min-h-[var(--app-vh)] items-center justify-center bg-surface-0 px-4 py-8">
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col items-center gap-6 p-6 pt-8 sm:p-8">
           <div className="flex flex-col items-center gap-2.5 text-center">
