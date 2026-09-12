@@ -6,6 +6,10 @@ import type { CapitalRoleSummary } from "@/types";
 interface CapitalRoleSummaryCardProps {
   roles: CapitalRoleSummary[];
   isLoading: boolean;
+  /** Валюта этих чисел. Разрезы капитала считаются в той же валюте, что и
+   *  сам капитал, — а он бывает не только своей. Значок валюты установки
+   *  под долларовыми суммами был бы молчаливым враньём. */
+  currency: string;
 }
 
 function assetsCountLabel(count: number, language: Language): string {
@@ -13,7 +17,7 @@ function assetsCountLabel(count: number, language: Language): string {
   return count === 1 ? "asset" : "assets";
 }
 
-export function CapitalRoleSummaryCard({ roles, isLoading }: CapitalRoleSummaryCardProps) {
+export function CapitalRoleSummaryCard({ roles, isLoading, currency }: CapitalRoleSummaryCardProps) {
   const { t, language } = useTranslation();
 
   return (
@@ -35,7 +39,7 @@ export function CapitalRoleSummaryCard({ roles, isLoading }: CapitalRoleSummaryC
                     {t(`netWorth.capitalRole.${role.role}` as TranslationKey)}
                   </p>
                   <p className="mt-1.5 text-xl font-semibold tabular-nums text-text-primary">
-                    {formatCurrency(role.total_value)}
+                    {formatCurrency(role.total_value, currency)}
                   </p>
                   <p className="mt-1 text-xs text-text-muted">
                     {role.count} {assetsCountLabel(role.count, language)} ·{" "}
@@ -47,7 +51,7 @@ export function CapitalRoleSummaryCard({ roles, isLoading }: CapitalRoleSummaryC
                       style={{ color: cashFlow > 0 ? "var(--success)" : "var(--danger)" }}
                     >
                       {cashFlow > 0 ? "+" : ""}
-                      {formatCurrency(cashFlow)}
+                      {formatCurrency(cashFlow, currency)}
                       {t("common.perMonth")}
                     </p>
                   )}

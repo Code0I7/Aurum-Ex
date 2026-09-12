@@ -27,6 +27,9 @@ class CreditTermsWrite(BaseModel):
 class CreditTermsRead(CreditTermsWrite):
     account_id: int
     account_name: str
+    # Валюта счёта. Долг по долларовой карте — это доллары, и подписывать
+    # его значком валюты установки значит называть сумму неверно.
+    account_currency: str = ""
     # Долг положительным числом: баланс счёта отрицателен, но «должен 12 300»
     # читается легче, чем «баланс −12 300».
     debt: Decimal

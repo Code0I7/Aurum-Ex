@@ -81,7 +81,11 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
             <Cell label={t("investments.quantity")} value={holding.quantity} />
             <Cell
               label={t("investments.averageCost")}
-              value={holding.average_cost ? formatCurrency(holding.average_cost) : "—"}
+              value={
+                holding.average_cost
+                  ? formatCurrency(holding.average_cost, holding.currency)
+                  : "—"
+              }
             />
             <Cell
               label={t("investments.unrealised")}
@@ -201,7 +205,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                       {lot.acquired_on ? formatTransactionDate(lot.acquired_on, true) : "—"}
                     </span>
                     <span className="tabular-nums">
-                      {lot.quantity} × {formatCurrency(lot.cost_per_unit)}
+                      {lot.quantity} × {formatCurrency(lot.cost_per_unit, holding.currency)}
                     </span>
                   </li>
                 ))}
@@ -231,7 +235,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                         <li key={index}>
                           {t("investments.fromLot", {
                             quantity: lot.quantity,
-                            price: formatCurrency(lot.cost_per_unit),
+                            price: formatCurrency(lot.cost_per_unit, holding.currency),
                             date: lot.acquired_on ? formatTransactionDate(lot.acquired_on, true) : "—",
                           })}
                         </li>
@@ -250,11 +254,12 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                   <span className="min-w-0">
                     <span className="block text-text-secondary">
                       {t(`investments.${trade.side}` as never)} {trade.quantity} ×{" "}
-                      {formatCurrency(trade.price_per_unit)}
+                      {formatCurrency(trade.price_per_unit, holding.currency)}
                     </span>
                     <span className="block text-xs text-text-muted">
                       {formatTransactionDate(trade.trade_date, true)}
-                      {Number(trade.fee) > 0 && ` · ${t("investments.fee")} ${formatCurrency(trade.fee)}`}
+                      {Number(trade.fee) > 0 &&
+                        ` · ${t("investments.fee")} ${formatCurrency(trade.fee, holding.currency)}`}
                     </span>
                   </span>
                   <button

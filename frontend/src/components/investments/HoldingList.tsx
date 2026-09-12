@@ -45,7 +45,10 @@ export function HoldingList({ items, onOpen }: HoldingListProps) {
                   )}
                 </span>
                 <span className="block truncate text-xs text-text-muted">
-                  {holding.quantity} × {holding.average_cost ? formatCurrency(holding.average_cost) : "—"}
+                  {holding.quantity} ×{" "}
+                  {holding.average_cost
+                    ? formatCurrency(holding.average_cost, holding.currency)
+                    : "—"}
                   {realised !== 0 && ` · ${t("investments.realisedShort")} ${formatSignedCurrency(realised)}`}
                 </span>
               </span>
@@ -54,7 +57,9 @@ export function HoldingList({ items, onOpen }: HoldingListProps) {
                 {/* Прочерк, а не ноль: цена неизвестна — не значит, что актив
                     обесценился. */}
                 <span className="block text-sm font-medium tabular-nums">
-                  {holding.value === null ? "—" : formatCurrency(holding.value)}
+                  {/* В валюте самой бумаги: акция, купленная за доллары,
+                      стоит столько долларов. */}
+                  {holding.value === null ? "—" : formatCurrency(holding.value, holding.currency)}
                 </span>
                 {unrealised !== null && (
                   <span

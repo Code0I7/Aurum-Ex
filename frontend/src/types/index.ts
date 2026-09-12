@@ -339,6 +339,11 @@ export interface DashboardAccountBalance {
   account_id: number;
   name: string;
   balance: string;
+  // Валюта счёта и тот же остаток в валюте установки по сегодняшнему
+  // курсу. Остаток печатается в своей валюте, а пересчёт нужен для итога:
+  // сложить евро с рублями иначе нельзя.
+  currency: string;
+  balance_base: string;
   reserved: string;
   available: string;
   nature: AccountNature;
@@ -660,6 +665,8 @@ export interface SettlementSummary {
 export interface CreditTerms {
   account_id: number;
   account_name: string;
+  /** Валюта счёта: долг по долларовой карте — это доллары. */
+  account_currency: string;
   // Долг положительным числом — читается легче, чем «баланс −12 300».
   debt: string;
   annual_rate_percent: string | null;

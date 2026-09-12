@@ -34,7 +34,7 @@ export function CreditList({ items, onEdit }: CreditListProps) {
             <div className="min-w-0">
               <p className="truncate font-medium">{item.account_name}</p>
               <p className="mt-1 text-xl font-semibold tabular-nums text-danger">
-                {formatCurrency(item.debt)}
+                {formatCurrency(item.debt, item.account_currency)}
               </p>
             </div>
             <button
@@ -62,7 +62,8 @@ export function CreditList({ items, onEdit }: CreditListProps) {
               </div>
               <p className="mt-1.5 flex justify-between text-xs text-text-muted">
                 <span>
-                  {t("debts.available")}: {formatCurrency(item.available ?? "0")}
+                  {t("debts.available")}:{" "}
+                  {formatCurrency(item.available ?? "0", item.account_currency)}
                 </span>
                 <span className="tabular-nums">
                   {item.used_percent}% {t("debts.limit").toLowerCase()}
@@ -83,12 +84,18 @@ export function CreditList({ items, onEdit }: CreditListProps) {
             />
             <Row
               label={t("debts.minimumPayment")}
-              value={item.minimum_payment ? formatCurrency(item.minimum_payment) : null}
+              value={
+                item.minimum_payment
+                  ? formatCurrency(item.minimum_payment, item.account_currency)
+                  : null
+              }
             />
             <Row
               label={t("debts.monthlyInterest")}
               value={
-                item.estimated_monthly_interest ? `≈ ${formatCurrency(item.estimated_monthly_interest)}` : null
+                item.estimated_monthly_interest
+                  ? `≈ ${formatCurrency(item.estimated_monthly_interest, item.account_currency)}`
+                  : null
               }
               // Знак ≈ стоит не для красоты: это оценка, а не банковское число.
               muted

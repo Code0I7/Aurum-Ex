@@ -7,6 +7,10 @@ import type { NetWorthBreakdownItem } from "@/types";
 interface AssetAllocationCardProps {
   breakdown: NetWorthBreakdownItem[];
   isLoading: boolean;
+  /** Валюта этих чисел. Разрезы капитала считаются в той же валюте, что и
+   *  сам капитал, — а он бывает не только своей. Значок валюты установки
+   *  под долларовыми суммами был бы молчаливым враньём. */
+  currency: string;
 }
 
 // Breakdown items come from the backend with a machine-readable `key`
@@ -16,7 +20,7 @@ function breakdownLabelKey(key: string): TranslationKey {
   return `netWorth.assetClass.${key}` as TranslationKey;
 }
 
-export function AssetAllocationCard({ breakdown, isLoading }: AssetAllocationCardProps) {
+export function AssetAllocationCard({ breakdown, isLoading, currency }: AssetAllocationCardProps) {
   const { t } = useTranslation();
   const total = breakdown.reduce((sum, item) => sum + Number(item.amount), 0);
 
@@ -24,7 +28,7 @@ export function AssetAllocationCard({ breakdown, isLoading }: AssetAllocationCar
     <Card>
       <CardHeader>
         <CardTitle>
-          {t("netWorth.assetsTitlePrefix")} · {formatCurrency(total)}
+          {t("netWorth.assetsTitlePrefix")} · {formatCurrency(total, currency)}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -82,7 +86,7 @@ export function AssetAllocationCard({ breakdown, isLoading }: AssetAllocationCar
                       {item.percent.toFixed(0)}%
                     </span>
                     <span className="shrink-0 text-sm font-medium tabular-nums text-text-primary">
-                      {formatCurrency(item.amount)}
+                      {formatCurrency(item.amount, currency)}
                     </span>
                   </li>
                 );

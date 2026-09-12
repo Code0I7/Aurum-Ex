@@ -85,11 +85,26 @@ export function NetWorthPage() {
         onCurrencyChange={setCurrency}
       />
 
-      <AssetAllocationCard breakdown={summary?.breakdown ?? []} isLoading={isSummaryLoading} />
+      {/* Валюта берётся из ответа, а не из выбранного переключателя: пока
+          ответ не пришёл, выбранной может уже не быть той, в которой
+          посчитаны показанные числа. */}
+      <AssetAllocationCard
+        breakdown={summary?.breakdown ?? []}
+        isLoading={isSummaryLoading}
+        currency={summary?.currency ?? ""}
+      />
 
-      <CapitalRoleSummaryCard roles={summary?.capital_roles ?? []} isLoading={isSummaryLoading} />
+      <CapitalRoleSummaryCard
+        roles={summary?.capital_roles ?? []}
+        isLoading={isSummaryLoading}
+        currency={summary?.currency ?? ""}
+      />
 
-      <RiskAllocationCard riskLevels={summary?.risk_levels ?? []} isLoading={isSummaryLoading} />
+      <RiskAllocationCard
+        riskLevels={summary?.risk_levels ?? []}
+        isLoading={isSummaryLoading}
+        currency={summary?.currency ?? ""}
+      />
 
       <Card>
         <CardHeader>

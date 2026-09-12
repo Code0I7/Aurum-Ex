@@ -40,6 +40,12 @@ class AccountBalanceItem(BaseModel):
     account_id: int
     name: str
     balance: Decimal
+    # Валюта счёта и тот же остаток в валюте установки по сегодняшнему
+    # курсу. Без валюты обзор подписывал каждый остаток значком валюты
+    # установки: сто евро выглядели как сто рублей. Пересчёт нужен второй
+    # строкой и для итога сверху — сложить евро с рублями иначе нельзя.
+    currency: str = ""
+    balance_base: Decimal = Decimal("0")
     reserved: Decimal
     available: Decimal
     nature: str

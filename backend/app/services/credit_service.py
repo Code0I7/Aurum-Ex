@@ -79,6 +79,7 @@ def _build_read(account: Account, terms: CreditTerms, debt: Decimal) -> CreditTe
     return CreditTermsRead(
         account_id=account.id,
         account_name=account.name,
+        account_currency=account.currency,
         debt=quantize_money(debt),
         annual_rate_percent=terms.annual_rate_percent,
         credit_limit=terms.credit_limit,

@@ -25,7 +25,7 @@ export function AccountBalancesCard({
    *  своей строки, иначе рядом с соседкой у неё разный нижний край. */
   className?: string;
 }) {
-  const { t } = useTranslation();
+  const { t, currency: base } = useTranslation();
   const { data: reservations } = useReservations();
   // Быстрые деньги показываются здесь, а не только на вкладке капитала:
   // обзор открывают первым, и вопрос «сколько я могу потратить» задают
@@ -42,9 +42,13 @@ export function AccountBalancesCard({
     else byAccount.set(item.account_id, [item]);
   }
 
-  const total = accounts
-    .filter((account) => account.nature === "asset")
-    .reduce((sum, account) => sum + Number(account.balance), 0);
+  // Итог считается по пересчитанным остаткам: складывать евро с рублями
+  // как голые числа — ровно та ошибка, из-за которой сто евро выглядели
+  // как сто рублей. Знак «примерно» ставится, когда валют больше одной:
+  // пересчёт сделан по сегодняшнему курсу, а он завтра другой.
+  const assets = accounts.filter((account) => account.nature === "asset");
+  const total = assets.reduce((sum, account) => sum + Number(account.balance_base), 0);
+  const mixed = new Set(accounts.map((account) => account.currency)).size > 1;
 
   return (
     <Card className={className}>
@@ -54,7 +58,10 @@ export function AccountBalancesCard({
           <p className="mt-1 text-xs text-text-muted">{t("dashboard.accountsHint")}</p>
         </div>
         <span className="shrink-0 text-right">
-          <span className="block text-lg font-semibold tabular-nums">{formatCurrency(total)}</span>
+          <span className="block text-lg font-semibold tabular-nums">
+            {mixed && "≈ "}
+            {formatCurrency(total)}
+          </span>
           {netWorth && (
             <span className="block text-xs text-text-muted">
               {t("netWorth.liquid")}:{" "}
@@ -79,8 +86,8 @@ export function AccountBalancesCard({
                   {reserved > 0 && (
                     <span className="block text-xs text-text-muted">
                       {t("dashboard.reservedAvailable", {
-                        reserved: formatCurrency(reserved),
-                        available: formatCurrency(account.available),
+                        reserved: formatCurrency(reserved, account.currency),
+                        available: formatCurrency(account.available, account.currency),
                       })}
                     </span>
                   )}
@@ -89,13 +96,22 @@ export function AccountBalancesCard({
                   className="shrink-0 text-sm font-medium tabular-nums"
                   style={{ color: balance < 0 ? "var(--danger)" : "var(--text-primary)" }}
                 >
-                  {formatCurrency(balance)}
+                  {formatCurrency(balance, account.currency)}
+                  {/* Вторая строка — сколько это в валюте установки, по
+                      сегодняшнему курсу. Только у валютного счёта: у своего
+                      это было бы одно и то же число дважды. */}
+                  {account.currency !== base && (
+                    <span className="block text-xs font-normal text-text-muted">
+                      ≈ {formatCurrency(account.balance_base, base)}
+                    </span>
+                  )}
                 </span>
                 </div>
                 <AccountBar
                   balance={balance}
                   segments={byAccount.get(account.account_id) ?? []}
                   freeLabel={t("dashboard.freeSegment")}
+                  currency={account.currency}
                 />
               </li>
             );
@@ -129,10 +145,15 @@ function AccountBar({
   balance,
   segments,
   freeLabel,
+  // Валюта счёта. Отложенное лежит на нём же, в его валюте: подписать его
+  // значком валюты установки значило бы сказать, что на евровой карте
+  // отложены рубли.
+  currency,
 }: {
   balance: number;
   segments: AccountReservation[];
   freeLabel: string;
+  currency: string;
 }) {
   const [hover, setHover] = useState<{ label: string; amount: number; x: number; y: number } | null>(null);
 
@@ -185,14 +206,26 @@ function AccountBar({
           высотой в два пикселя это значит, что до подписи нужно ещё
           дождаться. Рамка та же, что у подсказок графиков: одно оформление
           на все всплывающие подписи. */}
-      {hover ? <BarTooltip {...hover} /> : null}
+      {hover ? <BarTooltip {...hover} currency={currency} /> : null}
     </>
   );
 }
 
 /** Подсказка у курсора. Рисуется порталом в body: полоса лежит в карточке
  *  со своим переполнением, и обычный absolute обрезался бы её краем. */
-function BarTooltip({ label, amount, x, y }: { label: string; amount: number; x: number; y: number }) {
+function BarTooltip({
+  label,
+  amount,
+  x,
+  y,
+  currency,
+}: {
+  label: string;
+  amount: number;
+  x: number;
+  y: number;
+  currency: string;
+}) {
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -231,7 +264,9 @@ function BarTooltip({ label, amount, x, y }: { label: string; amount: number; x:
     >
       <ChartTooltipBox className="whitespace-nowrap text-xs">
         <p className="text-text-muted">{label}</p>
-        <p className="font-medium tabular-nums text-text-primary">{formatCurrency(amount)}</p>
+        <p className="font-medium tabular-nums text-text-primary">
+          {formatCurrency(amount, currency)}
+        </p>
       </ChartTooltipBox>
     </div>,
     document.body

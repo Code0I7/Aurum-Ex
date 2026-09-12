@@ -32,7 +32,7 @@ from app.schemas.dashboard import (
 )
 from app.services.account_service import get_balances_by_account
 from app.services.cash_flow_service import get_cash_flow
-from app.services.currency_service import quantize_money
+from app.services.currency_service import convert_balance, get_current_rates, quantize_money
 from app.services.hourly_service import elapsed_hours
 from app.services.category_rollup import rollup_spending_by_top_level_category
 from app.services.settlement_service import get_reserved_by_account
@@ -94,6 +94,10 @@ async def _period_bounds(
 async def _accounts_block(session: AsyncSession) -> list[AccountBalanceItem]:
     balances = await get_balances_by_account(session)
     reserved_by_account = await get_reserved_by_account(session)
+    # Остаток переоценивается по СЕГОДНЯШНЕМУ курсу, в отличие от операций,
+    # где курс заморожен на дату: полтинник долларов на счёте стоит
+    # столько, сколько стоит сейчас (см. services/currency_service.py).
+    rates = await get_current_rates(session)
     accounts = (
         (await session.execute(select(Account).where(Account.is_archived.is_(False)).order_by(Account.name)))
         .scalars()
@@ -108,6 +112,8 @@ async def _accounts_block(session: AsyncSession) -> list[AccountBalanceItem]:
                 account_id=account.id,
                 name=account.name,
                 balance=balance,
+                currency=account.currency,
+                balance_base=convert_balance(balance, account.currency, rates),
                 reserved=reserved,
                 # Резерв не уменьшает баланс: деньги лежат там же, просто
                 # часть обещана цели.
@@ -116,8 +122,10 @@ async def _accounts_block(session: AsyncSession) -> list[AccountBalanceItem]:
             )
         )
     # Сначала счета с деньгами: пустые и кредитные внизу, потому что вопрос
-    # «где мои деньги» задают про первые.
-    return sorted(items, key=lambda item: -item.balance)
+    # «где мои деньги» задают про первые. Сортировка по пересчитанному
+    # остатку, а не по своему: иначе счёт со ста долларами оказывался ниже
+    # счёта с тысячей рублей просто потому, что сто меньше тысячи.
+    return sorted(items, key=lambda item: -item.balance_base)
 
 
 async def _hourly_block(

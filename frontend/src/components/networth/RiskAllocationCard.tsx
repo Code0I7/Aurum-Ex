@@ -6,9 +6,13 @@ import type { RiskLevelSummary } from "@/types";
 interface RiskAllocationCardProps {
   riskLevels: RiskLevelSummary[];
   isLoading: boolean;
+  /** Валюта этих чисел. Разрезы капитала считаются в той же валюте, что и
+   *  сам капитал, — а он бывает не только своей. Значок валюты установки
+   *  под долларовыми суммами был бы молчаливым враньём. */
+  currency: string;
 }
 
-export function RiskAllocationCard({ riskLevels, isLoading }: RiskAllocationCardProps) {
+export function RiskAllocationCard({ riskLevels, isLoading, currency }: RiskAllocationCardProps) {
   const { t } = useTranslation();
 
   return (
@@ -28,7 +32,7 @@ export function RiskAllocationCard({ riskLevels, isLoading }: RiskAllocationCard
                   {t(`netWorth.riskLevel.${tier.risk_level}` as TranslationKey)}
                 </p>
                 <p className="mt-1.5 text-xl font-semibold tabular-nums text-text-primary">
-                  {formatCurrency(tier.total_value)}
+                  {formatCurrency(tier.total_value, currency)}
                 </p>
                 <p className="mt-1 text-xs text-text-muted">{tier.percent.toFixed(0)}% {t("netWorth.riskAllocationOfCapital")}</p>
 
