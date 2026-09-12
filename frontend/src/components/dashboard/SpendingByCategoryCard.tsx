@@ -51,7 +51,15 @@ export function SpendingByCategoryCard({ items, className }: SpendingByCategoryC
         {!hasData ? (
           <p className="py-10 text-center text-sm text-text-muted">{t("dashboard.noExpensesThisMonth")}</p>
         ) : (
-          <div className="chart-palette flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+          /* Круг и список встают в ряд по ширине САМОЙ карточки, а не
+             экрана. Ширина экрана отвечала не на тот вопрос: при
+             увеличенном интерфейсе колонка обзора становится узкой, а сам
+             экран по меркам вёрстки остаётся широким — круг в 256 точек и
+             список рядом переставали помещаться и вылезали на соседнюю
+             карточку. Порог — та ширина, при которой списку остаётся хотя
+             бы двести точек на название и сумму. */
+          <div className="@container">
+            <div className="chart-palette flex flex-col items-center gap-6 @lg:flex-row @lg:items-center">
             <div className="h-56 w-56 shrink-0 sm:h-64 sm:w-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -113,6 +121,7 @@ export function SpendingByCategoryCard({ items, className }: SpendingByCategoryC
                 );
               })}
             </ul>
+          </div>
           </div>
         )}
       </CardContent>

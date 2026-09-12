@@ -214,20 +214,22 @@ export function DashboardPage() {
           />
         </div>
 
+        {/* h-full у каждой: сетка растягивает ячейку, но карточка внутри
+            остаётся своей высоты, и нижние края в строке расходятся. */}
         <div className="order-2 lg:col-start-2 lg:row-start-1">
-          <AccountBalancesCard accounts={data?.accounts ?? []} />
+          <AccountBalancesCard accounts={data?.accounts ?? []} className="lg:h-full" />
         </div>
 
         <div className="order-3 lg:col-start-2 lg:row-start-2">
-          <RatesCard />
+          <RatesCard className="lg:h-full" />
         </div>
 
         <div className="order-4 lg:col-start-1 lg:row-start-3">
-          <RecentTransactionsCard year={year} month={month} />
+          <RecentTransactionsCard year={year} month={month} className="lg:h-full" />
         </div>
 
         <div className="order-5 lg:col-start-2 lg:row-start-3">
-          <LargestExpensesCard items={data?.largest_expenses ?? []} />
+          <LargestExpensesCard items={data?.largest_expenses ?? []} className="lg:h-full" />
         </div>
       </div>
     </div>

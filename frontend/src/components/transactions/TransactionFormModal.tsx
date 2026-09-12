@@ -686,10 +686,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                   }
                 />
                 <p className="mt-1 text-xs text-text-muted">
-                  {t("transactions.form.transferAmountHint", {
-                    from: sourceAccount?.currency ?? "",
-                    to: destinationAccount?.currency ?? "",
-                  })}
+                  {t("transactions.form.transferAmountHint")}
                 </p>
               </div>
             )}

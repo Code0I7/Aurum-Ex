@@ -11,15 +11,18 @@ import { useCategories } from "@/hooks/useCategories";
 interface RecentTransactionsCardProps {
   year: number;
   month: number;
+  /** Высота задаётся снаружи: в сетке обзора карточка тянется до низа
+   *  своей строки, иначе рядом с соседкой у неё разный нижний край. */
+  className?: string;
 }
 
-export function RecentTransactionsCard({ year, month }: RecentTransactionsCardProps) {
+export function RecentTransactionsCard({ year, month, className }: RecentTransactionsCardProps) {
   const { t } = useTranslation();
   const { data, isLoading } = useTransactions({ year, month, page: 1, page_size: 6 });
   const { data: categories } = useCategories();
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>{t("dashboard.recentTransactionsTitle")}</CardTitle>
         <Link

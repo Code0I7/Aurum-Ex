@@ -16,7 +16,15 @@ import type { AccountReservation, DashboardAccountBalance } from "@/types";
  * не зависит, и подменять ответ остатком на конец марта значило бы врать
  * ровно тому, кто открыл дашборд, чтобы понять, сколько у него денег.
  */
-export function AccountBalancesCard({ accounts }: { accounts: DashboardAccountBalance[] }) {
+export function AccountBalancesCard({
+  accounts,
+  className,
+}: {
+  accounts: DashboardAccountBalance[];
+  /** Высота задаётся снаружи: в сетке обзора карточка тянется до низа
+   *  своей строки, иначе рядом с соседкой у неё разный нижний край. */
+  className?: string;
+}) {
   const { t } = useTranslation();
   const { data: reservations } = useReservations();
   // Быстрые деньги показываются здесь, а не только на вкладке капитала:
@@ -39,7 +47,7 @@ export function AccountBalancesCard({ accounts }: { accounts: DashboardAccountBa
     .reduce((sum, account) => sum + Number(account.balance), 0);
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="items-start">
         <div>
           <CardTitle>{t("dashboard.accountsTitle")}</CardTitle>

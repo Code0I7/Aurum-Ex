@@ -18,7 +18,11 @@ import type { CurrencyRate } from "@/types";
  * правила: операция заморожена по курсу своего дня, а «сколько стоит
  * доллар» — вопрос про сейчас.
  */
-export function RatesCard() {
+export function RatesCard({ className }: {
+  /** Высота задаётся снаружи: в сетке обзора карточка тянется до низа
+   *  своей строки, иначе рядом с соседкой у неё разный нижний край. */
+  className?: string;
+}) {
   const { t, language } = useTranslation();
   const { data: rates, isLoading } = useRates();
   const sync = useSyncRates();
@@ -33,7 +37,7 @@ export function RatesCard() {
     .at(-1);
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="items-start">
         <div className="min-w-0">
           <CardTitle>{t("dashboard.ratesTitle")}</CardTitle>

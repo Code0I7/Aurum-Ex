@@ -12,12 +12,20 @@ import type { LargestExpense } from "@/types";
  * отвечает «на что вообще», а этот список — «из-за чего именно в этом
  * месяце».
  */
-export function LargestExpensesCard({ items }: { items: LargestExpense[] }) {
+export function LargestExpensesCard({
+  items,
+  className,
+}: {
+  items: LargestExpense[];
+  /** Высота задаётся снаружи: в сетке обзора карточка тянется до низа
+   *  своей строки, иначе рядом с соседкой у неё разный нижний край. */
+  className?: string;
+}) {
   const { t } = useTranslation();
   const { data: rates } = useHourlyRates();
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>{t("dashboard.largestTitle")}</CardTitle>
       </CardHeader>
