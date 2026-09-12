@@ -78,6 +78,13 @@ class TransitPersonRead(BaseModel):
     # Плюс — его деньги ещё у вас, минус — вы вложили свои. Не долг.
     balance: str
     operations: int
+    # Операции с этим человеком шли больше чем в одной валюте.
+    #
+    # Итог посчитан в валюте установки, по курсу дня каждой операции, и это
+    # верно в смысле «сколько я в него вложил». Но заняв сто евро, ждут
+    # обратно сто евро, а не то, сколько они стоили в тот вторник, — и об
+    # этом расхождении лучше сказать, чем показать одно число молча.
+    mixed_currencies: bool = False
 
 
 @router.get("", response_model=list[SettlementRead])
@@ -92,6 +99,7 @@ async def list_settlements(session: AsyncSession = Depends(get_session)) -> list
             owed_by_me=_money(-min(item.balance, 0)),
             balance=_money(item.balance),
             operations=item.operations,
+            mixed_currencies=item.mixed_currencies,
             last_date=item.last_date,
         )
         for item in await get_settlements(session)

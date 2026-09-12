@@ -93,6 +93,8 @@ const ru = {
   "debts.given": "Передано",
   "debts.operations": "Операций",
   "debts.lastOperation": "Последняя",
+  "debts.mixedCurrencies":
+    "В этом итоге сложены операции в разных валютах. Каждая переведена по курсу своего дня — это верно в смысле «сколько всего прошло», — но занятое в чужой валюте обычно и возвращают в ней же, а такой долг приложение отдельно пока не ведёт.",
   "debts.settled": "Рассчитались",
   "debts.noPeople": "Расчётов с людьми пока нет. Отметьте операцию как заём или подарок — и человек появится здесь.",
   "debts.noCredits": "Кредитов нет. Заведите счёт-обязательство — кредитную карту или рассрочку — и задайте условия.",
@@ -1172,6 +1174,8 @@ const en: Record<keyof typeof ru, string> = {
   "debts.given": "Given",
   "debts.operations": "Operations",
   "debts.lastOperation": "Last",
+  "debts.mixedCurrencies":
+    "This total adds up operations in more than one currency. Each is converted at the rate of its own day — correct for “how much went through” — but money lent in another currency is usually repaid in that currency, and such a debt is not tracked separately yet.",
   "debts.settled": "Settled",
   "debts.noPeople": "No settlements yet. Mark a movement as a loan or a gift and the person will appear here.",
   "debts.noCredits": "No credits. Create a liability account — a credit card or an instalment plan — and set its terms.",

@@ -45,6 +45,22 @@ class SettlementTotals:
         self.owed_by_me = Decimal("0")
         self.last_date = None
         self.operations = 0
+        # Валюты, в которых шли операции с этим человеком.
+        #
+        # Итоги считаются в валюте установки, по курсу дня каждой операции,
+        # и это верно в смысле «сколько я в него вложил». Но если занимали
+        # в чужой валюте, вопрос другой: заняв сто евро, ждут обратно сто
+        # евро, а не то, сколько они стоили в тот вторник.
+        #
+        # Разделить долг по валютам — отдельная и немаленькая работа, и
+        # начинать её ради случая, которого может не быть, незачем. Поэтому
+        # пока честная пометка: тут сложены разные валюты, число приблизи-
+        # тельное. Появится настоящий случай — сделаем как надо.
+        self.currencies: set[str] = set()
+
+    @property
+    def mixed_currencies(self) -> bool:
+        return len(self.currencies) > 1
 
     @property
     def balance(self) -> Decimal:
@@ -68,6 +84,7 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
                 Transaction.settlement_kind,
                 Transaction.amount_base,
                 Transaction.date,
+                Transaction.currency,
             ).where(
                 Transaction.counterparty_id.is_not(None),
                 Transaction.type.in_([TransactionType.EXTERNAL_IN, TransactionType.EXTERNAL_OUT]),
@@ -82,7 +99,7 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
     }
 
     totals: dict[int, SettlementTotals] = {}
-    for counterparty_id, tx_type, settlement, amount, tx_date in rows:
+    for counterparty_id, tx_type, settlement, amount, tx_date, currency in rows:
         party = counterparties.get(counterparty_id)
         if party is None:
             continue
@@ -107,6 +124,11 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
             continue
         entry = totals.setdefault(counterparty_id, SettlementTotals(party))
         entry.operations += 1
+        # Валюта операции — для пометки о смешанном итоге. Считается после
+        # отсева транзита: он в расчёты не входит вовсе, и его валюта в
+        # итоге не участвует.
+        if currency:
+            entry.currencies.add(currency.upper())
         if entry.last_date is None or tx_date > entry.last_date:
             entry.last_date = tx_date
 

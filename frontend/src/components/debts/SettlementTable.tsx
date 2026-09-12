@@ -77,7 +77,7 @@ export function SettlementTable({ items, transit = [] }: SettlementTableProps) {
                   {item.last_date ? formatTransactionDate(item.last_date, true) : "—"}
                 </td>
                 <td className="py-2.5 pl-3 text-right">
-                  <BalanceCell balance={item.balance} />
+                  <BalanceCell balance={item.balance} mixed={item.mixed_currencies} />
                 </td>
               </tr>
             ))}
@@ -107,7 +107,7 @@ export function SettlementTable({ items, transit = [] }: SettlementTableProps) {
                 </p>
               )}
             </div>
-            <BalanceCell balance={item.balance} />
+            <BalanceCell balance={item.balance} mixed={item.mixed_currencies} />
           </li>
         ))}
       </ul>
@@ -120,7 +120,7 @@ export function SettlementTable({ items, transit = [] }: SettlementTableProps) {
  * подписывается словом: «рассчитались» — это результат, а не отсутствие
  * данных, и цифра 0,00 ₽ читалась бы как пустая строка.
  */
-function BalanceCell({ balance }: { balance: string }) {
+function BalanceCell({ balance, mixed }: { balance: string; mixed: boolean }) {
   const { t } = useTranslation();
   const value = Number(balance);
 
@@ -134,6 +134,16 @@ function BalanceCell({ balance }: { balance: string }) {
         value > 0 ? "text-success" : "text-danger"
       }`}
     >
+      {/* Звёздочка, когда в итоге сложены разные валюты. Число посчитано
+          по курсу дня каждой операции — это верно в смысле «сколько я
+          вложил», — но заняв сто евро, ждут обратно сто евро, а не то,
+          сколько они стоили в тот вторник. Промолчать здесь значило бы
+          выдать оценку за точную сумму. */}
+      {mixed && (
+        <span className="mr-0.5 font-normal text-text-muted" title={t("debts.mixedCurrencies")}>
+          ≈
+        </span>
+      )}
       {formatCurrency(Math.abs(value))}
     </span>
   );

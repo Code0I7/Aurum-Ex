@@ -53,6 +53,7 @@ from app.schemas.product import (
     ProductRead,
     ProductUpdate,
 )
+from app.services.currency_service import get_base_currency
 from app.services.transaction_service import counted_only
 
 
@@ -105,6 +106,37 @@ def price_per_base_unit(
     if amount is None or base is None:
         return None
     return amount / base
+
+
+def amount_in_base(
+    amount: Decimal | None,
+    currency: str | None,
+    exchange_rate: Decimal | None,
+    base: str,
+) -> Decimal | None:
+    """Сумма позиции чека в валюте установки, по курсу дня покупки.
+
+    Цена — событие: сколько отдали в тот день. События переводятся один раз,
+    курсом своего дня, и после этого сравнимы между собой — на этом и стоит
+    кривая цены. Без перевода покупка за евро легла бы на рублёвую кривую
+    своим числом, и «сыр подешевел втрое» означало бы только то, что в тот
+    раз платили не рублями.
+
+    Тем же и отличается от единиц измерения, где линии разводятся по видам:
+    килограммы с литрами несравнимы в принципе, а валюты сравнимы — на то и
+    курс.
+
+    None — курса на тот день нет. Такая покупка на кривую не попадает, как
+    не попадает покупка без количества: выдумать курс хуже, чем пропустить
+    точку.
+    """
+    if amount is None:
+        return None
+    if not currency or currency.upper() == base:
+        return amount
+    if exchange_rate is None:
+        return None
+    return amount * exchange_rate
 
 
 @dataclass
@@ -163,6 +195,9 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
                 TransactionItem.product_id,
                 Transaction.date,
                 TransactionItem.amount,
+                # Валюта покупки и её курс на тот день — см. amount_in_base.
+                Transaction.currency,
+                Transaction.exchange_rate,
                 TransactionItem.quantity,
                 TransactionItem.unit_id,
                 Unit.factor,
@@ -183,12 +218,15 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
     # Скользящий год, а не календарный: в январе календарный показывал бы
     # траты за две недели и выглядел бы падением там, где его нет.
     year_ago = date_.today() - timedelta(days=365)
+    base = (await get_base_currency(session)).upper()
 
     stats: dict[int, ProductStats] = defaultdict(ProductStats)
     for (
         product_id,
         tx_date,
-        amount,
+        raw_amount,
+        currency,
+        exchange_rate,
         quantity,
         unit_id,
         factor,
@@ -219,13 +257,18 @@ async def _product_stats(session: AsyncSession) -> dict[int, ProductStats]:
             item.last_pack_unit_id = pack_unit_id
             normalised = pack_size * (pack_factor if pack_factor and pack_factor > 0 else Decimal("1"))
             item.pack_sizes.append(normalised)
+        # Сумма приводится к валюте установки по курсу дня покупки: и
+        # цена, и потраченное за год складываются из покупок, а сложить их
+        # можно только приведёнными (см. amount_in_base).
+        amount = amount_in_base(raw_amount, currency, exchange_rate, base)
         price = price_per_base_unit(amount, quantity, factor, pack_size, pack_factor)
         if price is not None:
             item.last_price = price
             item.last_price_kind = measured_kind(unit_kind, pack_kind)
         # Сумма позиции бывает не заполнена: в чеке её могли не разносить
         # по строкам вовсе. Такая покупка считается фактом покупки, но
-        # деньгами не считается — придумывать их за человека нельзя.
+        # деньгами не считается — придумывать их за человека нельзя. Сюда
+        # же попадает покупка в чужой валюте без курса на её день.
         if amount is not None:
             item.spent_total += amount
             if tx_date >= year_ago:
@@ -350,6 +393,9 @@ async def get_price_history(session: AsyncSession, product_id: int) -> ProductPr
                 Transaction.id,
                 Transaction.date,
                 TransactionItem.amount,
+                # Валюта покупки и её курс на тот день — см. amount_in_base.
+                Transaction.currency,
+                Transaction.exchange_rate,
                 TransactionItem.quantity,
                 Unit.name,
                 Unit.factor,
@@ -372,12 +418,15 @@ async def get_price_history(session: AsyncSession, product_id: int) -> ProductPr
     # По одной кривой на меру. Складывать штуки с килограммами нельзя: это
     # разные величины, и общий график из них показывал обвал цены там, где
     # человек просто записал покупку иначе.
+    base = (await get_base_currency(session)).upper()
     by_kind: dict[object, list[PricePoint]] = defaultdict(list)
     unmeasured = 0
     for (
         transaction_id,
         tx_date,
-        amount,
+        raw_amount,
+        currency,
+        exchange_rate,
         quantity,
         unit_name,
         factor,
@@ -388,9 +437,12 @@ async def get_price_history(session: AsyncSession, product_id: int) -> ProductPr
         pack_kind,
         store_name,
     ) in rows:
+        amount = amount_in_base(raw_amount, currency, exchange_rate, base)
         price = price_per_base_unit(amount, quantity, factor, pack_size, pack_factor)
         if price is None:
-            # Позиция без цены или количества — воспоминание, а не измерение.
+            # Позиция без цены или количества — воспоминание, а не
+            # измерение. Сюда же попадает покупка в чужой валюте, курса на
+            # день которой нет: сравнивать её не с чем.
             unmeasured += 1
             continue
         by_kind[measured_kind(unit_kind, pack_kind)].append(
