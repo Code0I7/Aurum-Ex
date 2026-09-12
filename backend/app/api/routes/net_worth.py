@@ -21,6 +21,9 @@ async def read_net_worth_summary(
     range: str = Query(default="30d", pattern=_RANGE_PATTERN),
     start_date: date_ | None = Query(default=None),
     end_date: date_ | None = Query(default=None),
+    # Валюта, в которой считать. Не указана — своя. Капитал не
+    # переводится, поэтому это выбор «что смотрю», а не «в чём показать».
+    currency: str | None = Query(default=None, min_length=3, max_length=3),
     session: AsyncSession = Depends(get_session),
 ) -> NetWorthSummary:
     """Готовый период или свой.
@@ -29,4 +32,4 @@ async def read_net_worth_summary(
     остаётся в ответе как «custom» — интерфейсу нужно знать, что выбрано,
     чтобы не подсвечивать чужую кнопку.
     """
-    return await get_net_worth_summary(session, range, start_date, end_date)
+    return await get_net_worth_summary(session, range, start_date, end_date, currency)

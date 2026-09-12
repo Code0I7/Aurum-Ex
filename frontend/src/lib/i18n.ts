@@ -519,6 +519,8 @@ const ru = {
   "dashboard.noTransactionsYet": "Транзакций пока нет.",
 
   "netWorth.asOf": "на {{date}}",
+  "netWorth.inOtherCurrencies": "в других валютах",
+  "netWorth.totalEverything": "всего",
   "netWorth.liquid": "Быстрые деньги",
   "netWorth.personalUseShort": "Личное имущество",
   "netWorth.personalUse": "Личное пользование",
@@ -1591,6 +1593,8 @@ const en: Record<keyof typeof ru, string> = {
   "dashboard.noTransactionsYet": "No transactions yet.",
 
   "netWorth.asOf": "as of {{date}}",
+  "netWorth.inOtherCurrencies": "in other currencies",
+  "netWorth.totalEverything": "everything",
   "netWorth.liquid": "Liquid",
   "netWorth.personalUseShort": "Personal property",
   "netWorth.personalUse": "Personal use",

@@ -21,6 +21,9 @@ interface NetWorthChartProps {
   years: number[];
   customRange: CustomYearRange;
   onCustomRangeChange: (range: CustomYearRange) => void;
+  // Валюта, в которой смотрят капитал. Пусто — своя: подставит сервер.
+  currency: string;
+  onCurrencyChange: (currency: string) => void;
 }
 
 function formatAxisDate(iso: string): string {
@@ -49,13 +52,24 @@ function computeYearTicks(dates: string[]): string[] {
   return ticks;
 }
 
-function ChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { date: string; value: number } }> }) {
+function ChartTooltip({
+  active,
+  payload,
+  // Валюта кривой. Без неё подсказка подписывала бы долларовый капитал
+  // значком валюты установки — то самое молчаливое враньё, ради ухода от
+  // которого кривая и считается в одной валюте.
+  currency,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { date: string; value: number } }>;
+  currency?: string;
+}) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
     <ChartTooltipBox>
       <p className="text-text-muted">{formatAxisDate(point.date)}</p>
-      <p className="font-medium text-text-primary">{formatCurrency(point.value)}</p>
+      <p className="font-medium text-text-primary">{formatCurrency(point.value, currency)}</p>
     </ChartTooltipBox>
   );
 }
@@ -68,8 +82,14 @@ export function NetWorthChart({
   years,
   customRange,
   onCustomRangeChange,
+  currency,
+  onCurrencyChange,
 }: NetWorthChartProps) {
-  const { t } = useTranslation();
+  const { t, currency: base } = useTranslation();
+  // Валюта самой кривой. Пока ответа нет — та, что выбрана, а на первом
+  // открытии валюта установки: подписать ось «₽» и потом молча сменить
+  // подпись хуже, чем подождать.
+  const shown = summary?.currency || currency || base;
   const isPositive = summary ? Number(summary.change_amount) >= 0 : true;
   const trendColor = isPositive ? "var(--success)" : "var(--danger)";
   // Отрицательный капитал — это долгов больше, чем имущества, и число
@@ -118,8 +138,36 @@ export function NetWorthChart({
               isUnderwater ? "text-danger" : "text-text-primary"
             )}
           >
-            {isLoading ? "…" : formatCurrency(summary?.current ?? 0)}
+            {isLoading ? "…" : formatCurrency(summary?.current ?? 0, shown)}
           </p>
+          {/* Три величины в одну строку.
+
+              Капитал — состояние, и переводить его нельзя: сто евро на
+              евровой карте это сто евро, а не их сегодняшняя цена в
+              рублях. Поэтому крупное число — это выбранная валюта и
+              ничего кроме неё.
+
+              Остальное сведено в одну величину и переведено по
+              сегодняшнему курсу — иначе его не выразить, евро с юанями не
+              складываются. Отсюда «≈»: это оценка на сегодня, а не то,
+              что лежит на счетах. Ни второй строки, ни третьей не
+              появляется, пока всё в одной валюте. */}
+          {summary && Number(summary.other_base) !== 0 && (
+            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-muted">
+              <span>
+                {t("netWorth.inOtherCurrencies")}:{" "}
+                <span className="tabular-nums text-text-secondary">
+                  ≈ {formatCurrency(summary.other_base, base)}
+                </span>
+              </span>
+              <span>
+                {t("netWorth.totalEverything")}:{" "}
+                <span className="tabular-nums text-text-secondary">
+                  ≈ {formatCurrency(summary.total_base, base)}
+                </span>
+              </span>
+            </p>
+          )}
           {/* Быстрые деньги и личное имущество — отдельными строками.
               Одно число на всё удобно ровно до первого решения, которое на
               него опирают: шесть миллионов, из которых 5,8 — квартира, не
@@ -129,13 +177,15 @@ export function NetWorthChart({
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-muted">
               <span>
                 {t("netWorth.liquid")}:{" "}
-                <span className="tabular-nums text-text-secondary">{formatCurrency(summary.liquid)}</span>
+                <span className="tabular-nums text-text-secondary">
+                  {formatCurrency(summary.liquid, shown)}
+                </span>
               </span>
               {Number(summary.personal_use) > 0 && (
                 <span>
                   {t("netWorth.personalUseShort")}:{" "}
                   <span className="tabular-nums text-text-secondary">
-                    {formatCurrency(summary.personal_use)}
+                    {formatCurrency(summary.personal_use, shown)}
                   </span>
                 </span>
               )}
@@ -152,13 +202,35 @@ export function NetWorthChart({
               style={{ color: trendColor }}
             >
               {isPositive ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-              {formatSignedCurrency(summary.change_amount)}
+              {formatSignedCurrency(summary.change_amount, shown)}
               {summary.change_percent !== null && ` (${isPositive ? "+" : ""}${summary.change_percent.toFixed(1)}%)`}
               <span className="font-normal text-text-muted">{t("netWorth.periodSuffix")}</span>
             </p>
           )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Переключатель валют появляется, только когда переключать есть
+              на что: у установки с одной валютой он был бы кнопкой, которая
+              ничего не делает. */}
+          {summary && summary.currencies.length > 1 && (
+            <span className="flex items-center gap-1">
+              {summary.currencies.map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => onCurrencyChange(code)}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                    code === shown
+                      ? "bg-surface-2 text-text-primary"
+                      : "text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                  )}
+                >
+                  {code}
+                </button>
+              ))}
+            </span>
+          )}
           <RangeSelector value={range} onChange={onRangeChange} />
           {range === "custom" && (
             <YearRangeSelector
@@ -226,7 +298,11 @@ export function NetWorthChart({
                     interval="preserveStartEnd"
                   />
                 )}
-                <Tooltip isAnimationActive={false} content={<ChartTooltip />} cursor={LINE_CURSOR} />
+                <Tooltip
+                  isAnimationActive={false}
+                  content={<ChartTooltip currency={shown} />}
+                  cursor={LINE_CURSOR}
+                />
                 {/* Нулевая отметка рисуется только когда линия её
                     пересекает. Иначе это лишняя черта, объясняющая то, чего
                     на графике не происходит. */}

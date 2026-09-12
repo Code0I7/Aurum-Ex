@@ -34,10 +34,14 @@ export function NetWorthPage() {
   // считает сервер, и присылать ему заодно даты значило бы описать одно и
   // то же дважды, а потом гадать, что победит.
   const custom = range === "custom" ? computeRange("custom", customRange) : {};
+  // Валюта, в которой смотрят капитал. Пусто — своя: сервер сам подставит
+  // валюту установки, и держать её копию здесь незачем.
+  const [currency, setCurrency] = useSessionState<string>("aurum:networth-currency", "");
   const { data: summary, isLoading: isSummaryLoading } = useNetWorthSummary(
     range,
     custom.startDate,
-    custom.endDate
+    custom.endDate,
+    currency || undefined
   );
   const { data: assets, isLoading: isAssetsLoading } = useAssets();
   const deleteAsset = useDeleteAsset();
@@ -72,7 +76,14 @@ export function NetWorthPage() {
       <NetWorthChart
         years={years ?? [now.getFullYear()]}
         customRange={customRange}
-        onCustomRangeChange={setCustomRange} summary={summary} isLoading={isSummaryLoading} range={range} onRangeChange={setRange} />
+        onCustomRangeChange={setCustomRange}
+        summary={summary}
+        isLoading={isSummaryLoading}
+        range={range}
+        onRangeChange={setRange}
+        currency={currency}
+        onCurrencyChange={setCurrency}
+      />
 
       <AssetAllocationCard breakdown={summary?.breakdown ?? []} isLoading={isSummaryLoading} />
 

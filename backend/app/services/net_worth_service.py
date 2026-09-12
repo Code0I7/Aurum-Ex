@@ -27,6 +27,12 @@ from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
 from app.models.enums import AccountKind, AssetClass, CapitalRole, RiskLevel, TransactionType
 from app.models.transaction import Transaction
+from app.services.account_service import get_balances_by_account
+from app.services.currency_service import (
+    convert_balance,
+    get_base_currency,
+    get_current_rates,
+)
 from app.schemas.net_worth import (
     CapitalRoleSummary,
     NetWorthBreakdownItem,
@@ -103,7 +109,7 @@ def _daily_series(events: list[tuple[date_, Decimal]], start: date_, end: date_)
 
 
 async def _cash_cumulative_events(
-    session: AsyncSession, kinds: set[AccountKind] | None = None
+    session: AsyncSession, currency: str, kinds: set[AccountKind] | None = None
 ) -> list[tuple[date_, Decimal]]:
     """Накопительный итог по денежным счетам, день за днём.
 
@@ -122,12 +128,27 @@ async def _cash_cumulative_events(
     денежного итога. Тем же расчётом, а не отдельной формулой: две разные
     формулы для целого и его части рано или поздно разойдутся, и в сумме
     перестанет получаться целое.
+
+    `currency` сужает его же по валюте, и это главное здесь изменение.
+    Кривая рисуется в одной валюте и ничего не переводит: сто евро на
+    евровой карте — это сто евро, а не их сегодняшняя цена в рублях и не
+    вчерашняя. Капитал — состояние, а не событие, и переводить его значило
+    бы каждый день заново переписывать всю историю графика курсом дня.
+
+    Отсюда и суммы: берётся собственная сумма операции, а не приведённая к
+    валюте установки. В пределах одной валюты это одно и то же число, но
+    брать приведённое было бы неверно по смыслу — и сразу неверно по
+    величине, если валюта счёта не совпадает с валютой установки.
     """
-    accounts_result = await session.execute(select(Account.id, Account.kind, Account.opening_balance))
+    target = currency.upper()
+    accounts_result = await session.execute(
+        select(Account.id, Account.kind, Account.opening_balance, Account.currency)
+    )
     cash_accounts = {
         acc_id: opening or Decimal("0")
-        for acc_id, acc_kind, opening in accounts_result.all()
+        for acc_id, acc_kind, opening, acc_currency in accounts_result.all()
         if acc_kind in (kinds if kinds is not None else CASH_ACCOUNT_TYPES)
+        and (acc_currency or "").upper() == target
     }
     cash_account_ids = set(cash_accounts)
 
@@ -135,15 +156,16 @@ async def _cash_cumulative_events(
         select(
             Transaction.date,
             Transaction.type,
-            Transaction.amount_base,
+            # Своя сумма операции, не приведённая: см. про валюту выше.
+            Transaction.amount,
             Transaction.account_id,
             Transaction.transfer_account_id,
             Transaction.is_excluded,
-            # Пришедшая сумма — тоже в валюте установки. Разница между
-            # сторонами после пересчёта и есть то, во что обошёлся перевод:
-            # курс банка и его комиссия. Это настоящая потеря, и капиталу
-            # положено её увидеть.
-            Transaction.transfer_amount_base,
+            # Сколько пришло на счёт получателя, в его валюте. Перевод
+            # между валютами уходит с одной кривой и приходит на другую —
+            # каждая видит свою сторону, и разницу между ними (курс банка и
+            # его комиссию) видно как расхождение двух кривых.
+            Transaction.transfer_amount,
         )
     )
 
@@ -155,7 +177,7 @@ async def _cash_cumulative_events(
         account_id,
         transfer_account_id,
         is_excluded,
-        transfer_amount_base,
+        transfer_amount,
     ) in txns_result.all():
         if is_excluded:
             continue
@@ -173,7 +195,7 @@ async def _cash_cumulative_events(
                 delta_by_date[tx_date] -= amount
             if transfer_account_id in cash_account_ids:
                 delta_by_date[tx_date] += (
-                    transfer_amount_base if transfer_amount_base is not None else amount
+                    transfer_amount if transfer_amount is not None else amount
                 )
 
     # Начальные остатки — стартовая точка ряда: они были на счетах ещё до
@@ -187,15 +209,29 @@ async def _cash_cumulative_events(
 
 
 async def _asset_events_and_class_totals(
-    session: AsyncSession,
+    session: AsyncSession, currency: str
 ) -> tuple[list[tuple[date_, Decimal]], dict[AssetClass, Decimal], dict[int, Decimal]]:
-    asset_class_result = await session.execute(select(Asset.id, Asset.asset_class))
-    asset_class_map = dict(asset_class_result.all())
+    """Оценки имущества, день за днём, в одной валюте.
+
+    Отбор по валюте — по той же причине, что и у счетов: квартира,
+    оценённая в долларах, стоит столько долларов, а не их сегодняшнюю цену
+    в рублях. Раньше оценки складывались как голые числа независимо от
+    валюты, и доллары попадали в рублёвый итог единица за единицу.
+    """
+    target = currency.upper()
+    asset_rows = (
+        await session.execute(select(Asset.id, Asset.asset_class, Asset.currency))
+    ).all()
+    asset_class_map = {
+        asset_id: asset_class
+        for asset_id, asset_class, asset_currency in asset_rows
+        if (asset_currency or "").upper() == target
+    }
 
     valuations_result = await session.execute(
-        select(AssetValuation.asset_id, AssetValuation.as_of_date, AssetValuation.value).order_by(
-            AssetValuation.as_of_date
-        )
+        select(AssetValuation.asset_id, AssetValuation.as_of_date, AssetValuation.value)
+        .where(AssetValuation.asset_id.in_(asset_class_map.keys()))
+        .order_by(AssetValuation.as_of_date)
     )
     rows = valuations_result.all()
 
@@ -338,13 +374,56 @@ def _resolve_start_date(range_key: str, cash_events: list[tuple[date_, Decimal]]
     return earliest
 
 
+async def _latest_asset_values(session: AsyncSession) -> dict[int, Decimal]:
+    """Последняя оценка каждого имущества. Строки отсортированы по дате
+    убыванию, поэтому первая встреченная и есть свежая."""
+    rows = (
+        await session.execute(
+            select(AssetValuation.asset_id, AssetValuation.value).order_by(
+                AssetValuation.asset_id, AssetValuation.as_of_date.desc()
+            )
+        )
+    ).all()
+    latest: dict[int, Decimal] = {}
+    for asset_id, value in rows:
+        latest.setdefault(asset_id, value)
+    return latest
+
+
+async def _capital_by_currency(session: AsyncSession) -> dict[str, Decimal]:
+    """Сколько капитала в каждой валюте — в ней самой, без перевода.
+
+    Нужно ровно для одного: сказать, что лежит вне валюты, которую сейчас
+    смотрят. Само число «в других валютах» без перевода не выразить —
+    евро и юани нельзя сложить, оставаясь честным, — поэтому переводится
+    только оно, по сегодняшнему курсу и с оговоркой «примерно». Главная
+    величина остаётся своей и нетронутой.
+    """
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+
+    balances = await get_balances_by_account(session)
+    accounts = (await session.execute(select(Account.id, Account.kind, Account.currency))).all()
+    for account_id, kind, currency in accounts:
+        if kind in CASH_ACCOUNT_TYPES:
+            totals[(currency or "").upper()] += balances.get(account_id, Decimal("0"))
+
+    latest = await _latest_asset_values(session)
+    for asset_id, currency in (await session.execute(select(Asset.id, Asset.currency))).all():
+        value = latest.get(asset_id)
+        if value is not None:
+            totals[(currency or "").upper()] += value
+
+    return dict(totals)
+
+
 async def get_net_worth_summary(
     session: AsyncSession,
     range_key: str,
     start_date: date_ | None = None,
     end_date: date_ | None = None,
+    currency: str | None = None,
 ) -> NetWorthSummary:
-    """Капитал за период.
+    """Капитал за период, в одной валюте.
 
     `start_date` и `end_date` перекрывают готовый период, когда человек
     задал свой. Начало всё равно не уходит раньше первой записи: ровная
@@ -354,8 +433,16 @@ async def get_net_worth_summary(
     бы выдать догадку за факт.
     """
     today = date_.today()
-    cash_events = await _cash_cumulative_events(session)
-    asset_events, class_totals, current_by_asset = await _asset_events_and_class_totals(session)
+    base = (await get_base_currency(session)).upper()
+    # Валюта не указана — своя. Смотреть капитал начинают с неё, а
+    # переключение на другую отвечает на другой вопрос: «сколько у меня
+    # долларов», а не «сколько мои доллары стоят».
+    target = (currency or base).upper()
+
+    cash_events = await _cash_cumulative_events(session, target)
+    asset_events, class_totals, current_by_asset = await _asset_events_and_class_totals(
+        session, target
+    )
 
     # Накопительный ряд уже посчитан, последняя точка — сегодняшние деньги.
     # Считаем её до разрезов: они оба принимают её как долю капитала.
@@ -363,7 +450,7 @@ async def get_net_worth_summary(
     # Наличные считаются тем же расчётом по подмножеству счетов, а деньги
     # на счетах — остаток. Так две строки в сумме всегда дают денежный
     # итог, даже если где-то в расчёте появится ещё одна поправка.
-    physical_events = await _cash_cumulative_events(session, kinds={AccountKind.CASH})
+    physical_events = await _cash_cumulative_events(session, target, kinds={AccountKind.CASH})
     physical_today = physical_events[-1][1] if physical_events else Decimal("0")
     bank_today = cash_today - physical_today
     capital_roles = await _capital_role_summary(session, current_by_asset, cash_today)
@@ -442,9 +529,30 @@ async def get_net_worth_summary(
             NetWorthBreakdownItem(key=asset_class.value, name=name, color=color, icon=icon, amount=amount, percent=_percent(amount))
         )
 
+    # Что лежит вне выбранной валюты. Переводится только это число и
+    # только по сегодняшнему курсу: сложить евро с юанями иначе нельзя, а
+    # главную величину перевод не трогает.
+    by_currency = await _capital_by_currency(session)
+    rates = await get_current_rates(session)
+    other_base = sum(
+        (
+            convert_balance(amount, code, rates)
+            for code, amount in by_currency.items()
+            if code != target
+        ),
+        Decimal("0"),
+    )
+    # Валюты, по которым есть что показать. Своя в списке всегда, даже
+    # когда на ней ничего не лежит: переключателю нужно, куда вернуться.
+    currencies = sorted({base, target} | {code for code in by_currency if code})
+
     return NetWorthSummary(
         range=range_key,
+        currency=target,
+        currencies=currencies,
         current=current,
+        other_base=other_base,
+        total_base=convert_balance(current, target, rates) + other_base,
         liquid=liquid,
         personal_use=personal_use,
         change_amount=change_amount,
