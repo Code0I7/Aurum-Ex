@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field, field_validator
 class GoalCreate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     target_amount: Decimal = Field(gt=0)
-    target_date: date_ | None = None
+    # Начало накопления и планируемое завершение. Обе необязательны: цель
+    # без дат — это по-прежнему цель, просто про неё нельзя сказать «идём
+    # ли мы по графику».
+    started_on: date_ | None = None
+    planned_on: date_ | None = None
     # Счёт, на котором физически лежат отложенные деньги. Необязателен: цель
     # можно завести и до того, как решено, откуда копить. Но пока он не
     # указан, счёт не сможет показать «отложено» — деньги обещаны, а откуда
@@ -20,7 +24,13 @@ class GoalCreate(BaseModel):
 class GoalUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     target_amount: Decimal | None = Field(default=None, gt=0)
-    target_date: date_ | None = None
+    started_on: date_ | None = None
+    planned_on: date_ | None = None
+    # Фактическая дата сбора. Приложение ставит её само в момент
+    # завершения, но знает оно только день, когда нажали кнопку. Поэтому
+    # поле правится руками: «собрал в июне, отметил в августе» — обычное
+    # дело, и метрика «за сколько собрал» иначе врёт на два месяца.
+    closed_at: date_ | None = None
     account_id: int | None = None
     # Завершение цели — ручное и намеренно не автоматическое. Накопить
     # нужную сумму и потратить её — разные события, и второе приложению
@@ -76,12 +86,14 @@ class GoalRead(BaseModel):
     id: int
     name: str
     target_amount: Decimal
-    target_date: date_ | None
+    started_on: date_ | None = None
+    planned_on: date_ | None = None
     # Счёт, на котором физически лежат отложенные деньги. Без него взнос
     # непонятно откуда взялся, а счёт не может показать «отложено».
     account_id: int | None = None
     status: GoalStatus = GoalStatus.ACTIVE
-    # Дата завершения — достигнута или отменена. Пусто, пока копится.
+    # Фактическое завершение — достигнута или отменена. Пусто, пока
+    # копится. Правится руками: см. GoalUpdate.
     closed_at: date_ | None = None
     current_amount: Decimal
     # Сколько всего вносили, без учёта возвратов. У завершённой цели это
@@ -94,3 +106,17 @@ class GoalRead(BaseModel):
     is_reached: bool
     # Откуда отложено. Пусто у целей без привязки к счёту.
     by_account: list[GoalReservation] = Field(default_factory=list)
+
+    # Три числа, которые получаются из трёх дат. Считаются здесь, а не в
+    # интерфейсе: правило «до какого дня считать незавершённую цель» одно,
+    # и держать его в двух местах — значит однажды разойтись.
+    #
+    # Дней с начала накопления. У завершённой цели — до дня сбора, у
+    # активной — до сегодня.
+    days_saving: int | None = None
+    # Дней до планируемой даты; отрицательное — просрочка. У завершённой
+    # цели не считается: срок уже ни на что не влияет.
+    days_to_plan: int | None = None
+    # За сколько дней собрали на самом деле. Только у достигнутой цели:
+    # у отменённой сбора не было.
+    days_taken: int | None = None

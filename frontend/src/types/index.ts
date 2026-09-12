@@ -585,7 +585,10 @@ export interface Goal {
   id: number;
   name: string;
   target_amount: string;
-  target_date: string | null;
+  // Три даты цели: когда начали копить, к какому числу хотелось бы
+  // собрать и когда собрали на самом деле (closed_at ниже).
+  started_on: string | null;
+  planned_on: string | null;
   // Счёт, на котором физически лежат отложенные деньги. Без него счёт не
   // сможет показать «отложено»: непонятно, откуда цель копит.
   account_id: number | null;
@@ -602,6 +605,17 @@ export interface Goal {
   remaining: string;
   percent: number;
   is_reached: boolean;
+  /**
+   * Три числа из трёх дат — считает сервер.
+   *
+   * Дней с начала накопления: у завершённой цели до дня сбора, у активной
+   * до сегодня. Дней до планируемой даты (минус — просрочка), у
+   * завершённой не считается. За сколько собрали на самом деле — только у
+   * достигнутой: у отменённой сбора не было.
+   */
+  days_saving: number | null;
+  days_to_plan: number | null;
+  days_taken: number | null;
   // Откуда отложено: копить можно с нескольких счетов.
   by_account: GoalReservation[];
 }
@@ -612,7 +626,11 @@ export interface GoalInput {
   status?: GoalStatus;
   name: string;
   target_amount: string;
-  target_date: string | null;
+  started_on: string | null;
+  planned_on: string | null;
+  /** Фактическая дата сбора. Приложение ставит её само при завершении, но
+   *  правится руками: «собрал в июне, отметил в августе» — обычное дело. */
+  closed_at?: string | null;
   account_id: number | null;
 }
 

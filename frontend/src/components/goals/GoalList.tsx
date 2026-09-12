@@ -1,6 +1,6 @@
 import { CheckCircle2, Flag, PiggyBank, Pencil, RotateCcw, Trash2, XCircle } from "lucide-react";
-import { formatCurrency, getIntlLocale } from "@/lib/format";
-import { useTranslation } from "@/lib/i18n";
+import { formatCurrency, getIntlLocale, pluralizeRu } from "@/lib/format";
+import { useTranslation, type Language } from "@/lib/i18n";
 import type { Goal, GoalStatus } from "@/types";
 
 interface GoalListProps {
@@ -159,14 +159,60 @@ export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange
                     amount: formatCurrency(shown),
                   })
                 : goal.is_reached
-                ? t("goal.reached")
-                : goal.target_date
-                  ? t("goal.remainingWithDate", { amount: formatCurrency(remaining), date: formatTargetDate(goal.target_date) })
+                  ? t("goal.reached")
                   : t("goal.remaining", { amount: formatCurrency(remaining) })}
             </p>
+
+            {/* Три числа из трёх дат — отдельной строкой, серым.
+
+                Раньше дата стояла в одной строке с остатком и с предлогом
+                «до», то есть читалась сроком. Заполняли её началом
+                накопления, и строка говорила обратное тому, что в ней
+                записано. Теперь даты не показываются вовсе: показывается
+                то, ради чего их заводили, — сколько копим, сколько
+                осталось до плана и за сколько собрали. */}
+            <GoalDays goal={goal} />
           </li>
         );
       })}
     </ul>
   );
+}
+
+
+/** «3 дня», «15 дней» — по-русски с согласованием, по-английски без. */
+function daysLabel(days: number, language: Language): string {
+  const value = Math.abs(days);
+  if (language !== "ru") return `${value} ${value === 1 ? "day" : "days"}`;
+  return `${value} ${pluralizeRu(value, "день", "дня", "дней")}`;
+}
+
+/**
+ * Сколько копим, сколько осталось до плана, за сколько собрали.
+ *
+ * Ни одно из трёх не показывается, когда считать не из чего: даты
+ * необязательны, и прочерк вместо числа сообщал бы только то, что поле не
+ * заполнено, — а это и так видно по форме.
+ */
+function GoalDays({ goal }: { goal: Goal }) {
+  const { t, language } = useTranslation();
+
+  const parts: string[] = [];
+  if (goal.days_taken !== null) {
+    parts.push(t("goal.daysTaken", { days: daysLabel(goal.days_taken, language) }));
+  } else if (goal.days_saving !== null) {
+    parts.push(t("goal.daysSaving", { days: daysLabel(goal.days_saving, language) }));
+  }
+  if (goal.days_to_plan !== null) {
+    // Просрочка — это не ошибка, а обычная жизнь накопления, и говорится
+    // о ней тем же серым, что и всё остальное.
+    parts.push(
+      t(goal.days_to_plan < 0 ? "goal.daysOverdue" : "goal.daysToPlan", {
+        days: daysLabel(goal.days_to_plan, language),
+      })
+    );
+  }
+
+  if (parts.length === 0) return null;
+  return <p className="mt-0.5 pl-12 text-xs text-text-muted">{parts.join(" · ")}</p>;
 }

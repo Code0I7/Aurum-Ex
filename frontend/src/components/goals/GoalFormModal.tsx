@@ -14,7 +14,17 @@ interface GoalFormModalProps {
   goal?: Goal | null;
 }
 
-const EMPTY_FORM = { name: "", target_amount: "", target_date: "", account_id: "" };
+const EMPTY_FORM = {
+  name: "",
+  target_amount: "",
+  started_on: "",
+  planned_on: "",
+  // Фактическая дата сбора. В форме появляется только у завершённой цели:
+  // у той, что ещё копится, сбора не было, и спрашивать его дату значило
+  // бы предложить соврать.
+  closed_at: "",
+  account_id: "",
+};
 
 export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
   const { t } = useTranslation();
@@ -31,7 +41,9 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
       setForm({
         name: goal.name,
         target_amount: goal.target_amount,
-        target_date: goal.target_date ?? "",
+        started_on: goal.started_on ?? "",
+        planned_on: goal.planned_on ?? "",
+        closed_at: goal.closed_at ?? "",
         account_id: goal.account_id?.toString() ?? "",
       });
     } else {
@@ -41,6 +53,9 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
   }, [open, goal]);
 
   const isSaving = createGoal.isPending || updateGoal.isPending;
+  // Цель завершена — достигнута или отменена. Только у такой есть
+  // фактическая дата, и только у такой её показывают в форме.
+  const isClosed = Boolean(goal && goal.status !== "active");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -49,7 +64,12 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
     const input = {
       name: form.name,
       target_amount: form.target_amount,
-      target_date: form.target_date || null,
+      started_on: form.started_on || null,
+      planned_on: form.planned_on || null,
+      // Фактическая дата уходит на сервер только у завершённой цели:
+      // у активной её нет вовсе, и присылать пустую значило бы стирать
+      // то, чего не было.
+      ...(isClosed ? { closed_at: form.closed_at || null } : {}),
       // Счёт необязателен: цель можно завести и до того, как решено, откуда
       // копить. Но пока он не указан, счёт не покажет «отложено» — деньги
       // обещаны, а откуда возьмутся, неизвестно.
@@ -96,15 +116,45 @@ export function GoalFormModal({ open, onClose, goal }: GoalFormModalProps) {
             />
           </div>
           <div>
-            <Label htmlFor="goal-date">{t("goal.form.targetDateLabel")}</Label>
+            <Label htmlFor="goal-started">{t("goal.form.startedOnLabel")}</Label>
             <Input
-              id="goal-date"
+              id="goal-started"
               type="date"
-              value={form.target_date}
-              onChange={(event) => setForm((prev) => ({ ...prev, target_date: event.target.value }))}
+              value={form.started_on}
+              onChange={(event) => setForm((prev) => ({ ...prev, started_on: event.target.value }))}
             />
           </div>
         </div>
+
+        {/* Планируемая дата — отдельной строкой, а не рядом с началом: это
+            обещание себе, а не свойство цели, и держать её вплотную к
+            сумме значило бы поставить их вровень по важности. */}
+        <div>
+          <Label htmlFor="goal-planned">{t("goal.form.plannedOnLabel")}</Label>
+          <Input
+            id="goal-planned"
+            type="date"
+            value={form.planned_on}
+            onChange={(event) => setForm((prev) => ({ ...prev, planned_on: event.target.value }))}
+          />
+          <p className="mt-1 text-xs text-text-muted">{t("goal.form.plannedOnHint")}</p>
+        </div>
+
+        {/* Фактическая дата — только у завершённой. Приложение поставило
+            туда день, когда нажали кнопку; поправить его стоит, если
+            собрали раньше, а отметили потом. */}
+        {isClosed && (
+          <div>
+            <Label htmlFor="goal-closed">{t("goal.form.closedAtLabel")}</Label>
+            <Input
+              id="goal-closed"
+              type="date"
+              value={form.closed_at}
+              onChange={(event) => setForm((prev) => ({ ...prev, closed_at: event.target.value }))}
+            />
+            <p className="mt-1 text-xs text-text-muted">{t("goal.form.closedAtHint")}</p>
+          </div>
+        )}
 
         <div>
           <Label htmlFor="goal-account">{t("goal.form.accountLabel")}</Label>

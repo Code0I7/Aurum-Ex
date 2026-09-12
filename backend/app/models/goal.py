@@ -37,7 +37,16 @@ class Goal(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     target_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
-    target_date: Mapped[date_ | None] = mapped_column(Date, nullable=True)
+
+    # Три даты цели, и каждая отвечает на свой вопрос.
+    #
+    # Начало накопления — когда начали откладывать. Не «когда завели цель»:
+    # цель часто заводят задним числом, уже отложив первые деньги.
+    started_on: Mapped[date_ | None] = mapped_column(Date, nullable=True)
+    # Планируемое завершение — срок, к которому хотелось бы собрать.
+    # Ни к чему не обязывает и ничего не запрещает: просрочка — это не
+    # ошибка, а обычная жизнь накопления.
+    planned_on: Mapped[date_ | None] = mapped_column(Date, nullable=True)
 
     # Счёт, на котором физически лежат отложенные деньги. Необязателен:
     # цель можно вести и без привязки, тогда она остаётся просто планом
@@ -49,7 +58,10 @@ class Goal(Base, TimestampMixin):
         nullable=False,
         default=GoalStatus.ACTIVE,
     )
-    # Дата закрытия цели — достигнута или отменена. Пусто, пока копится.
+    # Фактическое завершение — третья дата. Проставляется в момент «Цель
+    # достигнута» или «Отказаться», но правится руками: приложение знает
+    # день, когда нажали кнопку, а не день, когда деньги собрались. Пусто,
+    # пока копится.
     closed_at: Mapped[date_ | None] = mapped_column(Date, nullable=True)
 
     account: Mapped["Account | None"] = relationship()

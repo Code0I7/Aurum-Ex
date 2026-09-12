@@ -48,7 +48,8 @@ _SELECT_WITH_TOTAL = (
         Goal.id,
         Goal.name,
         Goal.target_amount,
-        Goal.target_date,
+        Goal.started_on,
+        Goal.planned_on,
         Goal.account_id,
         Goal.status,
         Goal.closed_at,
@@ -62,7 +63,8 @@ _SELECT_WITH_TOTAL = (
         Goal.id,
         Goal.name,
         Goal.target_amount,
-        Goal.target_date,
+        Goal.started_on,
+        Goal.planned_on,
         Goal.account_id,
         Goal.status,
         Goal.closed_at,
@@ -72,18 +74,61 @@ _SELECT_WITH_TOTAL = (
 )
 
 
+def _days_between(start: date_ | None, end: date_ | None) -> int | None:
+    """Дней от одной даты до другой. None, если хоть одной из них нет:
+    ноль здесь означал бы «собрали за день», а это не то же самое, что
+    «не знаем, когда начали»."""
+    if start is None or end is None:
+        return None
+    return (end - start).days
+
+
+def _goal_days(
+    started_on: date_ | None,
+    planned_on: date_ | None,
+    closed_at: date_ | None,
+    status: GoalStatus,
+) -> tuple[int | None, int | None, int | None]:
+    """Три числа, которые получаются из трёх дат.
+
+    Незавершённая цель считается до сегодня, завершённая — до дня сбора:
+    иначе «копил 40 дней» продолжало бы расти у цели, закрытой год назад.
+
+    Срок до планируемой даты у завершённой цели не считается вовсе: он уже
+    ни на что не влияет, а «просрочено на 300 дней» у выполненной цели —
+    упрёк за то, чего давно нет.
+
+    «За сколько собрали» есть только у достигнутой: у отменённой сбора не
+    было, был отказ.
+    """
+    today = date_.today()
+    finished = closed_at is not None
+
+    days_saving = _days_between(started_on, closed_at if finished else today)
+    days_to_plan = None if finished else _days_between(today, planned_on)
+    days_taken = _days_between(started_on, closed_at) if status is GoalStatus.ACHIEVED else None
+    return days_saving, days_to_plan, days_taken
+
+
 def _to_read(row: Row, by_account: list[GoalReservation]) -> GoalRead:
     current = row.current_amount
     target = row.target_amount
     percent = float(current / target * 100) if target else 0.0
+    days_saving, days_to_plan, days_taken = _goal_days(
+        row.started_on, row.planned_on, row.closed_at, row.status
+    )
     return GoalRead(
         id=row.id,
         name=row.name,
         target_amount=target,
-        target_date=row.target_date,
+        started_on=row.started_on,
+        planned_on=row.planned_on,
         account_id=row.account_id,
         status=row.status,
         closed_at=row.closed_at,
+        days_saving=days_saving,
+        days_to_plan=days_to_plan,
+        days_taken=days_taken,
         current_amount=current,
         deposited=row.deposited,
         remaining=target - current,
@@ -182,19 +227,30 @@ async def create_goal(session: AsyncSession, payload: GoalCreate) -> GoalRead:
     goal = Goal(
         name=payload.name,
         target_amount=payload.target_amount,
-        target_date=payload.target_date,
+        started_on=payload.started_on,
+        planned_on=payload.planned_on,
         account_id=payload.account_id,
     )
     session.add(goal)
     await session.commit()
+    # Числа из дат считаются той же функцией, что и при чтении списка:
+    # только что созданная цель обязана отвечать то же самое, что ответит
+    # через секунду на обновлении страницы.
+    days_saving, days_to_plan, days_taken = _goal_days(
+        goal.started_on, goal.planned_on, goal.closed_at, goal.status
+    )
     return GoalRead(
         id=goal.id,
         name=goal.name,
         target_amount=goal.target_amount,
-        target_date=goal.target_date,
+        started_on=goal.started_on,
+        planned_on=goal.planned_on,
         account_id=goal.account_id,
         status=goal.status,
         closed_at=goal.closed_at,
+        days_saving=days_saving,
+        days_to_plan=days_to_plan,
+        days_taken=days_taken,
         current_amount=Decimal("0"),
         deposited=Decimal("0"),
         remaining=goal.target_amount,
@@ -210,9 +266,13 @@ async def update_goal(session: AsyncSession, goal_id: int, payload: GoalUpdate) 
     updates = payload.model_dump(exclude_unset=True)
     if "status" in updates and updates["status"] is not None:
         new_status = updates["status"]
-        # Дата закрытия ставится вместе со статусом, а не отдельным полем в
-        # форме: спрашивать её у человека значило бы предложить соврать.
-        # Возврат в работу её снимает — иначе цель, открытая заново,
+        # Дата завершения ставится вместе со статусом — сегодняшняя, как
+        # умолчание. Приложение знает день, когда нажали кнопку, а не день,
+        # когда деньги собрались, и поправить её потом можно руками (поле
+        # closed_at в GoalUpdate). Если правка пришла тем же запросом, она
+        # побеждает: цикл ниже перезапишет умолчание.
+        #
+        # Возврат в работу дату снимает — иначе цель, открытая заново,
         # осталась бы с датой конца, которого не было.
         goal.closed_at = date_.today() if new_status is not GoalStatus.ACTIVE else None
     for field, value in updates.items():
