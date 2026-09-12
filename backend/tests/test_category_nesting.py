@@ -171,7 +171,7 @@ async def test_plan_catches_spending_at_the_nearest_ancestor(client: AsyncClient
     await client.post(
         "/plans",
         json={
-            "kind": "monthly",
+            "kind": "month",
             "category_id": products["id"],
             "periods": [{"amount": "20000.00", "valid_from": "2026-01-01"}],
         },
@@ -179,7 +179,7 @@ async def test_plan_catches_spending_at_the_nearest_ancestor(client: AsyncClient
     await client.post(
         "/plans",
         json={
-            "kind": "monthly",
+            "kind": "month",
             "category_id": dairy["id"],
             "periods": [{"amount": "3000.00", "valid_from": "2026-01-01"}],
         },

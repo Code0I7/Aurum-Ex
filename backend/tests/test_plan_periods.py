@@ -21,7 +21,7 @@ async def _category(client: AsyncClient, name: str = "Связь") -> dict:
 async def _plan(client: AsyncClient, category_id: int, periods: list[dict], **extra) -> dict:
     resp = await client.post(
         "/plans",
-        json={"category_id": category_id, "kind": "monthly", "periods": periods, **extra},
+        json={"category_id": category_id, "kind": "month", "periods": periods, **extra},
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -80,7 +80,7 @@ async def test_overlapping_periods_are_rejected(client: AsyncClient):
         "/plans",
         json={
             "category_id": category["id"],
-            "kind": "monthly",
+            "kind": "month",
             "periods": [
                 {"amount": "700.00", "valid_from": "2026-01-01", "valid_to": "2026-06-30"},
                 {"amount": "900.00", "valid_from": "2026-05-01"},
@@ -98,7 +98,7 @@ async def test_an_open_period_must_be_the_last(client: AsyncClient):
         "/plans",
         json={
             "category_id": category["id"],
-            "kind": "monthly",
+            "kind": "month",
             "periods": [
                 {"amount": "700.00", "valid_from": "2026-01-01"},
                 {"amount": "900.00", "valid_from": "2026-06-01"},
@@ -113,7 +113,7 @@ async def test_a_plan_without_periods_is_rejected(client: AsyncClient):
     он даёт пустую строку."""
     category = await _category(client)
     resp = await client.post(
-        "/plans", json={"category_id": category["id"], "kind": "monthly", "periods": []}
+        "/plans", json={"category_id": category["id"], "kind": "month", "periods": []}
     )
     assert resp.status_code == 422, resp.text
 
@@ -170,7 +170,7 @@ async def test_a_daily_plan_changes_rate_mid_year(client: AsyncClient):
             {"amount": "200.00", "valid_from": "2026-01-01", "valid_to": "2026-01-31"},
             {"amount": "300.00", "valid_from": "2026-02-01"},
         ],
-        kind="daily",
+        kind="day",
     )
 
     overview = (await client.get("/plans/overview?year=2026")).json()

@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
-import { Combobox } from "@/components/ui/Combobox";
 import { CategoryPicker } from "@/components/categories/CategoryPicker";
+import { RecurrenceEditor } from "@/components/planning/RecurrenceEditor";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useCreatePlan, useUpdatePlan } from "@/hooks/usePlans";
 import { useCategories } from "@/hooks/useCategories";
 import { useTranslation } from "@/lib/i18n";
-import type { Plan, PlanKind } from "@/types";
+import { DEFAULT_RECURRENCE, type Recurrence } from "@/lib/recurrence";
+import type { Plan } from "@/types";
 
 /** Следующий день после даты в виде ГГГГ-ММ-ДД. Нужен, чтобы новый
  *  отрезок начинался там, где кончился предыдущий, не перекрывая его
@@ -52,9 +53,6 @@ function emptyPeriod(validFrom = ""): PeriodRow {
 
 const EMPTY_FORM = {
   category_id: "",
-  kind: "monthly" as PlanKind,
-  workdays_only: false,
-  weekdays_only: false,
   note: "",
 };
 
@@ -65,10 +63,14 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
   const { data: categories } = useCategories();
 
   const [form, setForm] = useState(EMPTY_FORM);
+  // Расписание держится отдельным куском состояния, а не полями формы:
+  // правило целиком меняется при выборе пункта списка, и собирать его
+  // обратно из десятка отдельных ключей пришлось бы в каждом обработчике.
+  const [rule, setRule] = useState<Recurrence>(DEFAULT_RECURRENCE);
   const [periods, setPeriods] = useState<PeriodRow[]>([emptyPeriod()]);
   // Список отрезков растёт и не убывает: тариф менялся четыре раза за три
-  // года — строк четыре, живая одна. Убранные с глаз считаются ровно так
-  // же, просто не мозолят их, пока не попросят показать.
+  // года — строк четыре, живая одна. Убранные в архив считаются ровно так
+  // же, просто не мозолят глаза, пока не попросят показать.
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,10 +80,18 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
     if (plan) {
       setForm({
         category_id: plan.category_id?.toString() ?? "",
-        kind: plan.kind,
-        workdays_only: plan.workdays_only,
-        weekdays_only: plan.weekdays_only,
         note: plan.note ?? "",
+      });
+      setRule({
+        kind: plan.kind,
+        repeat_every: plan.repeat_every,
+        weekdays: plan.weekdays,
+        month_day_mode: plan.month_day_mode,
+        month_days: plan.month_days,
+        nth_weekday: plan.nth_weekday,
+        months: plan.months,
+        skip_weekends: plan.skip_weekends,
+        workdays_only: plan.workdays_only,
       });
       setPeriods(
         plan.periods.map((period) => ({
@@ -99,6 +109,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
       const now = new Date();
       const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
       setForm(EMPTY_FORM);
+      setRule(DEFAULT_RECURRENCE);
       setPeriods([emptyPeriod(first)]);
     }
   }, [open, plan]);
@@ -122,7 +133,23 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
   const archivedCount = periods.filter((row) => row.is_archived).length;
   const visiblePeriods = showArchived ? periods : periods.filter((row) => !row.is_archived);
 
-  const isDaily = form.kind === "daily";
+  const isOneOff = rule.kind === "one_off";
+  // «По отработанным дням» — не календарное правило, а факт из таблицы
+  // времени: одно число на месяц, и умножать его на шаг не на что. Поэтому
+  // галочка живёт только у плана «каждый день» и только без пропуска
+  // выходных: вместе это означало бы два разных числа дней на один месяц.
+  const canUseWorkdays = rule.kind === "day" && rule.repeat_every === 1 && !rule.skip_weekends;
+
+  // Сумма всегда за одно повторение. Привычные подписи оставлены там, где
+  // они верны: у дневного это сумма за день, у обычного ежемесячного — за
+  // месяц, и переучивать человека ради единообразия незачем.
+  const amountLabel = isOneOff
+    ? t("planning.amountOnce")
+    : rule.kind === "day"
+      ? t("planning.amountPerDay")
+      : rule.kind === "month" && rule.repeat_every === 1 && rule.month_day_mode === null
+        ? t("planning.amountPerMonth")
+        : t("planning.amountPerOccurrence");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -130,7 +157,14 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
 
     const input = {
       category_id: form.category_id ? Number(form.category_id) : null,
-      kind: form.kind,
+      kind: rule.kind,
+      repeat_every: rule.repeat_every,
+      weekdays: rule.weekdays,
+      month_day_mode: rule.month_day_mode,
+      month_days: rule.month_days,
+      nth_weekday: rule.nth_weekday,
+      months: rule.months,
+      skip_weekends: rule.skip_weekends,
       periods: periods.map((row) => ({
         amount: row.amount,
         valid_from: row.valid_from,
@@ -139,11 +173,10 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
         note: row.note || null,
         is_archived: row.is_archived,
       })),
-      // Признак имеет смысл только у ежедневного плана — бэкенд отклоняет
+      // Признак имеет смысл только у плана «каждый день» — бэкенд отклоняет
       // его на остальных, и посылать его оттуда было бы отправкой заведомой
       // ошибки.
-      workdays_only: isDaily && form.workdays_only,
-      weekdays_only: isDaily && form.weekdays_only,
+      workdays_only: canUseWorkdays && rule.workdays_only,
       note: form.note || null,
     };
 
@@ -180,24 +213,12 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
           />
         </div>
 
-        <div>
-          <Label htmlFor="plan-kind">{t("planning.kind")}</Label>
-          <Combobox
-            id="plan-kind"
-            className="mt-1"
-            options={[
-              { value: "monthly", label: t("planning.kind.monthly") },
-              { value: "daily", label: t("planning.kind.daily") },
-              { value: "one_off", label: t("planning.kind.oneOff") },
-            ]}
-            value={form.kind}
-            onChange={(value) => setForm((prev) => ({ ...prev, kind: value as PlanKind }))}
-            placeholder={t("planning.kind.monthly")}
-          />
-          <p className="mt-1 text-xs text-text-muted">{t(`planning.kindHint.${form.kind}` as never)}</p>
-        </div>
+        {/* Расписание целиком — своим блоком: полей у него больше, чем у
+            всей остальной формы, и вперемешку с категорией и суммой они
+            читались бы как одинаково важные. */}
+        <RecurrenceEditor value={rule} onChange={setRule} />
 
-        {/* Суммы списком. Категория и способ счёта у плана одни, а сумма
+        {/* Суммы списком. Категория и расписание у плана одни, а сумма
             меняется: подорожал тариф, сменился оператор. Раньше это
             означало второй план с тем же названием, и через несколько лет
             список планов превращался в список версий одного плана. */}
@@ -206,7 +227,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
             <Label>{t("planning.periods")}</Label>
             {/* У разового плана отрезок один по смыслу: он стоит в своём
                 месяце и больше нигде, и второй был бы второй покупкой. */}
-            {form.kind !== "one_off" && (
+            {!isOneOff && (
               <button
                 type="button"
                 onClick={addPeriod}
@@ -242,9 +263,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
               >
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>
-                    <Label htmlFor={`plan-amount-${row.key}`}>
-                      {isDaily ? t("planning.amountPerDay") : t("planning.amountPerMonth")}
-                    </Label>
+                    <Label htmlFor={`plan-amount-${row.key}`}>{amountLabel}</Label>
                     <Input
                       id={`plan-amount-${row.key}`}
                       type="number"
@@ -269,7 +288,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
 
                 {/* Дата окончания скрыта у разового плана: он и так стоит в
                     одном месяце, и второе поле про то же самое путало бы. */}
-                {form.kind !== "one_off" && (
+                {!isOneOff && (
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div>
                       <Label htmlFor={`plan-to-${row.key}`}>{t("planning.validTo")}</Label>
@@ -293,8 +312,8 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
                 )}
 
                 <div className="mt-2 flex items-center gap-3">
-                  {/* Убрать с глаз, а не удалить: прошлые суммы нужны —
-                      без них таблица прошлых лет соврёт. */}
+                  {/* В архив, а не удалить: прошлые суммы нужны — без них
+                      таблица прошлых лет соврёт. */}
                   <button
                     type="button"
                     onClick={() => updatePeriod(row.key, { is_archived: !row.is_archived })}
@@ -318,7 +337,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
                 {/* Подсказка про открытый конец — только у последнего:
                     у остальных пустая дата окончания означает перехлёст, и
                     сервер её не примет. */}
-                {index === visiblePeriods.length - 1 && form.kind !== "one_off" && (
+                {index === visiblePeriods.length - 1 && !isOneOff && (
                   <p className="mt-2 text-xs text-text-muted">{t("planning.validToHint")}</p>
                 )}
               </li>
@@ -326,51 +345,26 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
           </ul>
         </div>
 
-        {/* Два способа считать дни, и они взаимоисключающие: «отработанные»
-            берутся из введённых руками work_periods, «будни» — из
-            календаря. Включение одного снимает другое прямо здесь, а не
-            четырёхсотым с сервера: человек не должен узнавать о
-            несовместимости из ошибки сохранения. */}
-        {isDaily && (
-          <div className="space-y-2">
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.workdays_only}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    workdays_only: event.target.checked,
-                    weekdays_only: event.target.checked ? false : prev.weekdays_only,
-                  }))
-                }
-                className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
-              />
-              <span>
-                {t("planning.workdaysOnly")}
-                <span className="block text-xs text-text-muted">{t("planning.workdaysOnlyHint")}</span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.weekdays_only}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    weekdays_only: event.target.checked,
-                    workdays_only: event.target.checked ? false : prev.workdays_only,
-                  }))
-                }
-                className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
-              />
-              <span>
-                {t("planning.weekdaysOnly")}
-                <span className="block text-xs text-text-muted">{t("planning.weekdaysOnlyHint")}</span>
-              </span>
-            </label>
-          </div>
+        {/* Отработанные дни — не календарное правило, а факт из таблицы
+            времени: он вводится руками и появляется задним числом, зато
+            верен при любом графике, чего календарные «пн-пт» не дают ни
+            вахте, ни суткам через двое. Поэтому галочка стоит здесь, а не
+            среди расписания. */}
+        {canUseWorkdays && (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={rule.workdays_only}
+              onChange={(event) =>
+                setRule((prev) => ({ ...prev, workdays_only: event.target.checked }))
+              }
+              className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+            />
+            <span>
+              {t("planning.workdaysOnly")}
+              <span className="block text-xs text-text-muted">{t("planning.workdaysOnlyHint")}</span>
+            </span>
+          </label>
         )}
 
         <div>

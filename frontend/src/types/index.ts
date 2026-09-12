@@ -868,7 +868,25 @@ export interface HealthStatus {
 // Планирование. Отличается от бюджета: бюджет — потолок на месяц, который
 // предупреждает; план — ожидание на годы, из которого складывается картина
 // года.
-export type PlanKind = "one_off" | "monthly" | "daily";
+/**
+ * Частота повторения плана. Шаг («каждые N») лежит отдельно, в
+ * repeat_every: «ежемесячно» и «раз в квартал» — одна частота с разным
+ * шагом.
+ */
+export type PlanFrequency = "one_off" | "day" | "week" | "month" | "year";
+
+/**
+ * Какой день берётся внутри месяца у месячного и годового плана.
+ *
+ * Чисел 29–31 среди вариантов нет намеренно: «31 февраля» не существует, и
+ * вместо молчаливого выбора за человека есть отдельные пункты.
+ */
+export type PlanMonthDayMode =
+  | "day_of_month"
+  | "nth_weekday"
+  | "last_day"
+  | "first_workday"
+  | "last_workday";
 
 /**
  * Сумма плана на отрезке времени.
@@ -880,7 +898,8 @@ export type PlanKind = "one_off" | "monthly" | "daily";
 export interface PlanPeriod {
   // Есть у сохранённых; у новой строки в форме появляется после записи.
   id?: number;
-  // Для разового и ежемесячного — сумма на месяц, для ежедневного — на день.
+  // Сумма за одно повторение: в месяц попадает столько, сколько повторений
+  // в него уложилось.
   amount: string;
   valid_from: string;
   valid_to: string | null;
@@ -895,22 +914,40 @@ export interface Plan {
   category_id: number | null;
   category_name: string | null;
   participant_id: number | null;
-  kind: PlanKind;
+  kind: PlanFrequency;
+  // Шаг: «каждые N». Единица означает «каждый».
+  repeat_every: number;
+  // Дни недели, 0 — понедельник. Пусто — тот же день недели, с которого
+  // план начался.
+  weekdays: number[] | null;
+  month_day_mode: PlanMonthDayMode | null;
+  month_days: number[] | null;
+  // 1–5 или −1 для последнего.
+  nth_weekday: number | null;
+  months: number[] | null;
+  // Только для дневного: пропускать субботу и воскресенье.
+  skip_weekends: boolean;
   currency: string;
   periods: PlanPeriod[];
-  // Только для ежедневного: считать по отработанным дням, а не календарным.
+  // Только для дневного с шагом в один день: считать по отработанным дням
+  // из таблицы времени, а не по календарным.
   workdays_only: boolean;
-  weekdays_only: boolean;
   note: string | null;
   is_active: boolean;
 }
 
 export interface PlanInput {
   category_id: number | null;
-  kind: PlanKind;
+  kind: PlanFrequency;
+  repeat_every: number;
+  weekdays: number[] | null;
+  month_day_mode: PlanMonthDayMode | null;
+  month_days: number[] | null;
+  nth_weekday: number | null;
+  months: number[] | null;
+  skip_weekends: boolean;
   periods: PlanPeriod[];
   workdays_only: boolean;
-  weekdays_only: boolean;
   note: string | null;
 }
 

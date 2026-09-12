@@ -19,7 +19,7 @@ async def _plan(client: AsyncClient, **overrides) -> dict:
     }
     if "valid_to" in overrides:
         period["valid_to"] = overrides.pop("valid_to")
-    payload = {"kind": "monthly", "currency": "RUB", "periods": [period]}
+    payload = {"kind": "month", "currency": "RUB", "periods": [period]}
     payload.update(overrides)
     resp = await client.post("/plans", json=payload)
     assert resp.status_code == 201, resp.text
@@ -44,7 +44,7 @@ async def test_monthly_plan_fills_every_month_from_one_record(client: AsyncClien
 async def test_daily_plan_recomputes_february_by_itself(client: AsyncClient, categories):
     """300 ₽ в день — это 9 300 в январе и 8 400 в феврале. Считать это
     руками и значило бы держать в таблице двенадцать разных чисел."""
-    await _plan(client, kind="daily", amount="300.00", category_id=categories["Dining Out"]["id"])
+    await _plan(client, kind="day", amount="300.00", category_id=categories["Dining Out"]["id"])
 
     overview = (await client.get("/plans/overview?year=2026")).json()
     assert Decimal(_month(overview, "Dining Out", 1)["planned"]) == Decimal("9300")  # 31 день
@@ -60,7 +60,7 @@ async def test_daily_plan_can_count_workdays_instead_of_calendar_days(client: As
 
     await _plan(
         client,
-        kind="daily",
+        kind="day",
         amount="300.00",
         workdays_only=True,
         category_id=categories["Dining Out"]["id"],
@@ -79,7 +79,7 @@ async def test_workdays_only_is_rejected_on_a_non_daily_plan(client: AsyncClient
     resp = await client.post(
         "/plans",
         json={
-            "kind": "monthly",
+            "kind": "month",
             "workdays_only": True,
             "category_id": categories["Housing & Utilities"]["id"],
             "periods": [{"amount": "700.00", "valid_from": "2026-01-01"}],
@@ -233,7 +233,7 @@ async def test_valid_to_before_valid_from_is_rejected(client: AsyncClient):
     resp = await client.post(
         "/plans",
         json={
-            "kind": "monthly",
+            "kind": "month",
             "periods": [{"amount": "700.00", "valid_from": "2026-06-01", "valid_to": "2026-01-01"}],
         },
     )
@@ -284,7 +284,7 @@ async def test_a_row_carries_its_path_and_its_depth(
             "/plans",
             json={
                 "category_id": ivan["id"],
-                "kind": "monthly",
+                "kind": "month",
                 "periods": [{"amount": "200000.00", "valid_from": "2026-01-01"}],
             },
         )
@@ -331,7 +331,7 @@ async def test_a_plan_on_an_income_subcategory_does_not_flip_the_totals(
         "/plans",
         json={
             "category_id": ivan["id"],
-            "kind": "monthly",
+            "kind": "month",
             "periods": [{"amount": "200000.00", "valid_from": "2026-01-01"}],
         },
     )
@@ -370,7 +370,7 @@ async def test_a_parent_row_shows_its_whole_branch(client: AsyncClient, account_
         "/plans",
         json={
             "category_id": admin["id"],
-            "kind": "monthly",
+            "kind": "month",
             "periods": [{"amount": "20000.00", "valid_from": "2026-01-01"}],
         },
     )
@@ -417,7 +417,7 @@ async def test_the_totals_are_not_doubled_by_the_rollup(client: AsyncClient, acc
         "/plans",
         json={
             "category_id": ivan["id"],
-            "kind": "monthly",
+            "kind": "month",
             "periods": [{"amount": "20000.00", "valid_from": "2026-01-01"}],
         },
     )

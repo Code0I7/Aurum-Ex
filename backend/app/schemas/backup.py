@@ -16,7 +16,8 @@ from app.models.enums import (
     GoalStatus,
     InvestmentKind,
     ParticipantKind,
-    PlanKind,
+    PlanFrequency,
+    PlanMonthDay,
     RecurringFrequency,
     RiskLevel,
     SettlementKind,
@@ -424,12 +425,39 @@ class PlanBackup(BaseModel):
     id: int
     category_id: int | None = None
     participant_id: int | None = None
-    kind: PlanKind
+    kind: PlanFrequency
+    repeat_every: int = 1
+    weekdays: list[int] | None = None
+    month_day_mode: PlanMonthDay | None = None
+    month_days: list[int] | None = None
+    nth_weekday: int | None = None
+    months: list[int] | None = None
+    skip_weekends: bool = False
     currency: str = "RUB"
     workdays_only: bool = False
-    weekdays_only: bool = False
     note: str | None = None
     is_active: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_old_plans(cls, data):
+        """Выгрузки до версии 0016 знали три вида плана и галочку «будни».
+
+        Отказать им — значит сказать человеку, что его собственная копия
+        больше не читается, и это худшее, что может сделать восстановление.
+        Виды переименованы один в один, а «будни» стали «пропускать
+        выходные» и означают ровно то же самое.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        renamed = {"monthly": "month", "daily": "day", "MONTHLY": "MONTH", "DAILY": "DAY"}
+        if data.get("kind") in renamed:
+            data = {**data, "kind": renamed[data["kind"]]}
+        if "weekdays_only" in data:
+            data = {**data, "skip_weekends": bool(data.get("skip_weekends") or data["weekdays_only"])}
+            data.pop("weekdays_only", None)
+        return data
 
 
 class PlanPeriodBackup(BaseModel):

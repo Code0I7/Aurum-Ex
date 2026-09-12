@@ -166,7 +166,7 @@ async def test_budget_status_counts_a_split_transactions_share(client: AsyncClie
     assert money(items[sweets]["spent"]) == Decimal("30.00")
 
 
-async def _plan(client: AsyncClient, category_id: int, amount: str, kind: str = "monthly", **extra) -> dict:
+async def _plan(client: AsyncClient, category_id: int, amount: str, kind: str = "month", **extra) -> dict:
     payload = {
         "category_id": category_id,
         "kind": kind,

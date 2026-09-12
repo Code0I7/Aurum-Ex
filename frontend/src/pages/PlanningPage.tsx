@@ -9,6 +9,7 @@ import { WorkDaysCard } from "@/components/planning/WorkDaysCard";
 import { WatchlistCard } from "@/components/planning/WatchlistCard";
 import { useDeletePlan, usePlanOverview, usePlans } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
+import { describeRecurrence } from "@/lib/recurrence";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { formatCurrency } from "@/lib/format";
@@ -44,7 +45,7 @@ function currentAmount(plan: Plan, year: number): string {
 }
 
 export function PlanningPage() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [year, setYear] = useSessionState("aurum:planning-year", new Date().getFullYear());
   const { data: overview, isLoading } = usePlanOverview(year);
   const { data: plans } = usePlans();
@@ -163,10 +164,13 @@ export function PlanningPage() {
                       <span className="block truncate text-sm font-medium">
                         {plan.category_name ?? t("planning.noCategory")}
                       </span>
+                      {/* Расписание словами — тем же предложением, что
+                          стоит под формой: «каждые 2 недели по
+                          понедельникам». Раньше здесь было одно слово из
+                          трёх возможных, и после первого же «раз в
+                          квартал» оно перестало бы что-либо значить. */}
                       <span className="block truncate text-xs text-text-muted">
-                        {t(`planning.kind.${plan.kind === "one_off" ? "oneOff" : plan.kind}` as never)}
-                        {plan.workdays_only && ` · ${t("planning.workdaysShort")}`}
-                        {plan.weekdays_only && ` · ${t("planning.weekdaysShort")}`}
+                        {describeRecurrence(plan, language)}
                         {plan.note && ` · ${plan.note}`}
                       </span>
                     </span>
@@ -177,7 +181,7 @@ export function PlanningPage() {
                     <span className="shrink-0 text-right text-sm tabular-nums">
                       {formatCurrency(currentAmount(plan, year))}
                       <span className="text-xs text-text-muted">
-                        {plan.kind === "daily" ? t("planning.perDay") : t("planning.perMonth")}
+                        {plan.kind === "day" ? t("planning.perDay") : t("planning.perMonth")}
                       </span>
                       {periodsInYear(plan, year) > 1 && (
                         <span className="block text-xs font-normal text-text-muted">

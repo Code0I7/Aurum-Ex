@@ -11,13 +11,22 @@
 руками. Ежедневные траты — столовую по 300 ₽ — считали умножением в уме, и
 февраль от января там ничем не отличался.
 
-Здесь план записывается один раз и разворачивается сам:
+Здесь план записывается один раз и разворачивается сам. Сумма плана — за
+одно повторение, а в месяц попадает столько, сколько повторений в него
+укладывается:
 
   * **разовый** — машина в мае 2027: одна сумма в один месяц;
-  * **ежемесячный** — связь 700 ₽: одно и то же, пока не изменишь;
-  * **ежедневный** — столовая 300 ₽ в день, умноженная на число дней
-    месяца. С признаком «только рабочие дни» — на число отработанных дней
-    из work_periods, поэтому февраль пересчитывается сам.
+  * **дневной** — столовая 300 ₽ в день, умноженная на число дней месяца.
+    С признаком «только рабочие дни» — на число отработанных дней из
+    work_periods, поэтому февраль пересчитывается сам;
+  * **недельный** — «каждые две недели по понедельникам»: в месяце с тремя
+    подходящими понедельниками повторений три;
+  * **месячный** — связь 700 ₽: одно и то же, пока не изменишь. С шагом
+    больше единицы — «раз в квартал»;
+  * **годовой** — страховка в октябре, можно «в первый четверг октября».
+
+Шаг («каждые N») работает одинаково у всех частот, а точка отсчёта — начало
+самого раннего отрезка плана: «каждые две недели» без неё не имеет смысла.
 
 Индексации нет нигде и намеренно. «Связь дорожает на 5% в год» звучит умно,
 но в жизни цена меняется рывками и в непредсказуемые месяцы; когда она
@@ -27,7 +36,7 @@
 import calendar
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date as date_
+from datetime import date as date_, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -36,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.category import Category
-from app.models.enums import CategoryKind, PlanKind, TransactionType
+from app.models.enums import CategoryKind, PlanFrequency, PlanMonthDay, TransactionType
 from app.models.plan import Plan, PlanPeriod
 from app.models.work_period import WorkPeriod
 from app.schemas.plan import PlanCreate, PlanUpdate
@@ -104,11 +113,137 @@ def weekdays_in_month(year: int, month: int) -> int:
     Тому, у кого график не пятидневный, эта галочка не нужна — для него
     есть отработанные дни из work_periods.
     """
+    return len(_workday_dates(year, month))
+
+
+def _weekday_dates(year: int, month: int, weekday: int) -> list[date_]:
+    """Все даты месяца, попадающие на этот день недели. 0 — понедельник."""
     first_weekday, total = calendar.monthrange(year, month)
-    # first_weekday: 0 — понедельник. Считаем по дням недели, а не циклом
-    # по датам: месяц это максимум 31 проверка, но таблица года дёргает
-    # раскрытие плана двенадцать раз на каждую строку.
-    return sum(1 for day in range(total) if (first_weekday + day) % 7 < 5)
+    first_day = 1 + (weekday - first_weekday) % 7
+    return [date_(year, month, day) for day in range(first_day, total + 1, 7)]
+
+
+def _nth_weekday(year: int, month: int, weekday: int, nth: int) -> date_ | None:
+    """Первый, второй… или последний (−1) такой день недели в месяце.
+
+    Пятый вторник есть не в каждом месяце, и в таком месяце повторения
+    просто нет: подменять его четвёртым значило бы придумать за человека
+    дату, которую он не называл.
+    """
+    dates = _weekday_dates(year, month, weekday)
+    if nth == -1:
+        return dates[-1]
+    return dates[nth - 1] if 0 < nth <= len(dates) else None
+
+
+def _workday_dates(year: int, month: int) -> list[date_]:
+    """Будни месяца списком — понедельник-пятница, без учёта праздников."""
+    total = days_in_month(year, month)
+    return [
+        date_(year, month, day)
+        for day in range(1, total + 1)
+        if date_(year, month, day).weekday() < 5
+    ]
+
+
+def _days_within_month(plan: Plan, year: int, month: int, anchor: date_) -> list[date_]:
+    """Какие числа месяца берёт месячное или годовое повторение."""
+    total = days_in_month(year, month)
+    mode = plan.month_day_mode
+
+    if mode is None:
+        # Число не важно: одно повторение на том же числе, с которого план
+        # начался. В коротком месяце — на последнем его дне: плана, которого
+        # в феврале нет, человек, писавший «каждый месяц», не имел в виду.
+        return [date_(year, month, min(anchor.day, total))]
+
+    if mode is PlanMonthDay.DAY_OF_MONTH:
+        # Числа только 1–28, поэтому проверять их существование не нужно —
+        # но список приходит извне, и лишний месяц молча уронить нельзя.
+        days = sorted(set(plan.month_days or [min(anchor.day, 28)]))
+        return [date_(year, month, day) for day in days if day <= total]
+
+    if mode is PlanMonthDay.NTH_WEEKDAY:
+        nth = plan.nth_weekday or 1
+        found = [
+            _nth_weekday(year, month, weekday, nth)
+            for weekday in sorted(set(plan.weekdays or [anchor.weekday()]))
+        ]
+        return [day for day in found if day is not None]
+
+    if mode is PlanMonthDay.LAST_DAY:
+        return [date_(year, month, total)]
+
+    workdays = _workday_dates(year, month)
+    if not workdays:
+        return []
+    return [workdays[0] if mode is PlanMonthDay.FIRST_WORKDAY else workdays[-1]]
+
+
+def plan_anchor(plan: Plan) -> date_:
+    """Точка отсчёта расписания — начало самого раннего отрезка.
+
+    «Каждые две недели» без неё не имеет смысла: надо знать, от какой недели
+    считать. Отдельного поля под это нет намеренно — человек уже ввёл дату
+    начала, и второе такое же поле пришлось бы держать согласованным с
+    первым, а разойдясь, они молча сдвинули бы весь план.
+    """
+    return min(period.valid_from for period in plan.periods)
+
+
+def occurrence_dates(plan: Plan, year: int, month: int) -> list[date_]:
+    """Даты повторений плана внутри месяца.
+
+    Границы отрезков здесь не проверяются: какой отрезок действует в этом
+    месяце, решает period_for_month, и делает это по месяцу, а не по дню —
+    план, начатый 15-го, действует на весь месяц. Резать его здесь ещё раз,
+    но уже по дням, значило бы считать первый месяц по-другому, чем все
+    остальные.
+
+    Точка отсчёта задаёт фазу: «каждые две недели» от 5 января — это 5, 19
+    января, 2 февраля. До неё повторения тоже считаются — фаза у них та же,
+    а действует план или нет, решают отрезки.
+    """
+    anchor = plan_anchor(plan)
+    step = max(plan.repeat_every or 1, 1)
+    total = days_in_month(year, month)
+
+    if plan.kind is PlanFrequency.ONE_OFF:
+        return [anchor] if (anchor.year, anchor.month) == (year, month) else []
+
+    if plan.kind is PlanFrequency.DAY:
+        return [
+            day
+            for day in (date_(year, month, number) for number in range(1, total + 1))
+            if (day - anchor).days % step == 0
+            and not (plan.skip_weekends and day.weekday() >= 5)
+        ]
+
+    if plan.kind is PlanFrequency.WEEK:
+        wanted = set(plan.weekdays or [anchor.weekday()])
+        anchor_week = anchor - timedelta(days=anchor.weekday())
+        found = []
+        for number in range(1, total + 1):
+            day = date_(year, month, number)
+            if day.weekday() not in wanted:
+                continue
+            week = day - timedelta(days=day.weekday())
+            if ((week - anchor_week).days // 7) % step:
+                continue
+            found.append(day)
+        return found
+
+    if plan.kind is PlanFrequency.MONTH:
+        if ((year - anchor.year) * 12 + month - anchor.month) % step:
+            return []
+        return _days_within_month(plan, year, month, anchor)
+
+    # YEAR: шаг считается в годах, а месяц выбирается отдельно.
+    if (year - anchor.year) % step:
+        return []
+    if month not in set(plan.months or [anchor.month]):
+        return []
+    return _days_within_month(plan, year, month, anchor)
 
 
 def _roll_up_branches(rows: list[PlanRow], tree) -> None:
@@ -185,7 +320,7 @@ def expand_plan(
     if period is None:
         return Decimal("0")
 
-    if plan.kind is PlanKind.ONE_OFF:
+    if plan.kind is PlanFrequency.ONE_OFF:
         # Разовая покупка стоит в своём месяце и больше нигде.
         return (
             period.amount
@@ -193,26 +328,22 @@ def expand_plan(
             else Decimal("0")
         )
 
-    if plan.kind is PlanKind.MONTHLY:
-        return period.amount
+    # «По отработанным дням» стоит особняком: это не календарное правило, а
+    # факт из work_periods. Он вводится руками и появляется задним числом —
+    # зато верен при любом графике, чего календарные «пн-пт» не дают ни
+    # вахте, ни суткам через двое.
+    #
+    # Если план так помечен, а дней на месяц не введено, считаем по
+    # календарным: лучше приблизительно, чем никак. Ноль дал бы пустой план
+    # там, где траты есть, и человек искал бы ошибку в фактах.
+    if plan.workdays_only:
+        if workdays is not None:
+            return period.amount * workdays
+        return period.amount * days_in_month(year, month)
 
-    # DAILY. Три способа посчитать число дней, и они отвечают на разные
-    # вопросы:
-    #
-    #   workdays_only — отработанные дни из work_periods. Факт, вводится
-    #     руками и появляется задним числом. Для вахты и смен.
-    #   weekdays_only — будни календаря. Известны на годы вперёд и ничего
-    #     вводить не требуют. Для пятидневки.
-    #   ни то ни другое — календарные дни месяца.
-    #
-    # Если план помечен «по отработанным», а дней на месяц не введено,
-    # считаем по календарным: лучше приблизительно, чем никак. Ноль дал бы
-    # пустой план там, где траты есть, и человек искал бы ошибку в фактах.
-    if plan.workdays_only and workdays is not None:
-        return period.amount * workdays
-    if plan.weekdays_only:
-        return period.amount * weekdays_in_month(year, month)
-    return period.amount * days_in_month(year, month)
+    # Всё остальное — расписание: сумма за одно повторение, умноженная на
+    # число повторений, попавших в месяц.
+    return period.amount * len(occurrence_dates(plan, year, month))
 
 
 async def workdays_by_month(session: AsyncSession, year: int) -> dict[tuple[int, int], int]:

@@ -6,15 +6,24 @@ monthly ceiling that raises a warning when crossed; a plan is an expectation
 stretched over years, used to answer "what will the year look like" rather
 than "am I over the limit right now".
 
-Three shapes, because the source spreadsheet needed three and had to fake
-two of them by typing a number into every month by hand:
+Сумма плана — за одно повторение, а в месяц попадает столько, сколько
+повторений в него укладывается:
 
   * ONE_OFF — машина в мае 2027: одна сумма в один месяц;
-  * MONTHLY — связь 700 ₽: одно и то же каждый месяц, пока не изменишь;
-  * DAILY — столовая 300 ₽ в день: сумма умножается на число дней месяца,
-    при `workdays_only` — на число отработанных дней этого месяца из
-    work_periods (см. models/work_period.py), а при `weekdays_only` — на
-    число будней календаря. В феврале пересчитывается сама.
+  * DAY — столовая 300 ₽ в день × дни месяца. При `skip_weekends` — по
+    будням календаря, при `workdays_only` — по отработанным дням из
+    work_periods (см. models/work_period.py). В феврале пересчитывается
+    сама;
+  * WEEK — «каждые две недели по понедельникам»: в месяце с тремя
+    понедельниками повторений три;
+  * MONTH — связь 700 ₽: одно и то же каждый месяц, пока не изменишь. С
+    шагом больше единицы — «раз в квартал»;
+  * YEAR — страховка в октябре: раз в год, можно «в первый четверг».
+
+Шаг лежит в `repeat_every` и работает одинаково у всех частот. Точка
+отсчёта — начало самого раннего отрезка: «каждые две недели» без неё не
+имеет смысла, а отдельное поле под неё дублировало бы дату, которую человек
+уже ввёл.
 
 No automatic indexation anywhere. When a price rises the user edits the
 number and it applies from that month forward — the past is never rewritten.
@@ -24,11 +33,12 @@ number and it applies from that month forward — the past is never rewritten.
 from datetime import date as date_
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, Enum, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, Date, Enum, ForeignKey, Integer, Numeric, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.enums import PlanKind
+from app.models.enums import PlanFrequency, PlanMonthDay
 from app.models.mixins import TimestampMixin
 
 
@@ -44,9 +54,53 @@ class Plan(Base, TimestampMixin):
         ForeignKey("participants.id", ondelete="SET NULL"), nullable=True
     )
 
-    kind: Mapped[PlanKind] = mapped_column(
-        Enum(PlanKind, name="plan_kind", native_enum=False, length=10), nullable=False
+    # Частота повторения. Колонка осталась `kind`: это по-прежнему вид
+    # плана, просто видов стало больше, а переименование живой колонки
+    # ломало бы старые выгрузки ради одного слова.
+    kind: Mapped[PlanFrequency] = mapped_column(
+        Enum(PlanFrequency, name="plan_kind", native_enum=False, length=10), nullable=False
     )
+
+    # Шаг: «каждые N». Единица у всех частот означает «каждый» — каждый
+    # день, каждую неделю, каждый месяц.
+    #
+    # Потолок 365 стоит на всех частотах одинаково и взят с запасом: «каждые
+    # 36 месяцев» человек завести может, а полтора года шагом не выражаются
+    # никак, поэтому запрещать что-то осмысленное здесь не за что.
+    repeat_every: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+    # Дни недели, 0 — понедельник. Для WEEK — по каким дням повторяется, для
+    # NTH_WEEKDAY — какой день недели искать в месяце.
+    #
+    # Пусто означает «по тому же дню недели, с которого план начался»: так
+    # ведёт себя стандарт календарей, и так человек и думает, заводя
+    # «каждые две недели» с конкретной даты.
+    weekdays: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
+
+    # Как выбирается день внутри месяца у MONTH и YEAR. Пусто — «число не
+    # важно»: одно повторение на том же числе, с которого план начался.
+    month_day_mode: Mapped[PlanMonthDay | None] = mapped_column(
+        Enum(PlanMonthDay, name="plan_month_day", native_enum=False, length=20), nullable=True
+    )
+
+    # Числа месяца для DAY_OF_MONTH, 1–28. Несколько — «плачу 1-го и 15-го».
+    month_days: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
+
+    # Номер дня недели в месяце для NTH_WEEKDAY: 1–5, а −1 — последний.
+    # Пятый вторник есть не в каждом месяце, и в таком месяце повторения
+    # просто нет: подменять его четвёртым значило бы придумать за человека.
+    nth_weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Месяцы для YEAR, 1–12. Пусто — тот же месяц, с которого план начался.
+    months: Mapped[list[int] | None] = mapped_column(ARRAY(Integer), nullable=True)
+
+    # Только для DAY: пропускать субботу и воскресенье. Пришло на смену
+    # прежнему `weekdays_only` и означает то же самое — будни календаря, без
+    # праздников, — но работает и с шагом больше единицы.
+    skip_weekends: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
 
     # Только для DAILY: считать по отработанным дням вместо календарных.
@@ -58,21 +112,12 @@ class Plan(Base, TimestampMixin):
     # в неделю — календарные "пн-пт" для всех них неверны, а введённое
     # человеком число верно всегда. Если на месяц дней не задано, план
     # считается по календарным дням: лучше приблизительно, чем никак.
+    # Взаимоисключающе со `skip_weekends`, потому что это разные вопросы.
+    # «Отработанные дни» — факт из work_periods, он появляется задним числом
+    # и его надо вводить руками. «Будни» — календарь, он известен на годы
+    # вперёд и не требует ничего вводить. Столовая при пятидневке
+    # описывается вторым, а вахта — первым.
     workdays_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    # Только для DAILY: считать по будням календаря — понедельник-пятница
-    # этого месяца, без учёта праздников.
-    #
-    # Отдельно от workdays_only и взаимоисключающе с ним, потому что это
-    # разные вопросы. «Отработанные дни» — факт из work_periods, он
-    # появляется задним числом и его надо вводить руками. «Будни» —
-    # календарь, он известен на годы вперёд и не требует ничего вводить.
-    # Столовая при пятидневке описывается вторым, а вахта — первым.
-    #
-    # Праздников здесь нет намеренно: производственный календарь свой у
-    # каждой страны и меняется каждый год, а ошибка в пару дней на плане
-    # меньше, чем ошибка от его отсутствия.
-    weekdays_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

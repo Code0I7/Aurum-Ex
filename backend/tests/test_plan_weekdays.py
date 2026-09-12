@@ -1,12 +1,13 @@
 """План по будням календаря.
 
-У ежедневного плана было два режима: календарные дни и отработанные дни из
-work_periods. Второй требует вводить дни руками — он для вахты и смен, и
-ошибка в нём портит план целиком: два дня вместо двадцати дают 400 ₽ там,
-где потрачено несколько тысяч.
+У дневного плана два режима сверх календарного: отработанные дни из
+work_periods и будни календаря. Первый требует вводить дни руками — он для
+вахты и смен, и ошибка в нём портит план целиком: два дня вместо двадцати
+дают 400 ₽ там, где потрачено несколько тысяч.
 
-Пятидневке нужен третий режим: будни календаря. Они известны на годы вперёд
-и ничего вводить не требуют.
+Пятидневке нужен второй: будни известны на годы вперёд и ничего вводить не
+требуют. Прежде он назывался «только будни» и жил только у ежедневного
+плана; теперь это «пропускать выходные» и работает с любым шагом.
 """
 from datetime import date
 
@@ -47,8 +48,8 @@ async def test_a_weekday_plan_multiplies_by_weekdays(client: AsyncClient):
         "/plans",
         json={
             "category_id": category["id"],
-            "kind": "daily",
-            "weekdays_only": True,
+            "kind": "day",
+            "skip_weekends": True,
             "periods": [{"amount": "200.00", "valid_from": "2026-01-01"}],
         },
     )
@@ -68,23 +69,23 @@ async def test_the_two_day_modes_cannot_be_combined(client: AsyncClient):
         "/plans",
         json={
             "category_id": category["id"],
-            "kind": "daily",
+            "kind": "day",
             "workdays_only": True,
-            "weekdays_only": True,
+            "skip_weekends": True,
             "periods": [{"amount": "200.00", "valid_from": "2026-01-01"}],
         },
     )
     assert resp.status_code == 422, resp.text
 
 
-async def test_weekdays_only_is_for_daily_plans(client: AsyncClient):
+async def test_skipping_weekends_is_for_daily_plans(client: AsyncClient):
     category = await _category(client)
     resp = await client.post(
         "/plans",
         json={
             "category_id": category["id"],
-            "kind": "monthly",
-            "weekdays_only": True,
+            "kind": "month",
+            "skip_weekends": True,
             "periods": [{"amount": "700.00", "valid_from": "2026-01-01"}],
         },
     )
@@ -98,7 +99,7 @@ async def test_a_plain_daily_plan_still_uses_calendar_days(client: AsyncClient):
         "/plans",
         json={
             "category_id": category["id"],
-            "kind": "daily",
+            "kind": "day",
             "periods": [{"amount": "50.00", "valid_from": "2026-01-01"}],
         },
     )
