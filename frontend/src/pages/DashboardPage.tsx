@@ -167,31 +167,42 @@ export function DashboardPage() {
 
           Раньше «Последние транзакции» лежали во всю ширину под всем, и
           справа от них оставалась пустая полоса в треть экрана. Теперь они
-          стоят под разбивкой по категориям, в той же колонке, а справа от
-          них — крупные траты.
+          стоят под разбивкой по категориям, в той же колонке.
 
-          Место каждой карточки задано явно (col-start/row-start), а не
-          порядком в разметке, и это не украшательство: на телефоне колонок
-          нет, и карточки идут так, как написаны — категории, счета,
-          транзакции, крупные траты. Раскладка в две колонки читается
-          по-другому, чем в одну, и связывать их одним порядком значило бы
-          испортить одну ради другой.
+          Справа — стопка: крупные траты сразу под счетами. Выравнивать их по
+          строкам с левой колонкой нельзя, пробовали: тогда крупные траты
+          отъезжают вниз, к «Последним транзакциям», и между ними и счетами
+          зияет дыра.
 
-          items-start: карточки сохраняют свою высоту вместо того, чтобы
-          растягиваться до соседней по строке. Пустоты внутри рамки видно
-          больше, чем неровного низа. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr] lg:items-start">
-        <div className="lg:col-start-1 lg:row-start-1">
-          <SpendingByCategoryCard items={data?.spending_by_category ?? []} />
+          Категории тянутся на всю высоту этой стопки — иначе пустота
+          появляется уже под ними. Пусто остаётся только справа от
+          транзакций, и это то место, куда встанут курсы валют.
+
+          Порядок на телефоне свой: категории, счета, транзакции, крупные
+          траты. В один столбец раскладка читается не так, как в два, и
+          связывать их одним порядком значило бы испортить одну ради другой.
+          Отсюда `contents`: на узком экране обёртка правой колонки исчезает,
+          её карточки становятся соседями остальных, и порядок задаётся
+          числами. На широком она снова обычный блок, а порядок — сеткой. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[1.4fr_1fr]">
+        <div className="order-1 lg:col-start-1 lg:row-start-1">
+          <SpendingByCategoryCard
+            items={data?.spending_by_category ?? []}
+            className="lg:h-full"
+          />
         </div>
-        <div className="lg:col-start-2 lg:row-start-1">
-          <AccountBalancesCard accounts={data?.accounts ?? []} />
+
+        <div className="contents lg:col-start-2 lg:row-start-1 lg:block lg:space-y-4">
+          <div className="order-2">
+            <AccountBalancesCard accounts={data?.accounts ?? []} />
+          </div>
+          <div className="order-4">
+            <LargestExpensesCard items={data?.largest_expenses ?? []} />
+          </div>
         </div>
-        <div className="lg:col-start-1 lg:row-start-2">
+
+        <div className="order-3 lg:col-start-1 lg:row-start-2">
           <RecentTransactionsCard year={year} month={month} />
-        </div>
-        <div className="lg:col-start-2 lg:row-start-2">
-          <LargestExpensesCard items={data?.largest_expenses ?? []} />
         </div>
       </div>
     </div>

@@ -31,9 +31,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.currency import ExchangeRate
-from app.services.currency_service import currencies_in_use
+from app.services.currency_service import currencies_in_use, get_base_currency
 
 CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp"
+
+# Валюта, к которой котирует источник. У ЦБ это рубль, и в самом ответе его
+# нет: остальные валюты выражены в нём.
+#
+# Отдельная константа, а не «RUB» по тексту: базовая валюта установки и
+# опорная валюта источника — разные вещи, и совпадают они только у
+# рублёвой установки. Пока их писали одним словом, второй источник было
+# некуда приткнуть, а доллар в базе молча получал рублёвые котировки.
+REFERENCE_CURRENCY = "RUB"
 
 # ЦБ отдаёт XML в кодировке windows-1251 и объявляет её в заголовке
 # документа. httpx угадывает кодировку по HTTP-заголовку, где её нет,
@@ -116,6 +125,40 @@ async def fetch_rates(on_date: date_) -> tuple[dict[str, Decimal], date_]:
     return rates, published_for
 
 
+def to_base_rates(quotes: dict[str, Decimal], base_currency: str) -> dict[str, Decimal]:
+    """Котировки источника, пересчитанные к базовой валюте установки.
+
+    Источник котирует всё к своей опорной валюте. Пока база рублёвая, это
+    одно и то же, и приложение годами считало, что так будет всегда: взять
+    число из ответа ЦБ и положить его как «столько базовых единиц за
+    единицу». Поставь базовой валютой доллар — и рублёвые котировки легли бы
+    в таблицу под видом долларовых, молча и без единого признака ошибки.
+
+    Пересчёт — деление: если рубль даёт 81,2 за доллар и 95,0 за евро, то
+    евро стоит 95,0 ÷ 81,2 = 1,17 доллара. Отдельный источник ради другой
+    базы не нужен — достаточно, чтобы он котировал обе валюты.
+
+    Опорная валюта источника в ответе не приходит (она и есть единица), но
+    установке с другой базой нужна: доллар, держащий рубли, должен знать их
+    курс. Поэтому она добавляется обратным числом.
+    """
+    base = base_currency.upper()
+    if base == REFERENCE_CURRENCY:
+        return quotes
+
+    reference_per_base = quotes.get(base)
+    if reference_per_base is None or reference_per_base <= 0:
+        # Источник не котирует базовую валюту — считать не из чего. Молча
+        # положить единицу здесь значит испортить каждую сумму установки.
+        raise CbrUnavailable(f"источник не котирует базовую валюту {base}")
+
+    converted = {
+        code: value / reference_per_base for code, value in quotes.items() if code != base
+    }
+    converted[REFERENCE_CURRENCY] = Decimal("1") / reference_per_base
+    return converted
+
+
 async def sync_rates_for_date(session: AsyncSession, on_date: date_) -> int:
     """Загружает курсы на дату и сохраняет те, что относятся к валютам,
     которыми пользователь действительно пользуется.
@@ -133,7 +176,8 @@ async def sync_rates_for_date(session: AsyncSession, on_date: date_) -> int:
     if not known:
         return 0
 
-    rates, published_for = await fetch_rates(on_date)
+    quotes, published_for = await fetch_rates(on_date)
+    rates = to_base_rates(quotes, await get_base_currency(session))
 
     existing = {
         code

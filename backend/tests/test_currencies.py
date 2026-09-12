@@ -13,7 +13,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.currency import ExchangeRate
-from app.services.cbr_service import CbrUnavailable, parse_cbr_xml
+from app.services.cbr_service import CbrUnavailable, parse_cbr_xml, to_base_rates
 
 # Фрагмент настоящего ответа ЦБ. Важны три вещи, которые здесь и
 # воспроизведены: кодировка windows-1251, запятая как десятичный разделитель
@@ -48,6 +48,35 @@ def test_broken_xml_raises_a_typed_error():
         # выглядят именно так, а не валидным XML с другим содержимым.
         parse_cbr_xml("<html><body>сайт на профилактике")
 
+
+def test_a_rouble_base_takes_the_quotes_as_they_are():
+    """Опорная валюта источника и база установки совпали — делить не на что."""
+    quotes = {"USD": Decimal("81.2"), "EUR": Decimal("95.0")}
+    assert to_base_rates(quotes, "RUB") == quotes
+
+
+def test_another_base_gets_cross_rates():
+    """Отдельный источник ради долларовой базы не нужен: если рубль даёт
+    81,2 за доллар и 95,0 за евро, то евро стоит 95,0 ÷ 81,2 доллара.
+
+    До этого рублёвые котировки легли бы в таблицу под видом долларовых —
+    молча и без единого признака ошибки."""
+    quotes = {"USD": Decimal("81.2"), "EUR": Decimal("95.0"), "CNY": Decimal("11.4")}
+
+    rates = to_base_rates(quotes, "USD")
+
+    assert "USD" not in rates  # база к самой себе в таблице не хранится
+    assert rates["EUR"].quantize(Decimal("0.0001")) == Decimal("1.1700")
+    assert rates["CNY"].quantize(Decimal("0.0001")) == Decimal("0.1404")
+    # Рубля в ответе ЦБ нет — он и есть единица, — но долларовой
+    # установке, держащей рубли, его курс нужен.
+    assert rates["RUB"].quantize(Decimal("0.000001")) == Decimal("0.012315")
+
+
+def test_a_base_the_source_does_not_quote_is_refused():
+    """Молча положить единицу тут значит испортить каждую сумму установки."""
+    with pytest.raises(CbrUnavailable):
+        to_base_rates({"USD": Decimal("81.2")}, "ZWL")
 
 async def test_only_the_base_currency_is_seeded(client: AsyncClient):
     """Раньше засев клал ещё доллар, евро, юань и бат — «на всякий случай»,

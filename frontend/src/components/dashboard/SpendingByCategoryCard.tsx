@@ -12,6 +12,9 @@ import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 
 interface SpendingByCategoryCardProps {
   items: CategoryBreakdownItem[];
+  /** Высота задаётся снаружи: на обзоре карточка тянется до низа стопки
+   *  справа, иначе под ней остаётся пустая полоса. */
+  className?: string;
 }
 
 function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: CategoryBreakdownItem }> }) {
@@ -27,7 +30,7 @@ function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   );
 }
 
-export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
+export function SpendingByCategoryCard({ items, className }: SpendingByCategoryCardProps) {
   const { t } = useTranslation();
   // The breakdown lives in a modal, not expanded inline — a category with
   // many subcategories (or many split purchases) would otherwise push this
@@ -40,7 +43,7 @@ export function SpendingByCategoryCard({ items }: SpendingByCategoryCardProps) {
   const chartData = items.map((item) => ({ ...item, amount: Number(item.amount) }));
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>{t("dashboard.spendingByCategoryTitle")}</CardTitle>
       </CardHeader>
