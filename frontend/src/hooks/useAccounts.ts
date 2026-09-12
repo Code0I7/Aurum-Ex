@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAccount, deleteAccount, fetchAccounts, updateAccount } from "@/api/accounts";
+import { invalidateMoneyQueries } from "@/lib/queryInvalidation";
 import type { AccountInput } from "@/types";
 
 export function useAccounts(includeArchived = false) {
@@ -27,20 +28,12 @@ export function useDeleteAccount() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteAccount(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      // A cascade-deleted account takes its transaction history with it —
-      // refresh everything derived from transactions, same set posting a
-      // recurring transaction invalidates.
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["net-worth-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["category-spending-report"] });
-      queryClient.invalidateQueries({ queryKey: ["category-ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["budget-status"] });
-      queryClient.invalidateQueries({ queryKey: ["financial-alerts"] });
-      queryClient.invalidateQueries({ queryKey: ["advice"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
-    },
+    // A cascade-deleted account takes its transaction history with it —
+    // refresh everything derived from transactions.
+    //
+    // Здесь стоял третий по счёту список «что от этого устарело», и он, как
+    // и остальные, не знал про расчёты с людьми: удалив счёт, человек видел
+    // прежние долги. Теперь список один на всех.
+    onSuccess: () => invalidateMoneyQueries(queryClient),
   });
 }

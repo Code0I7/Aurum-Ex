@@ -7,11 +7,18 @@ import {
   fetchReservations,
   updateGoal,
 } from "@/api/goals";
+import { invalidateMoneyQueries } from "@/lib/queryInvalidation";
 import type { GoalContributionInput, GoalInput } from "@/types";
 
+/**
+ * Цель — тоже про деньги: взнос увеличивает отложенное, а оно уменьшает
+ * доступное на счёте. Обновлять один список целей значило бы оставить на
+ * карточке счёта прежнее «доступно» — число, ради которого на неё и
+ * смотрят.
+ */
 function useInvalidateGoals() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: ["goals"] });
+  return () => invalidateMoneyQueries(queryClient);
 }
 
 export function useGoals() {

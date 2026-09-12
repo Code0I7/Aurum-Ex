@@ -9,22 +9,17 @@ import {
   type TransactionFilters,
 } from "@/api/transactions";
 import { api } from "@/api/client";
+import { invalidateMoneyQueries } from "@/lib/queryInvalidation";
 import type { TransactionInput } from "@/types";
 
+/**
+ * Операция задевает почти всё, что приложение считает, и перечислять это
+ * руками оказалось невозможно: перечень отставал от приложения, и «Долги»
+ * с балансами счетов в него не попали — см. lib/queryInvalidation.ts.
+ */
 function useInvalidateAfterTransactionChange() {
   const queryClient = useQueryClient();
-  return () => {
-    queryClient.invalidateQueries({ queryKey: ["transactions"] });
-    queryClient.invalidateQueries({ queryKey: ["transaction-years"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-    queryClient.invalidateQueries({ queryKey: ["net-worth-summary"] });
-    queryClient.invalidateQueries({ queryKey: ["category-spending-report"] });
-    queryClient.invalidateQueries({ queryKey: ["category-ranking"] });
-    queryClient.invalidateQueries({ queryKey: ["budget-status"] });
-    queryClient.invalidateQueries({ queryKey: ["financial-alerts"] });
-    queryClient.invalidateQueries({ queryKey: ["advice"] });
-    queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
-  };
+  return () => invalidateMoneyQueries(queryClient);
 }
 
 export function useTransactions(filters: TransactionFilters, enabled = true) {

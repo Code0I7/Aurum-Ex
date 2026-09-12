@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select } from "@/components/ui/Input";
+import { HelpBadge } from "@/components/ui/HelpBadge";
+import { Input, Label, LabelWithHelp, Select } from "@/components/ui/Input";
 import { CategoryPicker } from "@/components/categories/CategoryPicker";
 import { ItemsEditor } from "@/components/transactions/ItemsEditor";
 import {
@@ -535,7 +536,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
             </div>
 
             <div>
-              <Label htmlFor="settlement_kind">{t("transactions.form.settlementKindLabel")}</Label>
+              <LabelWithHelp htmlFor="settlement_kind" hintKey="transactions.form.settlementHint">
+                {t("transactions.form.settlementKindLabel")}
+              </LabelWithHelp>
               <Select
                 id="settlement_kind"
                 required
@@ -560,7 +563,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                     общий подарок. */}
                 <option value="transit">{t("transactions.form.settlementTransit")}</option>
               </Select>
-              <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementHint")}</p>
             </div>
 
             {/* Чьи это деньги. Одного поля на транзит не хватает: в
@@ -574,7 +576,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                 расхода — самый частый случай. */}
             {isTransit && (
               <div>
-                <Label htmlFor="transit_party">{t("transactions.form.transitFromLabel")}</Label>
+                <LabelWithHelp htmlFor="transit_party" hintKey="transactions.form.transitPartyHint">
+                  {t("transactions.form.transitFromLabel")}
+                </LabelWithHelp>
                 <DirectoryPicker
                   id="transit_party"
                   options={counterparties ?? []}
@@ -584,7 +588,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                   placeholder={t("transactions.form.selectCounterparty")}
                   onCreate={async (name) => (await createCounterparty.mutateAsync({ name })).id}
                 />
-                <p className="mt-1 text-xs text-text-muted">{t("transactions.form.transitPartyHint")}</p>
               </div>
             )}
 
@@ -598,7 +601,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                 здесь — чтобы найти покупку потом и увидеть её в списке
                 рядом с остальными продуктовыми. */}
             <div>
-              <Label htmlFor="settlement-category">{t("transactions.form.categoryLabel")}</Label>
+              <LabelWithHelp htmlFor="settlement-category" hintKey="transactions.form.settlementCategoryHint">
+                {t("transactions.form.categoryLabel")}
+              </LabelWithHelp>
               <CategoryPicker
                 id="settlement-category"
                 categories={relevantCategories}
@@ -609,7 +614,6 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                 placeholder={t("transactions.form.noCategory")}
                 emptyLabel={t("transactions.form.noCategory")}
               />
-              <p className="mt-1 text-xs text-text-muted">{t("transactions.form.settlementCategoryHint")}</p>
             </div>
           </div>
         ) : form.type === "transfer" ? (
@@ -757,18 +761,20 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
         {/* «Не учитывать»: запись остаётся в истории, но выпадает из всех
             расчётов. Ошибочный перевод, задвоенная строка, тестовая
             операция — удалять их нельзя, они были, но и считать нельзя. */}
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.is_excluded}
-            onChange={(event) => setForm((prev) => ({ ...prev, is_excluded: event.target.checked }))}
-            className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
-          />
-          <span>
-            {t("transactions.form.excludedLabel")}
-            <span className="block text-xs text-text-muted">{t("transactions.form.excludedHint")}</span>
-          </span>
-        </label>
+        {/* Значок вне <label>: внутри щелчок по нему заодно переключал бы
+            саму галочку, и объяснение её и включало. */}
+        <div className="flex items-center gap-1.5">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.is_excluded}
+              onChange={(event) => setForm((prev) => ({ ...prev, is_excluded: event.target.checked }))}
+              className="h-3.5 w-3.5 accent-text-primary"
+            />
+            <span>{t("transactions.form.excludedLabel")}</span>
+          </label>
+          <HelpBadge hintKey="transactions.form.excludedHint" />
+        </div>
 
         {/* Состав чека — только у трат: у зарплаты нет позиций, а у перевода
             между своими счетами тем более. */}
