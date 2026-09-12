@@ -5,12 +5,12 @@ import { Input, Label, Select } from "@/components/ui/Input";
 import { useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import type { Account, AccountKind } from "@/types";
+import type { AccountKind, AccountWithBalance } from "@/types";
 
 interface AccountFormModalProps {
   open: boolean;
   onClose: () => void;
-  account?: Account | null;
+  account?: AccountWithBalance | null;
 }
 
 const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "crypto", "loan", "other"];
@@ -38,6 +38,9 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
   }, [open, account]);
 
   const isSaving = createAccount.isPending || updateAccount.isPending;
+  // Настоящая смена валюты, а не то же значение, пришедшее вместе с
+  // остальными полями.
+  const currencyChanged = Boolean(account) && form.currency !== account?.currency;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -69,10 +72,13 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
           />
         </div>
 
-        {/* Валюта счёта. Менять её у счёта с операциями сервер не даст:
-            баланс складывается из сумм операций, а у каждой своя валюта,
-            записанная при вводе, — смена задним числом превратила бы
-            остаток в сумму рублей с долларами. */}
+        {/* Валюта счёта. Менять её можно и потом: операции счёта переходят
+            в новую валюту вместе с ним, а пересчёт в валюту установки
+            выполняется заново по курсам на их даты.
+
+            Предупреждение показывается только при настоящей смене, а не
+            всегда: форма присылает все поля целиком, и валюта приходит в
+            каждой правке — в том числе когда меняли одно название. */}
         <div>
           <Label htmlFor="account-currency">{t("account.form.currencyLabel")}</Label>
           <Select
@@ -86,8 +92,18 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
               </option>
             ))}
           </Select>
-          {account && (
-            <p className="mt-1 text-xs text-text-muted">{t("account.form.currencyLockedHint")}</p>
+          {account && !currencyChanged && (
+            <p className="mt-1 text-xs text-text-muted">{t("account.form.currencyHint")}</p>
+          )}
+          {account && currencyChanged && (
+            <p className="mt-1 text-xs text-danger">
+              {t("account.form.currencyChangeWarning", {
+                count: account.transaction_count,
+                currency: form.currency,
+                previous: account.currency,
+                base: currency,
+              })}
+            </p>
           )}
         </div>
 

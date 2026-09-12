@@ -97,3 +97,7 @@ class AccountWithBalance(AccountRead):
     # счёт-копилку, которым такое обычно изображают в таблицах.
     reserved: Decimal = Decimal("0")
     available: Decimal = Decimal("0")
+
+    # Сколько операций записано на счёт. Нужно форме: при смене валюты она
+    # говорит, сколько записей будет пересчитано.
+    transaction_count: int = 0

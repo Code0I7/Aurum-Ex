@@ -981,7 +981,8 @@ const ru = {
   "account.form.namePlaceholder": "Основной счёт, накопления, наличные…",
   "account.form.typeLabel": "Тип",
   "account.form.currencyLabel": "Валюта",
-  "account.form.currencyLockedHint": "Сменить можно, пока по счёту нет операций: остаток складывается из их сумм, и у каждой своя валюта, записанная при вводе.",
+  "account.form.currencyHint": "Валюта операций по этому счёту. Сменить можно и потом — записанные операции перейдут в новую валюту вместе со счётом.",
+  "account.form.currencyChangeWarning": "Операций на счёте: {{count}}. Все они станут считаться в {{currency}} — суммы не изменятся, поменяется только валюта, а пересчёт в {{base}} выполнится заново по курсам на их даты. Так исправляют ошибку при заведении счёта. Если счёт правда вёлся в {{previous}}, а теперь это другая карта, заведите новый: иначе прошлое станет неправдой.",
   "account.form.saveError": "Не удалось сохранить счёт. Проверьте данные и попробуйте снова.",
 
   "category.expenseSectionTitle": "Категории расходов",
@@ -2020,7 +2021,8 @@ const en: Record<keyof typeof ru, string> = {
   "account.form.namePlaceholder": "Main account, savings, cash…",
   "account.form.typeLabel": "Type",
   "account.form.currencyLabel": "Currency",
-  "account.form.currencyLockedHint": "Can be changed while the account has no transactions: the balance is summed from their amounts, and each keeps the currency it was entered in.",
+  "account.form.currencyHint": "The currency of this account’s transactions. It can be changed later — recorded transactions move to the new currency along with the account.",
+  "account.form.currencyChangeWarning": "Transactions on this account: {{count}}. All of them will count as {{currency}} — the amounts stay, only the currency changes, and the conversion to {{base}} is redone at each transaction’s own date. This fixes a mistake made when the account was created. If the account really did hold {{previous}} and this is a different card now, create a new one instead: otherwise the past stops being true.",
   "account.form.saveError": "Failed to save the account. Check the data and try again.",
 
   "category.expenseSectionTitle": "Expense categories",

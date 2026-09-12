@@ -1,11 +1,13 @@
 import { Archive, ArchiveRestore, Banknote, Bitcoin, CreditCard, Landmark, Package, Pencil, PiggyBank, TrendingUp, Trash2, Wallet, type LucideIcon } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import type { Account, AccountKind, AccountWithBalance } from "@/types";
+import type { AccountKind, AccountWithBalance } from "@/types";
 
 interface AccountListProps {
   items: AccountWithBalance[];
-  onEdit: (account: Account) => void;
+  // Счёт целиком, а не одно его имя: форме нужно число операций — она
+  // предупреждает, сколько записей пересчитает смена валюты.
+  onEdit: (account: AccountWithBalance) => void;
   onToggleArchived: (account: AccountWithBalance) => void;
   onDelete: (account: AccountWithBalance) => void;
 }

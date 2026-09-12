@@ -8,7 +8,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
@@ -21,6 +21,7 @@ from app.services.currency_service import (
     get_base_currency,
     get_current_rates,
     quantize_money,
+    to_base,
 )
 
 # Kinds whose balance is a debt rather than savings. Used only to pick a
@@ -79,11 +80,29 @@ def resolve_nature(kind: AccountKind, explicit: AccountNature | None) -> Account
     return AccountNature.LIABILITY if kind in _LIABILITY_KINDS else AccountNature.ASSET
 
 
+async def count_transactions_by_account(session: AsyncSession) -> dict[int, int]:
+    """Сколько операций записано на каждый счёт.
+
+    Нужно форме счёта: при смене валюты она говорит, сколько записей будет
+    пересчитано, а «47 операций» человек читает совсем иначе, чем «все
+    операции».
+
+    Считаются только те, чья колонка счёта указывает сюда. Перевод
+    записывается один раз, со стороны отправителя: у получателя он есть в
+    балансе, но своей строки там нет — и валюту эта строка несёт чужую.
+    """
+    rows = await session.execute(
+        select(Transaction.account_id, func.count()).group_by(Transaction.account_id)
+    )
+    return {account_id: count for account_id, count in rows.all()}
+
+
 def _to_read(
     account: Account,
     balance: Decimal,
     balance_base: Decimal | None = None,
     reserved: Decimal = Decimal("0"),
+    transaction_count: int = 0,
 ) -> AccountWithBalance:
     return AccountWithBalance(
         id=account.id,
@@ -103,6 +122,7 @@ def _to_read(
         # Доступно не уходит в минус: если отложено больше, чем сейчас на
         # счёте, свободных денег просто нет — но и долга это не создаёт.
         available=max(balance - reserved, Decimal("0")),
+        transaction_count=transaction_count,
     )
 
 
@@ -119,6 +139,7 @@ async def list_accounts(session: AsyncSession, include_archived: bool) -> list[A
     # года (см. services/currency_service.py).
     rates = await get_current_rates(session)
     reserved_by_account = await get_reserved_by_account(session)
+    counts = await count_transactions_by_account(session)
 
     def read(account: Account) -> AccountWithBalance:
         raw = balances.get(account.id, Decimal("0"))
@@ -129,6 +150,7 @@ async def list_accounts(session: AsyncSession, include_archived: bool) -> list[A
             quantize_money(raw),
             convert_balance(raw, account.currency, rates),
             quantize_money(reserved_by_account.get(account.id, Decimal("0"))),
+            counts.get(account.id, 0),
         )
 
     return [read(account) for account in accounts]
@@ -155,35 +177,57 @@ async def create_account(session: AsyncSession, payload: AccountCreate) -> Accou
     return _to_read(account, account.opening_balance or Decimal("0"))
 
 
-async def _refuse_currency_change(session: AsyncSession, account: Account, currency: str) -> None:
-    """Валюту счёта меняют, только пока по нему нет операций.
+async def _change_currency(session: AsyncSession, account: Account, currency: str) -> None:
+    """Меняет валюту счёта вместе с валютой его операций.
 
-    Баланс счёта складывается из сумм операций, а у каждой операции своя
-    валюта, записанная в момент ввода. Сменить валюту счёта задним числом
-    значит получить счёт, где к рублям прибавляются доллары как голые числа:
-    остаток станет неправильным молча, без единой ошибки на экране.
+    Валюта в операцию копируется при сохранении, а не спрашивается у счёта
+    при подсчётах, — поэтому просто переписать поле на счёте мало: операции
+    остались бы в прежней валюте, и остаток стал бы суммой рублей с
+    долларами как голых чисел. Раньше по этой причине смена и запрещалась
+    вовсе.
 
-    Пока операций нет, менять нечего и незачем запрещать: человек завёл
-    карту и тут же заметил, что выбрал не ту валюту.
+    Что происходит: у каждой операции счёта валюта становится новой, а сумма
+    в валюте установки считается заново — по курсу на дату самой операции, а
+    не на сегодня. Сама сумма не трогается: человек ввёл её с чека, и
+    поменялось только то, чем она подписана.
+
+    Пересчёт задним числом стал возможен ровно тогда, когда сумма в валюте
+    установки научилась быть пустой. До этого на месте недостающего курса
+    молча стояла единица, и пересчёт полусотни старых операций записал бы
+    полсотни курсов один к одному (см. services/currency_service.py).
+
+    Переписываются только операции в прежней валюте счёта. Если у какой-то
+    валюта была задана своя, она своей и останется: смена валюты счёта — не
+    повод трогать то, что человек указал руками.
+
+    Чего эта правка НЕ делает: она не переводит деньги из одной валюты в
+    другую. Это исправление ошибки при заведении счёта — «вёл в долларах, а
+    выбрал рубли». Если счёт действительно вёлся в прежней валюте, а теперь
+    это другая карта, — это другой счёт, и заводить надо новый. Различить
+    эти два случая приложение не может, поэтому форма предупреждает.
     """
-    if currency.upper() == account.currency.upper():
+    target = currency.upper()
+    previous = account.currency.upper()
+    if target == previous:
         return
 
-    used = await session.scalar(
-        select(func.count())
-        .select_from(Transaction)
-        .where(
-            or_(
+    rows = (
+        await session.execute(
+            select(Transaction).where(
                 Transaction.account_id == account.id,
-                Transaction.transfer_account_id == account.id,
+                func.upper(Transaction.currency) == previous,
             )
         )
-    )
-    if used:
-        raise HTTPException(
-            status_code=400,
-            detail="Currency cannot change once the account has transactions",
+    ).scalars().all()
+    for transaction in rows:
+        transaction.currency = target
+        rate, amount_base = await to_base(
+            session, transaction.amount, target, transaction.date
         )
+        transaction.exchange_rate = rate
+        transaction.amount_base = amount_base
+
+    account.currency = target
 
 
 async def update_account(session: AsyncSession, account_id: int, payload: AccountUpdate) -> AccountWithBalance:
@@ -191,8 +235,11 @@ async def update_account(session: AsyncSession, account_id: int, payload: Accoun
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
     changes = payload.model_dump(exclude_unset=True)
+    # Валюта снимается из общего списка полей: её меняет отдельный проход,
+    # которому нужно прежнее значение — по нему он находит операции, чья
+    # валюта досталась им от этого счёта.
     if changes.get("currency"):
-        await _refuse_currency_change(session, account, changes["currency"])
+        await _change_currency(session, account, changes.pop("currency"))
     # Смена вида счёта без явного указания природы переводит и природу —
     # иначе карта, ставшая кредитной, продолжила бы считаться активом.
     if "kind" in changes and "nature" not in changes:
@@ -202,7 +249,12 @@ async def update_account(session: AsyncSession, account_id: int, payload: Accoun
     await session.commit()
     await session.refresh(account)
     balances = await get_balances_by_account(session)
-    return _to_read(account, balances.get(account.id, Decimal("0")))
+    counts = await count_transactions_by_account(session)
+    return _to_read(
+        account,
+        balances.get(account.id, Decimal("0")),
+        transaction_count=counts.get(account.id, 0),
+    )
 
 
 async def delete_account(session: AsyncSession, account_id: int) -> None:

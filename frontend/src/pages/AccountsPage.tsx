@@ -8,7 +8,7 @@ import { AccountFormModal } from "@/components/accounts/AccountFormModal";
 import { useAccounts, useDeleteAccount, useUpdateAccount } from "@/hooks/useAccounts";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
-import type { Account, AccountWithBalance } from "@/types";
+import type { AccountWithBalance } from "@/types";
 
 export function AccountsPage() {
   const { t } = useTranslation();
@@ -19,14 +19,14 @@ export function AccountsPage() {
   const confirm = useConfirm();
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [editingAccount, setEditingAccount] = useState<AccountWithBalance | null>(null);
 
   function openCreateModal() {
     setEditingAccount(null);
     setModalOpen(true);
   }
 
-  function openEditModal(account: Account) {
+  function openEditModal(account: AccountWithBalance) {
     setEditingAccount(account);
     setModalOpen(true);
   }
