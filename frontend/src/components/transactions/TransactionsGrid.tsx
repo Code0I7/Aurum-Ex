@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SplitCategories } from "@/components/transactions/SplitCategories";
 import { ArrowLeftRight, ChevronDown, ChevronRight, GripVertical, Pencil, SquareDivide, Trash2 } from "lucide-react";
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
-import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
+import { categoryPath } from "@/lib/categoryLabels";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
 import { formatWorkCost, rateForDate } from "@/lib/hours";
@@ -262,11 +263,11 @@ export function TransactionsGrid({
         // добавляют, а колонка от трёх иконок подряд превращается в
         // мельтешение. Значок один и стоит перед путём.
         if (tx.splits.length > 0) {
-          // У разбивки значка нет: категорий несколько, и любая
-          // выбранная означала бы, что остальные менее важны.
-          return tx.splits
-            .map((split) => (split.category ? translateCategoryName(split.category.name) : "?"))
-            .join(" + ");
+          // У разбивки раньше значка не было: категорий несколько, и любая
+          // выбранная означала бы, что остальные менее важны. Теперь
+          // значок у каждой категории — никто не выбран, все на равных, —
+          // а повторы свёрнуты в «×2» (см. SplitCategories).
+          return <SplitCategories splits={tx.splits} currency={tx.currency} />;
         }
         if (!tx.category) return "—";
         const CategoryIcon = getCategoryIcon(tx.category.icon);

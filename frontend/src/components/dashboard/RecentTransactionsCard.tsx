@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
+import { SplitCategories } from "@/components/transactions/SplitCategories";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { useTranslation } from "@/lib/i18n";
-import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
+import { categoryPath } from "@/lib/categoryLabels";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
 
@@ -43,11 +44,10 @@ export function RecentTransactionsCard({ year, month, className }: RecentTransac
               const isSplit = tx.splits.length > 0;
               const Icon = getCategoryIcon(tx.category?.icon);
               const color = tx.category?.color ?? "var(--text-muted)";
-              const categoryLabel = isSplit
-                ? tx.splits.map((split) => (split.category ? translateCategoryName(split.category.name) : "?")).join(" + ")
-                : tx.category
-                  ? categoryPath(tx.category, categories)
-                  : null;
+              // Разбивка рисуется значками по категориям, строкой — только
+              // одиночная категория.
+              const categoryLabel =
+                !isSplit && tx.category ? categoryPath(tx.category, categories) : null;
               return (
                 <li key={tx.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                   <span
@@ -61,6 +61,12 @@ export function RecentTransactionsCard({ year, month, className }: RecentTransac
                     <span className="block truncate text-xs text-text-muted">
                       {formatTransactionDate(tx.date)} · {tx.account.name}
                       {categoryLabel ? ` · ${categoryLabel}` : ""}
+                      {isSplit && (
+                        <>
+                          {" · "}
+                          <SplitCategories splits={tx.splits} currency={tx.currency} />
+                        </>
+                      )}
                     </span>
                   </span>
                   <span

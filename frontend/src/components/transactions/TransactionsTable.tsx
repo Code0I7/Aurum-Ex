@@ -1,9 +1,10 @@
 import { ArrowLeftRight, CalendarSearch, Pencil, SquareDivide, Trash2 } from "lucide-react";
+import { SplitCategories } from "@/components/transactions/SplitCategories";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { useTranslation } from "@/lib/i18n";
-import { categoryPath, translateCategoryName } from "@/lib/categoryLabels";
+import { categoryPath } from "@/lib/categoryLabels";
 import { useCategories } from "@/hooks/useCategories";
 import type { Transaction } from "@/types";
 
@@ -37,11 +38,9 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
           const isSplit = tx.splits.length > 0;
           const Icon = isTransfer ? ArrowLeftRight : isSplit ? SquareDivide : getCategoryIcon(tx.category?.icon);
           const color = isTransfer || isSplit ? "var(--text-muted)" : tx.category?.color ?? "var(--text-muted)";
-          const categoryLabel = isSplit
-            ? tx.splits.map((split) => (split.category ? translateCategoryName(split.category.name) : "?")).join(" + ")
-            : tx.category
-              ? categoryPath(tx.category, categories)
-              : null;
+          // У разбивки подпись рисуется значками по категориям (см. ниже),
+          // поэтому строкой здесь только одиночная категория.
+          const categoryLabel = !isSplit && tx.category ? categoryPath(tx.category, categories) : null;
 
           return (
             <li key={tx.id} className="group flex items-center gap-3 py-3">
@@ -58,6 +57,12 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                   {formatTransactionDate(tx.date, Boolean(onJumpToMonth))} · {tx.account.name}
                   {isTransfer && tx.transfer_account_id ? ` ${t("transactions.transferSuffix")}` : ""}
                   {categoryLabel ? ` · ${categoryLabel}` : ""}
+                  {isSplit && (
+                    <>
+                      {" · "}
+                      <SplitCategories splits={tx.splits} currency={tx.currency} />
+                    </>
+                  )}
                   {tx.tags.length > 0 ? ` · ${tx.tags.map((tag) => tag.name).join(", ")}` : ""}
                 </span>
               </span>
