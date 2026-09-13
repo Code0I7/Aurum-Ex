@@ -267,7 +267,14 @@ export function TransactionsGrid({
           // выбранная означала бы, что остальные менее важны. Теперь
           // значок у каждой категории — никто не выбран, все на равных, —
           // а повторы свёрнуты в «×2» (см. SplitCategories).
-          return <SplitCategories splits={tx.splits} currency={tx.currency} />;
+          return (
+            <SplitCategories
+              splits={tx.splits}
+              categories={categories}
+              currency={tx.currency}
+              layout="stack"
+            />
+          );
         }
         if (!tx.category) return "—";
         const CategoryIcon = getCategoryIcon(tx.category.icon);

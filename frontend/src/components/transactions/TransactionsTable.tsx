@@ -60,7 +60,7 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                   {isSplit && (
                     <>
                       {" · "}
-                      <SplitCategories splits={tx.splits} currency={tx.currency} />
+                      <SplitCategories splits={tx.splits} categories={categories} currency={tx.currency} />
                     </>
                   )}
                   {tx.tags.length > 0 ? ` · ${tx.tags.map((tag) => tag.name).join(", ")}` : ""}

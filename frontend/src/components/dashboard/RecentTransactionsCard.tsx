@@ -64,7 +64,7 @@ export function RecentTransactionsCard({ year, month, className }: RecentTransac
                       {isSplit && (
                         <>
                           {" · "}
-                          <SplitCategories splits={tx.splits} currency={tx.currency} />
+                          <SplitCategories splits={tx.splits} categories={categories} currency={tx.currency} />
                         </>
                       )}
                     </span>
