@@ -117,6 +117,18 @@ function emptySplitRow(): SplitRowState {
   return { key: crypto.randomUUID(), category_id: "", amount: "", note: "" };
 }
 
+/** Доля одного человека в операции, разделённой между несколькими: долг
+ *  вернули трое одним переводом. */
+interface PersonRowState {
+  key: string;
+  counterparty_id: string;
+  amount: string;
+}
+
+function emptyPersonRow(): PersonRowState {
+  return { key: crypto.randomUUID(), counterparty_id: "", amount: "" };
+}
+
 // Cents, not floats — a plain Number sum of "0.10" + "0.20" style amounts can
 // drift from the transaction total by fractions of a cent, which would
 // falsely trip the "must add up exactly" check the backend also enforces.
@@ -133,6 +145,10 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   const updateTransaction = useUpdateTransaction();
 
   const [form, setForm] = useState(EMPTY_FORM);
+  // Разбивка между людьми — своим состоянием, как и строки категорий: это
+  // список переменной длины, а не поле формы. Пустой список означает
+  // «делить не между кем», и тогда человек называется обычным полем.
+  const [peopleRows, setPeopleRows] = useState<PersonRowState[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   // Категории операции одним списком. Одна строка — обычная операция с
   // одной категорией; две и больше — разбивка, и тогда у каждой строки
@@ -185,6 +201,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
           note: item.note,
         })),
       );
+      setPeopleRows(
+        transaction.counterparty_splits.map((split) => ({
+          key: String(split.id),
+          counterparty_id: split.counterparty_id ? String(split.counterparty_id) : "",
+          amount: split.amount,
+        }))
+      );
       setCategoryRows(
         hasSplits
           ? transaction.splits.map((split) => ({
@@ -218,6 +241,7 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       setTags([]);
       setItems([]);
       setCategoryRows([emptySplitRow()]);
+      setPeopleRows([]);
     }
     setError(null);
   }, [open, transaction, accounts]);
@@ -282,6 +306,12 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
     sourceAccount.currency !== destinationAccount.currency;
 
   const isSettlement = SETTLEMENT_TYPES.includes(form.type);
+  // Операция разделена между людьми: строк больше одной. Отдельного
+  // признака нет по той же причине, что и у категорий — два источника
+  // правды про одно и то же расходятся при первой правке.
+  const isPeopleSplit = isSettlement && peopleRows.length > 1;
+  const peopleAllocatedCents = peopleRows.reduce((sum, row) => sum + toCents(row.amount), 0);
+  const peopleRemainingCents = toCents(form.amount) - peopleAllocatedCents;
   const isTransit = isSettlement && form.settlement_kind === "transit";
   // Разбивка — это просто «строк больше одной». Отдельного признака нет:
   // два источника правды про одно и то же расходились бы при каждой правке.
@@ -301,6 +331,27 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       setError(t("transactions.form.errorSelectDestination"));
       return;
     }
+    // Разбивка между людьми: либо её нет вовсе, либо она сходится с суммой
+    // и в ней не меньше двух человек. Сервер проверяет то же самое, но
+    // ответ оттуда — общая ошибка сохранения, а здесь видно, чего не
+    // хватает.
+    const filledPeople = peopleRows.filter((row) => row.counterparty_id || row.amount);
+    if (filledPeople.length > 0) {
+      if (filledPeople.length < 2) {
+        setError(t("transactions.form.errorPeopleMinRows"));
+        return;
+      }
+      if (filledPeople.some((row) => !row.counterparty_id || toCents(row.amount) <= 0)) {
+        setError(t("transactions.form.errorPeopleIncomplete"));
+        return;
+      }
+      const allocated = filledPeople.reduce((sum, row) => sum + toCents(row.amount), 0);
+      if (allocated !== toCents(form.amount)) {
+        setError(t("transactions.form.errorPeopleSum"));
+        return;
+      }
+    }
+
     if (crossCurrencyTransfer && !form.transfer_amount) {
       setError(t("transactions.form.errorTransferAmount"));
       return;
@@ -370,7 +421,19 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       // Контрагент и признак возвратности имеют смысл только у расчётов:
       // отправлять их у обычной покупки значило бы записать связь, которой
       // нет, и человек потом гадал бы, откуда взялся долг.
-      counterparty_id: isSettlement && form.counterparty_id ? Number(form.counterparty_id) : null,
+      // Контрагент и разбивка — взаимоисключающие ответы на «от кого»:
+      // при разбивке поле обязано быть пустым, иначе операция посчиталась
+      // бы дважды.
+      counterparty_id:
+        isSettlement && !isPeopleSplit && form.counterparty_id
+          ? Number(form.counterparty_id)
+          : null,
+      counterparty_splits: isPeopleSplit
+        ? filledPeople.map((row) => ({
+            counterparty_id: Number(row.counterparty_id),
+            amount: row.amount,
+          }))
+        : [],
       settlement_kind: isSettlement && form.settlement_kind ? form.settlement_kind : null,
       // Вторая сторона есть только у транзита: у подарка и займа деньги
       // и правда между двумя, и лишнее поле там означало бы третьего.
@@ -473,6 +536,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               // Категории расхода и дохода не пересекаются: оставить
               // выбранное значило бы отправить чужую категорию.
               setCategoryRows([emptySplitRow()]);
+              // Разбивка между людьми есть только у расчётов: у покупки
+              // второй стороны нет, и доли там означали бы неизвестно что.
+              if (!SETTLEMENT_TYPES.includes(nextType)) setPeopleRows([]);
             }}
           >
             <option value="expense">{t("transactions.form.typeExpense")}</option>
@@ -547,17 +613,123 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
 
         {isSettlement ? (
           <div className="space-y-3 rounded-lg border border-border p-3">
-            <div>
-              <Label htmlFor="counterparty">{t("transactions.form.counterpartyLabel")}</Label>
-              <DirectoryPicker
-                id="counterparty"
-                options={counterparties ?? []}
-                value={form.counterparty_id}
-                onChange={(value) => setForm((prev) => ({ ...prev, counterparty_id: value }))}
-                placeholder={t("transactions.form.selectCounterparty")}
-                onCreate={async (name) => (await createCounterparty.mutateAsync({ name })).id}
-              />
-            </div>
+            {/* Один человек или несколько.
+
+                Пока строк нет, человек называется обычным полем — так
+                выглядит подавляющее большинство расчётов. «Разделить между
+                людьми» превращает поле в список: долг вернули трое одним
+                переводом, и в выписке банка это одна операция.
+
+                Вид расчёта при этом один на всю операцию: трое, вернувшие
+                долг, вернули именно долг. */}
+            {peopleRows.length === 0 ? (
+              <div>
+                <Label htmlFor="counterparty">{t("transactions.form.counterpartyLabel")}</Label>
+                <DirectoryPicker
+                  id="counterparty"
+                  options={counterparties ?? []}
+                  value={form.counterparty_id}
+                  onChange={(value) => setForm((prev) => ({ ...prev, counterparty_id: value }))}
+                  placeholder={t("transactions.form.selectCounterparty")}
+                  onCreate={async (name) => (await createCounterparty.mutateAsync({ name })).id}
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    // Первая строка забирает уже выбранного человека и всю
+                    // сумму: чаще всего делят именно её, и начинать с двух
+                    // пустых строк значило бы заставить вводить заново.
+                    setPeopleRows([
+                      {
+                        ...emptyPersonRow(),
+                        counterparty_id: form.counterparty_id,
+                        amount: form.amount,
+                      },
+                      emptyPersonRow(),
+                    ])
+                  }
+                  className="mt-1.5 text-xs font-medium text-series-1 hover:underline"
+                >
+                  {t("transactions.form.splitBetweenPeople")}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>{t("transactions.form.peopleLabel")}</Label>
+                {peopleRows.map((row, index) => (
+                  <div key={row.key} className="flex items-center gap-1.5">
+                    {/* Обёрткой, а не классом: у DirectoryPicker своего
+                        className нет, и ширину задаёт то, во что он
+                        положен. */}
+                    <span className="min-w-0 flex-1">
+                    <DirectoryPicker
+                      id={index === 0 ? "counterparty" : `counterparty-${row.key}`}
+                      options={counterparties ?? []}
+                      value={row.counterparty_id}
+                      onChange={(value) =>
+                        setPeopleRows((prev) =>
+                          prev.map((item) =>
+                            item.key === row.key ? { ...item, counterparty_id: value } : item
+                          )
+                        )
+                      }
+                      placeholder={t("transactions.form.selectCounterparty")}
+                      onCreate={async (name) => (await createCounterparty.mutateAsync({ name })).id}
+                    />
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      className="w-28 shrink-0"
+                      value={row.amount}
+                      onChange={(event) =>
+                        setPeopleRows((prev) =>
+                          prev.map((item) =>
+                            item.key === row.key ? { ...item, amount: event.target.value } : item
+                          )
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      aria-label={t("transactions.form.peopleRemoveRow")}
+                      onClick={() =>
+                        setPeopleRows((prev) => prev.filter((item) => item.key !== row.key))
+                      }
+                      className="shrink-0 rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-danger"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPeopleRows((prev) => [...prev, emptyPersonRow()])}
+                    className="text-xs font-medium text-series-1 hover:underline"
+                  >
+                    {t("transactions.form.peopleAddRow")}
+                  </button>
+                  {/* Сколько ещё не разнесено. Та же подсказка, что у
+                      разбивки по категориям: сумма обязана сойтись ровно, и
+                      узнать об этом лучше здесь, чем из отказа сервера. */}
+                  <p
+                    className={`text-xs ${peopleRemainingCents === 0 ? "text-success" : "text-text-muted"}`}
+                  >
+                    {peopleRemainingCents > 0
+                      ? t("transactions.form.splitRemainingLabel", {
+                          amount: formatCurrency(peopleRemainingCents / 100),
+                        })
+                      : peopleRemainingCents < 0
+                        ? t("transactions.form.splitOverAllocatedLabel", {
+                            amount: formatCurrency(Math.abs(peopleRemainingCents) / 100),
+                          })
+                        : t("transactions.form.splitFullyAllocatedLabel")}
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div>
               <LabelWithHelp htmlFor="settlement_kind" hintKey="transactions.form.settlementHint">

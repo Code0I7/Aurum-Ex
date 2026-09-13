@@ -141,6 +141,18 @@ class TransactionSplitBackup(BaseModel):
     note: str | None
 
 
+class TransactionCounterpartySplitBackup(BaseModel):
+    """Доля человека в операции, разделённой между несколькими."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    transaction_id: int
+    counterparty_id: int | None
+    amount: Decimal
+    note: str | None
+
+
 class AssetBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -578,6 +590,11 @@ class BackupPayload(BaseModel):
     # Defaulted so a backup exported before transaction splitting existed
     # still imports cleanly under the same format version.
     transaction_splits: list[TransactionSplitBackup] = Field(default_factory=list)
+    # Разбивка между людьми. Пусто в копии, снятой до её появления, — и это
+    # верно: тогда разделить операцию между людьми было нельзя.
+    transaction_counterparty_splits: list[TransactionCounterpartySplitBackup] = Field(
+        default_factory=list
+    )
     assets: list[AssetBackup]
     asset_valuations: list[AssetValuationBackup]
     # Defaulted so a backup exported before crypto holdings/portfolios

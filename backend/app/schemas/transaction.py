@@ -8,6 +8,7 @@ from app.core.text import capitalize_first_letter
 from app.models.enums import SettlementKind, TransactionType
 from app.schemas.account import AccountRead
 from app.schemas.category import CategoryRead
+from app.schemas.directories import CounterpartyRead
 from app.schemas.product import TransactionItemInput, TransactionItemRead
 from app.schemas.tag import TagRead
 
@@ -67,6 +68,42 @@ def split_rule_violation(
         return "category_id must be omitted when splitting a transaction across categories"
     if split_count < 2:
         return "splitting a transaction needs at least 2 categories"
+    if split_total != amount:
+        return f"split amounts ({split_total}) must add up to the transaction amount ({amount})"
+    return None
+
+
+def counterparty_split_rule_violation(
+    *,
+    type: TransactionType,
+    amount: Decimal,
+    counterparty_id: int | None,
+    split_count: int,
+    split_total: Decimal | None,
+) -> str | None:
+    """Правила разбивки операции между людьми — той же формы, что и у
+    разбивки по категориям выше, и по тем же причинам.
+
+    Долг вернули трое одним переводом: в выписке банка это одна операция, и
+    три записи в приложении означали бы, что оно перестало сходиться с
+    выпиской.
+
+    Разбивка заменяет контрагента, а не дополняет его: иначе у операции
+    оказалось бы два ответа на вопрос «от кого», и расчёты с людьми
+    посчитали бы её дважды.
+
+    Одна строка не разбивка, а тот же контрагент в обход поля. Суммы обязаны
+    сойтись ровно: разбивка, не сходящаяся с операцией, — это молча
+    потерянные или выдуманные деньги на чьём-то счету.
+    """
+    if split_count == 0:
+        return None
+    if type not in (TransactionType.EXTERNAL_IN, TransactionType.EXTERNAL_OUT):
+        return "counterparty splits are only valid for settlements with people"
+    if counterparty_id is not None:
+        return "counterparty_id must be omitted when splitting a transaction between people"
+    if split_count < 2:
+        return "splitting a transaction between people needs at least 2 of them"
     if split_total != amount:
         return f"split amounts ({split_total}) must add up to the transaction amount ({amount})"
     return None
@@ -161,6 +198,14 @@ class TransactionSplitInput(BaseModel):
     note: str | None = Field(default=None, max_length=200)
 
 
+class TransactionCounterpartySplitInput(BaseModel):
+    """Доля одного человека в разделённой операции."""
+
+    counterparty_id: int
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    note: str | None = Field(default=None, max_length=200)
+
+
 class TransactionCreate(TransactionBase):
     tag_ids: list[int] = Field(default_factory=list)
     # None/omitted -> a normal single-category transaction, unchanged from
@@ -169,6 +214,10 @@ class TransactionCreate(TransactionBase):
     # split_rule_violation). A single entry isn't accepted: that's just
     # category_id with extra steps.
     splits: list[TransactionSplitInput] | None = None
+    # Разбивка между людьми — вторая ось, независимая от категорий: долг
+    # вернули трое одним переводом. Заменяет counterparty_id, а не
+    # дополняет его (см. counterparty_split_rule_violation).
+    counterparty_splits: list[TransactionCounterpartySplitInput] | None = None
     # Позиции чека — «что лежало в пакете». Отдельно от splits и вместе с
     # ними: разбивка делит деньги по категориям и обязана сойтись с суммой,
     # позиция описывает покупку и сходиться не обязана ничему. Пустой список
@@ -184,6 +233,17 @@ class TransactionCreate(TransactionBase):
             category_id=self.category_id,
             split_count=len(splits),
             split_total=sum((s.amount for s in splits), Decimal("0")) if splits else None,
+        )
+        if violation:
+            raise ValueError(violation)
+
+        people = self.counterparty_splits or []
+        violation = counterparty_split_rule_violation(
+            type=self.type,
+            amount=self.amount,
+            counterparty_id=self.counterparty_id,
+            split_count=len(people),
+            split_total=sum((s.amount for s in people), Decimal("0")) if people else None,
         )
         if violation:
             raise ValueError(violation)
@@ -223,6 +283,9 @@ class TransactionUpdate(BaseModel):
     # split set (send [] together with a category_id to turn a split
     # transaction back into a normal single-category one).
     splits: list[TransactionSplitInput] | None = None
+    # Пропущено — разбивка между людьми не трогается; список (в том числе
+    # пустой) заменяет её целиком, как и у категорий.
+    counterparty_splits: list[TransactionCounterpartySplitInput] | None = None
     # None — позиции не трогаем; список (в том числе пустой) заменяет их
     # целиком. Правка чека — это переписывание его состава, а не дописывание
     # строк в конец.
@@ -232,6 +295,16 @@ class TransactionUpdate(BaseModel):
     @classmethod
     def _capitalize_description(cls, value: str | None) -> str | None:
         return capitalize_first_letter(value) if value is not None else None
+
+
+class TransactionCounterpartySplitRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    counterparty_id: int | None
+    counterparty: CounterpartyRead | None = None
+    amount: Decimal
+    note: str | None
 
 
 class TransactionSplitRead(BaseModel):
@@ -292,6 +365,9 @@ class TransactionRead(TransactionFields):
     category: CategoryRead | None = None
     tags: list[TagRead] = Field(default_factory=list)
     splits: list[TransactionSplitRead] = Field(default_factory=list)
+    # Кто и сколько внёс, когда операция разделена между людьми. Пусто у
+    # обычной: там контрагент один и назван полем.
+    counterparty_splits: list[TransactionCounterpartySplitRead] = Field(default_factory=list)
     items: list[TransactionItemRead] = Field(default_factory=list)
 
     # Баланс счёта после этой операции — то самое «было 0, стало 500, потом

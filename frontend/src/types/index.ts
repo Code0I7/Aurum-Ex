@@ -202,6 +202,9 @@ export interface Transaction {
    */
   transfer_amount: string | null;
   transfer_currency: string | null;
+  /** Кто и сколько внёс, когда операция разделена между людьми. Пусто у
+   *  обычной: там контрагент один и назван полем. */
+  counterparty_splits: TransactionCounterpartySplit[];
   transfer_amount_base: string | null;
   // Необязательно: у большинства покупок сказать сверх категории нечего.
   description: string | null;
@@ -237,11 +240,34 @@ export interface TransactionPage {
   page_size: number;
 }
 
+/** Доля одного человека в операции, разделённой между несколькими. */
+export interface TransactionCounterpartySplit {
+  id: number;
+  counterparty_id: number | null;
+  counterparty: Counterparty | null;
+  amount: string;
+  note: string | null;
+}
+
+export interface TransactionCounterpartySplitInput {
+  counterparty_id: number;
+  amount: string;
+  note?: string | null;
+}
+
 export interface TransactionInput {
   account_id: number;
   /** Сколько пришло на счёт получателя, в его валюте. Обязательно для
    *  перевода между разными валютами, не нужно во всех остальных случаях. */
   transfer_amount?: string | null;
+  /**
+   * Разбивка между людьми: долг вернули трое одним переводом.
+   *
+   * Заменяет counterparty_id, а не дополняет его — два ответа на «от кого»
+   * означали бы, что операция посчитана дважды. Пропущено — разбивка не
+   * трогается; список (в том числе пустой) заменяет её целиком.
+   */
+  counterparty_splits?: TransactionCounterpartySplitInput[] | null;
   category_id: number | null;
   transfer_account_id: number | null;
   type: TransactionType;

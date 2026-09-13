@@ -184,9 +184,57 @@ class Transaction(Base, TimestampMixin):
     splits: Mapped[list["TransactionSplit"]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan", order_by="TransactionSplit.id"
     )
+    # Разбивка по людям — вторая ось, независимая от категорий: та отвечает
+    # на «на что», эта на «от кого» (см. TransactionCounterpartySplit).
+    counterparty_splits: Mapped[list["TransactionCounterpartySplit"]] = relationship(
+        back_populates="transaction",
+        cascade="all, delete-orphan",
+        order_by="TransactionCounterpartySplit.id",
+    )
     items: Mapped[list["TransactionItem"]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan", order_by="TransactionItem.position"
     )
+
+
+class TransactionCounterpartySplit(Base):
+    """Доля одного человека в операции, которую разделили между несколькими.
+
+    Долг вернули трое одним переводом. В выписке банка это одна операция, и
+    три записи в приложении означали бы, что оно перестало сходиться с
+    выпиской — ровно та причина, по которой у операции когда-то появилась
+    разбивка по категориям.
+
+    Замена Transaction.counterparty_id, а не дополнение к нему: у
+    разделённой операции контрагент пуст, а вместо него две или больше
+    таких строк, и их суммы обязаны сойтись с суммой операции.
+
+    Ось здесь своя, отдельная от категорий: та отвечает на «на что»,
+    эта — на «от кого». Одна операция может быть разделена по обеим сразу,
+    и каждая разбивка сходится с суммой самостоятельно.
+
+    Вид расчёта (заём, безвозвратно, транзит) живёт на самой операции:
+    трое, вернувшие долг, вернули именно долг. Понадобится свой у
+    каждого — добавится колонкой сюда.
+
+    counterparty_id допускает пустоту и SET NULL по той же причине, что и
+    категория в разбивке: удаление человека не должно ломать чтение
+    операции, в которой он когда-то был.
+    """
+
+    __tablename__ = "transaction_counterparty_splits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    transaction: Mapped["Transaction"] = relationship(back_populates="counterparty_splits")
+    counterparty: Mapped["Counterparty | None"] = relationship()
 
 
 class TransactionSplit(Base):

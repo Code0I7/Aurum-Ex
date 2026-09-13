@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.counterparty import Counterparty
 from app.models.enums import SettlementKind, TransactionType
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionCounterpartySplit
 from app.services.transaction_service import counted_only
 
 
@@ -76,7 +76,9 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
     это не пустая строка, а закрытый долг, и убирать его из списка значит
     прятать факт, что он был.
     """
-    rows = (
+    settlement_types = [TransactionType.EXTERNAL_IN, TransactionType.EXTERNAL_OUT]
+
+    whole = (
         await session.execute(
             select(
                 Transaction.counterparty_id,
@@ -87,11 +89,43 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
                 Transaction.currency,
             ).where(
                 Transaction.counterparty_id.is_not(None),
-                Transaction.type.in_([TransactionType.EXTERNAL_IN, TransactionType.EXTERNAL_OUT]),
+                Transaction.type.in_(settlement_types),
                 counted_only(),
             )
         )
     ).all()
+
+    # Операция, разделённая между людьми, приходит сюда долями — по одной
+    # строке на человека. Контрагент у неё пуст, поэтому в запрос выше она
+    # не попадает вовсе: два ответа на вопрос «от кого» означали бы, что
+    # операция посчитана дважды.
+    #
+    # Доля приводится к валюте установки тем же замороженным курсом, что и
+    # вся операция: доли сходятся с её суммой, значит и приведённые доли
+    # сойдутся с приведённой суммой. Курса нет — доля пуста, как и сама
+    # операция, и в итоги не входит.
+    shares = (
+        await session.execute(
+            select(
+                TransactionCounterpartySplit.counterparty_id,
+                Transaction.type,
+                Transaction.settlement_kind,
+                (TransactionCounterpartySplit.amount * Transaction.exchange_rate).label(
+                    "amount_base"
+                ),
+                Transaction.date,
+                Transaction.currency,
+            )
+            .join(Transaction, Transaction.id == TransactionCounterpartySplit.transaction_id)
+            .where(
+                TransactionCounterpartySplit.counterparty_id.is_not(None),
+                Transaction.type.in_(settlement_types),
+                counted_only(),
+            )
+        )
+    ).all()
+
+    rows = [*whole, *shares]
 
     counterparties = {
         row.id: row
@@ -229,18 +263,37 @@ async def get_transit_by_person(
     Операция, у которой не указано вообще ничего, пропускается: записать
     её не на кого.
     """
-    stmt = select(
-        Transaction.type,
-        Transaction.counterparty_id,
-        Transaction.transit_party_id,
-        Transaction.amount,
-    ).where(Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only())
-    if year is not None:
-        stmt = stmt.where(func.extract("year", Transaction.date) == year)
-    if month is not None:
-        stmt = stmt.where(func.extract("month", Transaction.date) == month)
+    def in_period(stmt):
+        if year is not None:
+            stmt = stmt.where(func.extract("year", Transaction.date) == year)
+        if month is not None:
+            stmt = stmt.where(func.extract("month", Transaction.date) == month)
+        return stmt
 
-    rows = (await session.execute(stmt)).all()
+    stmt = in_period(
+        select(
+            Transaction.type,
+            Transaction.counterparty_id,
+            Transaction.transit_party_id,
+            Transaction.amount,
+        ).where(Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only())
+    )
+
+    # Транзит, разделённый между людьми: у операции контрагент пуст, и
+    # человек назван в доле. Вторая сторона (чьи деньги) остаётся на самой
+    # операции — она одна на весь перевод.
+    shares_stmt = in_period(
+        select(
+            Transaction.type,
+            TransactionCounterpartySplit.counterparty_id,
+            Transaction.transit_party_id,
+            TransactionCounterpartySplit.amount,
+        )
+        .join(Transaction, Transaction.id == TransactionCounterpartySplit.transaction_id)
+        .where(Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only())
+    )
+
+    rows = [*(await session.execute(stmt)).all(), *(await session.execute(shares_stmt)).all()]
     counterparties = {
         row.id: row for row in (await session.execute(select(Counterparty))).scalars().all()
     }

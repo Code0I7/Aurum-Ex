@@ -10,9 +10,15 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_session
 from app.models.account import Account
 from app.models.category import Category
+from app.models.counterparty import Counterparty
 from app.models.enums import CategoryKind, TransactionType
 from app.models.tag import Tag
-from app.models.transaction import Transaction, TransactionItem, TransactionSplit
+from app.models.transaction import (
+    Transaction,
+    TransactionCounterpartySplit,
+    TransactionItem,
+    TransactionSplit,
+)
 from app.models.unit import Unit
 from app.schemas.transaction import (
     TransactionBulkCreate,
@@ -23,8 +29,10 @@ from app.schemas.transaction import (
     TransactionBlockReorder,
     TransactionReorder,
     SimilarTransaction,
+    TransactionCounterpartySplitInput,
     TransactionSplitInput,
     TransactionUpdate,
+    counterparty_split_rule_violation,
     split_rule_violation,
     transfer_rule_violation,
 )
@@ -50,6 +58,9 @@ _EAGER = (
     selectinload(Transaction.category),
     selectinload(Transaction.tags),
     selectinload(Transaction.splits).selectinload(TransactionSplit.category),
+    selectinload(Transaction.counterparty_splits).selectinload(
+        TransactionCounterpartySplit.counterparty
+    ),
     selectinload(Transaction.items).selectinload(TransactionItem.product),
     selectinload(Transaction.items).selectinload(TransactionItem.unit),
 )
@@ -255,6 +266,32 @@ async def _build_splits(
     return [TransactionSplit(category_id=s.category_id, amount=s.amount, note=s.note) for s in splits]
 
 
+async def _build_counterparty_splits(
+    session: AsyncSession, splits: list[TransactionCounterpartySplitInput]
+) -> list[TransactionCounterpartySplit]:
+    """Разбивка делит сумму одной операции между несколькими людьми: долг
+    вернули трое одним переводом.
+
+    Существование человека проверяется здесь, а не схемой: схема знает
+    форму запроса, но не содержимое справочника, и номер несуществующего
+    контрагента прошёл бы её насквозь — а в базе оставил бы долю, которая
+    ничья.
+
+    Остальное проверяется до этого места: тип операции, пустой контрагент,
+    не меньше двух долей и точное совпадение сумм (см. schemas/
+    transaction.py, counterparty_split_rule_violation).
+    """
+    for split in splits:
+        if await session.get(Counterparty, split.counterparty_id) is None:
+            raise HTTPException(status_code=400, detail="Counterparty not found")
+    return [
+        TransactionCounterpartySplit(
+            counterparty_id=s.counterparty_id, amount=s.amount, note=s.note
+        )
+        for s in splits
+    ]
+
+
 @router.get("", response_model=TransactionPage)
 async def list_transactions(
     year: int | None = Query(default=None, ge=2000, le=2100),
@@ -347,6 +384,15 @@ async def list_transactions(
         party_filter = or_(
             Transaction.counterparty_id == counterparty_id,
             Transaction.transit_party_id == counterparty_id,
+            # И операции, разделённые между людьми: там контрагент пуст, а
+            # человек назван в доле. Без этого «показать всё по человеку»
+            # молча теряло бы именно те операции, ради которых разбивку и
+            # завели.
+            Transaction.id.in_(
+                select(TransactionCounterpartySplit.transaction_id).where(
+                    TransactionCounterpartySplit.counterparty_id == counterparty_id
+                )
+            ),
         )
         stmt = stmt.where(party_filter)
         count_stmt = count_stmt.where(party_filter)
@@ -524,7 +570,7 @@ async def read_similar_transactions(
 @router.post("", response_model=TransactionRead, status_code=201)
 async def create_transaction(payload: TransactionCreate, session: AsyncSession = Depends(get_session)) -> Transaction:
     await _ensure_category_matches_type(session, payload.category_id, payload.type)
-    fields = payload.model_dump(exclude={"tag_ids", "splits", "items", "currency", "transfer_amount"})
+    fields = payload.model_dump(exclude={"tag_ids", "splits", "counterparty_splits", "items", "currency", "transfer_amount"})
     transaction = Transaction(**fields)
     # Порядок внутри дня проставляется сам, по времени ввода: человеку не за
     # чем его набирать, а без него операции одного дня раскладываются
@@ -536,6 +582,10 @@ async def create_transaction(payload: TransactionCreate, session: AsyncSession =
     transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits:
         transaction.splits = await _build_splits(session, payload.splits, payload.type)
+    if payload.counterparty_splits:
+        transaction.counterparty_splits = await _build_counterparty_splits(
+            session, payload.counterparty_splits
+        )
     if payload.items:
         transaction.items = await _build_items(session, payload.items)
     session.add(transaction)
@@ -559,7 +609,7 @@ async def bulk_create_transactions(
     transactions = []
     for item in payload.items:
         transaction = Transaction(
-            **item.model_dump(exclude={"tag_ids", "splits", "items", "currency", "transfer_amount"})
+            **item.model_dump(exclude={"tag_ids", "splits", "counterparty_splits", "items", "currency", "transfer_amount"})
         )
         transaction.day_order = await next_day_order(session, transaction.date)
         await _apply_currency(session, transaction, item.currency)
@@ -567,6 +617,10 @@ async def bulk_create_transactions(
         transaction.tags = await _resolve_tags(session, item.tag_ids)
         if item.splits:
             transaction.splits = await _build_splits(session, item.splits, item.type)
+        if item.counterparty_splits:
+            transaction.counterparty_splits = await _build_counterparty_splits(
+                session, item.counterparty_splits
+            )
         transactions.append(transaction)
 
     session.add_all(transactions)
@@ -588,13 +642,22 @@ async def update_transaction(
         options=[
             selectinload(Transaction.tags),
             selectinload(Transaction.splits),
+            selectinload(Transaction.counterparty_splits),
             selectinload(Transaction.items),
         ],
     )
     if transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     updates = payload.model_dump(
-        exclude_unset=True, exclude={"tag_ids", "splits", "items", "currency", "transfer_amount"}
+        exclude_unset=True,
+        exclude={
+            "tag_ids",
+            "splits",
+            "counterparty_splits",
+            "items",
+            "currency",
+            "transfer_amount",
+        },
     )
     # Checks run against the row as it would look after the patch, not just
     # the fields sent: switching type alone can invalidate fields left
@@ -637,6 +700,34 @@ async def update_transaction(
     if split_violation:
         raise HTTPException(status_code=400, detail=split_violation)
 
+    # Разбивка между людьми проверяется так же, как разбивка по категориям:
+    # по тому, какой операция СТАНЕТ после правки, а не какой была. Иначе
+    # правка типа превратила бы расчёт с людьми в обычную трату, оставив на
+    # ней доли, которым там неоткуда взяться.
+    if payload.counterparty_splits is not None:
+        people_count = len(payload.counterparty_splits)
+        people_total = (
+            sum((s.amount for s in payload.counterparty_splits), Decimal("0"))
+            if payload.counterparty_splits
+            else None
+        )
+    else:
+        people_count = len(transaction.counterparty_splits)
+        people_total = (
+            sum((s.amount for s in transaction.counterparty_splits), Decimal("0"))
+            if transaction.counterparty_splits
+            else None
+        )
+    people_violation = counterparty_split_rule_violation(
+        type=effective_type,
+        amount=effective_amount,
+        counterparty_id=updates.get("counterparty_id", transaction.counterparty_id),
+        split_count=people_count,
+        split_total=people_total,
+    )
+    if people_violation:
+        raise HTTPException(status_code=400, detail=people_violation)
+
     for field, value in updates.items():
         setattr(transaction, field, value)
     # Пересчёт нужен, если поменялось хоть что-то из тройки "сумма, валюта,
@@ -662,6 +753,10 @@ async def update_transaction(
         transaction.tags = await _resolve_tags(session, payload.tag_ids)
     if payload.splits is not None:
         transaction.splits = await _build_splits(session, payload.splits, effective_type)
+    if payload.counterparty_splits is not None:
+        transaction.counterparty_splits = await _build_counterparty_splits(
+            session, payload.counterparty_splits
+        )
     if payload.items is not None:
         # Список заменяет состав чека целиком, включая пустой: правка чека —
         # это переписывание того, что в нём было, а не дописывание строк.
