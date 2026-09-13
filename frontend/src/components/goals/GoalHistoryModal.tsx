@@ -62,10 +62,45 @@ export function GoalHistoryModal({ goal, onClose }: { goal: Goal | null; onClose
 
 interface ChartPoint {
   date: string;
-  saved: number;
-  /** Где следовало бы быть по плану в этот день. null вне срока плана и
-   *  когда плана нет вовсе. */
+  /** Накоплено на этот день. null после последнего дня, о котором вообще
+   *  что-то известно: линия должна кончаться, а не тянуться в будущее. */
+  saved: number | null;
+  /** Где следовало бы быть по плану в этот день. null, когда плана нет. */
   plan: number | null;
+  /** Был ли в этот день взнос. Только такие дни получают точку: на ряду в
+   *  триста дней точка на каждом — это сплошная полоса. */
+  contributed: boolean;
+}
+
+const DAY = 86_400_000;
+/** Сколько точек считать пределом. Цель на пять лет — это почти две
+ *  тысячи дней, и рисовать их все значит платить заметной задержкой за
+ *  подробность, которой на экране шириной в шестьсот точек всё равно не
+ *  видно. */
+const MAX_POINTS = 400;
+
+/*
+ * Дни складываются в UTC, а не в местном времени, и это не придирка.
+ * Прибавить сутки к местной полуночи и прочитать результат в UTC — значит
+ * в плюсовом часовом поясе получить предыдущий день: весь ряд съехал бы на
+ * сутки назад. В UTC же нет и перехода на летнее время, где одни сутки
+ * длятся двадцать три часа, а другие двадцать пять.
+ *
+ * На отображение это не влияет: подписи дат рисуются из той же строки
+ * «ГГГГ-ММ-ДД», что пришла с сервера.
+ */
+function toIso(time: number): string {
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+function atMidnight(iso: string): number {
+  return Date.parse(`${iso}T00:00:00Z`);
+}
+
+/** Сегодня по местному календарю: «сегодня» человека, а не Гринвича.
+ *  Тот же приём, что и в графике капитала. */
+function todayIso(): string {
+  return new Date().toLocaleDateString("sv");
 }
 
 function buildPlan(goal: Goal, date: string, target: number): number | null {
@@ -80,22 +115,74 @@ function buildPlan(goal: Goal, date: string, target: number): number | null {
   return target * share;
 }
 
+/**
+ * Ряд по дням, а не по взносам.
+ *
+ * По взносам горизонталь означала бы их порядок, а не время: два взноса с
+ * разницей в год выглядели бы так же, как два подряд, и отставание не
+ * читалось бы вовсе. По дням пустой месяц — это пустой месяц: линия
+ * накопления стоит на месте, а линия плана в это время уходит вверх, и
+ * разрыв между ними виден глазом.
+ *
+ * Ряд доводится до сегодня у активной цели и до дня сбора у завершённой.
+ * Тянуть активную цель только до последнего взноса значило бы прятать
+ * самое интересное — то, что с тех пор не откладывали ничего.
+ *
+ * Длинная цель прореживается: остаются дни взносов, края и каждый N-й.
+ * Форма от этого не меняется, а точек становится столько, сколько экран
+ * способен показать.
+ */
+function buildDailySeries(
+  goal: Goal,
+  history: GoalContribution[],
+  target: number
+): ChartPoint[] {
+  if (history.length === 0) return [];
+
+  const savedByDay = new Map(history.map((row) => [row.date, Number(row.running_total)]));
+  const firstKnown = goal.started_on ?? history[0].date;
+  const start = Math.min(atMidnight(firstKnown), atMidnight(history[0].date));
+
+  // Докуда известно про накопление: дальше линия обрывается, а не
+  // продолжается ровной чертой в будущее.
+  const today = todayIso();
+  const knownUntil = atMidnight(goal.closed_at ?? today);
+  // Докуда рисуем вообще: план может кончаться позже, чем накопление, и
+  // обрывать его на сегодня значит прятать оставшийся срок.
+  const end = Math.max(knownUntil, atMidnight(goal.planned_on ?? today), atMidnight(history[history.length - 1].date));
+
+  const days = Math.round((end - start) / DAY) + 1;
+  const step = Math.max(1, Math.ceil(days / MAX_POINTS));
+
+  const series: ChartPoint[] = [];
+  let running = 0;
+  for (let index = 0; index < days; index += 1) {
+    const time = start + index * DAY;
+    const date = toIso(time);
+    const total = savedByDay.get(date);
+    const contributed = total !== undefined;
+    if (contributed) running = total;
+
+    // День взноса не прореживается никогда: именно на нём стоит точка, и
+    // пропустив его, лесенка потеряла бы ступеньку.
+    const keep = contributed || index % step === 0 || index === days - 1;
+    if (!keep) continue;
+
+    series.push({
+      date,
+      saved: time <= knownUntil ? running : null,
+      plan: buildPlan(goal, date, target),
+      contributed,
+    });
+  }
+  return series;
+}
+
 function SavingsChart({ goal, history }: { goal: Goal; history: GoalContribution[] }) {
   const { t } = useTranslation();
   const target = Number(goal.target_amount);
 
-  const points: ChartPoint[] = history.map((row) => ({
-    date: row.date,
-    saved: Number(row.running_total),
-    plan: buildPlan(goal, row.date, target),
-  }));
-
-  // Линия плана без своей крайней точки обрывалась бы на последнем взносе,
-  // даже если до срока ещё месяц. Дорисовываем планируемый день — по
-  // накоплению там ничего не известно, и лесенка до него не тянется.
-  if (goal.planned_on && points.length > 0 && goal.planned_on > points[points.length - 1].date) {
-    points.push({ date: goal.planned_on, saved: NaN, plan: target });
-  }
+  const points = buildDailySeries(goal, history, target);
 
   return (
     <div className="h-52 w-full sm:h-64">
@@ -153,9 +240,8 @@ function SavingsChart({ goal, history }: { goal: Goal; history: GoalContribution
             strokeWidth={2}
             fill="var(--success)"
             fillOpacity={0.12}
-            dot={{ r: 2.5, fill: "var(--success)" }}
+            dot={<ContributionDot />}
             isAnimationActive={false}
-            connectNulls
           />
           <Tooltip
             isAnimationActive={false}
@@ -168,6 +254,14 @@ function SavingsChart({ goal, history }: { goal: Goal; history: GoalContribution
   );
 }
 
+/** Точка ставится только там, где был взнос. В остальные дни рисуется
+ *  окружность нулевого радиуса: recharts ждёт элемент, а не пустоту. */
+function ContributionDot(props: { cx?: number; cy?: number; payload?: ChartPoint }) {
+  const { cx, cy, payload } = props;
+  const visible = payload?.contributed && cx !== undefined && cy !== undefined;
+  return <circle cx={cx} cy={cy} r={visible ? 2.5 : 0} fill="var(--success)" />;
+}
+
 function SavingsTooltip({
   active,
   payload,
@@ -178,10 +272,14 @@ function SavingsTooltip({
   const { t } = useTranslation();
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
+  // Отставание считается здесь и показывается числом: разглядывать разрыв
+  // между двумя линиями на глаз — не то же самое, что прочитать «отстаю на
+  // 4 300».
+  const gap = point.saved !== null && point.plan !== null ? point.saved - point.plan : null;
   return (
     <ChartTooltipBox>
       <p className="text-text-muted">{formatTransactionDate(point.date, true)}</p>
-      {Number.isFinite(point.saved) && (
+      {point.saved !== null && (
         <p className="font-medium tabular-nums text-text-primary">
           {t("goal.history.saved")}: {formatCurrency(point.saved)}
         </p>
@@ -189,6 +287,16 @@ function SavingsTooltip({
       {point.plan !== null && (
         <p className="tabular-nums text-text-secondary">
           {t("goal.history.plan")}: {formatCurrency(point.plan)}
+        </p>
+      )}
+      {gap !== null && gap !== 0 && (
+        <p
+          className="tabular-nums"
+          style={{ color: gap < 0 ? "var(--danger)" : "var(--success)" }}
+        >
+          {t(gap < 0 ? "goal.history.behind" : "goal.history.ahead", {
+            amount: formatCurrency(Math.abs(gap)),
+          })}
         </p>
       )}
     </ChartTooltipBox>

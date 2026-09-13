@@ -958,6 +958,8 @@ const ru = {
   "goal.history.target": "цель",
   "goal.history.saved": "накоплено",
   "goal.history.plan": "по плану",
+  "goal.history.behind": "отстаём на {{amount}}",
+  "goal.history.ahead": "с опережением на {{amount}}",
   "goal.history.total": "итого {{amount}}",
   "goal.history.noNote": "без заметки",
   "goal.history.tiedToPurchase":
@@ -2049,6 +2051,8 @@ const en: Record<keyof typeof ru, string> = {
   "goal.history.target": "target",
   "goal.history.saved": "saved",
   "goal.history.plan": "on plan",
+  "goal.history.behind": "{{amount}} behind",
+  "goal.history.ahead": "{{amount}} ahead",
   "goal.history.total": "{{amount}} in total",
   "goal.history.noNote": "no note",
   "goal.history.tiedToPurchase":
