@@ -362,6 +362,11 @@ class TransactionRead(TransactionFields):
     # приложения (например, в отчёте об импорте).
     uuid: UUID
     account: AccountRead
+    # Счёт получателя перевода — целиком, как и счёт отправителя, а не
+    # одним номером. По номеру интерфейсу пришлось бы искать имя в списке
+    # счетов, а список по умолчанию без архивных: перевод на закрытую карту
+    # остался бы без подписи.
+    transfer_account: AccountRead | None = None
     category: CategoryRead | None = None
     tags: list[TagRead] = Field(default_factory=list)
     splits: list[TransactionSplitRead] = Field(default_factory=list)

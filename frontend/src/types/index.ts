@@ -222,6 +222,10 @@ export interface Transaction {
   transit_party_id: number | null;
   settlement_kind: SettlementKind | null;
   account: Account;
+  /** Счёт получателя перевода — целиком, как и счёт отправителя. По одному
+   *  номеру имя пришлось бы искать в списке счетов, а он по умолчанию без
+   *  архивных, и перевод на закрытую карту остался бы без подписи. */
+  transfer_account: Account | null;
   category: Category | null;
   tags: Tag[];
   splits: TransactionSplit[];

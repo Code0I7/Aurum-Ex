@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SplitCategories } from "@/components/transactions/SplitCategories";
-import { ArrowLeftRight, ChevronDown, ChevronRight, GripVertical, Pencil, SquareDivide, Trash2 } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronRight, GripVertical, Pencil, SquareDivide, Trash2 } from "lucide-react";
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
 import { categoryPath } from "@/lib/categoryLabels";
@@ -246,7 +246,22 @@ export function TransactionsGrid({
       case "description":
         return (
           <span className="flex items-center gap-1.5">
-            {tx.type === "transfer" && <ArrowLeftRight size={13} className="shrink-0 text-text-muted" />}
+            {/* Перевод подписан маршрутом: откуда, стрелка, куда. Раньше
+                стоял один значок двойной стрелки, и чтобы понять, между
+                какими счетами прошли деньги, приходилось открывать
+                операцию, — а в выписке это первое, что ищут глазами.
+
+                Стрелка в одну сторону, а не двойная: с названиями по краям
+                у перевода есть направление, и двойная стрелка читалась бы
+                как обмен. Названия не обрезаются: маршрут короче описания
+                и важнее его, многоточие достаётся описанию. */}
+            {tx.type === "transfer" && (
+              <span className="flex shrink-0 items-center gap-1 text-text-muted">
+                <span>{tx.account.name}</span>
+                <ArrowRight size={13} className="shrink-0" aria-hidden />
+                <span>{tx.transfer_account?.name ?? "?"}</span>
+              </span>
+            )}
             {tx.splits.length > 0 && <SquareDivide size={13} className="shrink-0 text-text-muted" />}
             <span className={cn("truncate", tx.is_excluded && "line-through opacity-60")}>{tx.description}</span>
             {group && (

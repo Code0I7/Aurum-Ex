@@ -55,6 +55,9 @@ _EAGER = (
     # падает не при чтении списка, а при ответе на создание операции —
     # то есть у любого, кто привязал счёт к банку.
     selectinload(Transaction.account).selectinload(Account.bank),
+    # Счёт получателя перевода — тем же способом и по той же причине: без
+    # банка AccountRead падает на ленивой загрузке.
+    selectinload(Transaction.transfer_account).selectinload(Account.bank),
     selectinload(Transaction.category),
     selectinload(Transaction.tags),
     selectinload(Transaction.splits).selectinload(TransactionSplit.category),

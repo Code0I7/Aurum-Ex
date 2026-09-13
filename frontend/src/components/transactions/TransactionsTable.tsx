@@ -55,7 +55,12 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
                 <span className="block truncate text-sm font-medium text-text-primary">{tx.description}</span>
                 <span className="block truncate text-xs text-text-muted">
                   {formatTransactionDate(tx.date, Boolean(onJumpToMonth))} · {tx.account.name}
-                  {isTransfer && tx.transfer_account_id ? ` ${t("transactions.transferSuffix")}` : ""}
+                  {/* Куда ушёл перевод — по имени счёта. Раньше здесь стояло
+                      «→ перевод»: то, что это перевод, и так видно по значку,
+                      а куда — оставалось загадкой. */}
+                  {isTransfer && tx.transfer_account_id
+                    ? ` → ${tx.transfer_account?.name ?? t("transactions.transferSuffix")}`
+                    : ""}
                   {categoryLabel ? ` · ${categoryLabel}` : ""}
                   {isSplit && (
                     <>
