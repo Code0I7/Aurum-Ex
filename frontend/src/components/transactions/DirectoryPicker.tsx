@@ -6,8 +6,14 @@ import { useTranslation } from "@/lib/i18n";
 
 interface DirectoryPickerProps {
   id: string;
-  /** Уже заведённые записи справочника. */
-  options: Array<{ id: number; name: string }>;
+  /**
+   * Записи справочника — вместе с архивными.
+   *
+   * Архивные нужны здесь ровно для одного: показать запись, которая уже
+   * стоит в операции. Предлагаются к новому выбору только действующие —
+   * см. visibleOptions ниже.
+   */
+  options: Array<{ id: number; name: string; is_archived?: boolean }>;
   /** Идентификатор строкой — как хранится в состоянии формы. */
   value: string;
   onChange: (value: string) => void;
@@ -45,6 +51,27 @@ export function DirectoryPicker({
 }: DirectoryPickerProps) {
   const { t } = useTranslation();
   const [adding, setAdding] = useState(false);
+
+  /*
+   * Архивная запись показывается, только если она уже выбрана.
+   *
+   * Раньше список получал одни действующие записи. Человек, отправленный в
+   * архив, из операции никуда не девался — номер оставался в форме, и
+   * «Сохранить» сохранял его, — но поле показывало пустоту: подписи для
+   * этого номера в списке не было. Выглядело так, будто человек из операции
+   * пропал, и нажать «Сохранить» становилось страшно, а выбрать его обратно
+   * было нельзя — в списке его нет.
+   *
+   * Теперь выбранная архивная запись видна с пометкой, а новой её выбрать
+   * по-прежнему нельзя: архив для того и нужен, чтобы запись не лезла в
+   * подстановку при каждом вводе.
+   */
+  const visibleOptions = options
+    .filter((option) => !option.is_archived || String(option.id) === value)
+    .map((option) => ({
+      value: String(option.id),
+      label: option.is_archived ? `${option.name} · ${t("directories.archivedMark")}` : option.name,
+    }));
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -119,7 +146,7 @@ export function DirectoryPicker({
       <Combobox
         id={id}
         className="min-w-0 flex-1"
-        options={options.map((option) => ({ value: String(option.id), label: option.name }))}
+        options={visibleOptions}
         value={value}
         onChange={onChange}
         placeholder={placeholder}

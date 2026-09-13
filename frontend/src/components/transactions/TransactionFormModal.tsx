@@ -161,9 +161,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   // добавил строку — стало разбиение, убрал — снова одна категория.
   const [categoryRows, setCategoryRows] = useState<SplitRowState[]>([emptySplitRow()]);
   const [error, setError] = useState<string | null>(null);
-  const { data: participants } = useParticipants();
-  const { data: stores } = useStores();
-  const { data: counterparties } = useCounterparties();
+  // Справочники — вместе с архивными записями. Не для того, чтобы их
+  // предлагать: DirectoryPicker покажет архивную, только если она уже стоит
+  // в операции. Без архива человек, отправленный туда, в открытой операции
+  // выглядел пустым полем.
+  const { data: participants } = useParticipants(true);
+  const { data: stores } = useStores(true);
+  const { data: counterparties } = useCounterparties(true);
   // Состав чека. Отдельно от разбивки по категориям и вместе с ней:
   // разбивка делит деньги и обязана сойтись с суммой, позиции описывают
   // покупку и сходиться не обязаны ничему.
