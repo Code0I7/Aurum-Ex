@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { GoalList } from "@/components/goals/GoalList";
 import { GoalFormModal } from "@/components/goals/GoalFormModal";
 import { GoalContributionModal } from "@/components/goals/GoalContributionModal";
+import { GoalHistoryModal } from "@/components/goals/GoalHistoryModal";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useDeleteGoal, useGoals, useUpdateGoal } from "@/hooks/useGoals";
 import { useTranslation } from "@/lib/i18n";
@@ -23,6 +24,9 @@ export function GoalsPage() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [contributionOpen, setContributionOpen] = useState(false);
   const [contributingGoal, setContributingGoal] = useState<Goal | null>(null);
+  // История открывается по самой цели, а не по флагу: модалка тянет её
+  // взносы, и null здесь означает «закрыто» без второго состояния.
+  const [historyGoal, setHistoryGoal] = useState<Goal | null>(null);
 
   function openCreateModal() {
     setEditingGoal(null);
@@ -92,6 +96,7 @@ export function GoalsPage() {
               items={active}
               onContribute={openContributionModal}
               onEdit={openEditModal}
+              onHistory={setHistoryGoal}
               onDelete={handleDelete}
               onStatusChange={handleStatusChange}
             />
@@ -112,6 +117,7 @@ export function GoalsPage() {
               items={closed}
               onContribute={openContributionModal}
               onEdit={openEditModal}
+              onHistory={setHistoryGoal}
               onDelete={handleDelete}
               onStatusChange={handleStatusChange}
             />
@@ -120,6 +126,7 @@ export function GoalsPage() {
       )}
 
       <GoalFormModal open={formOpen} onClose={() => setFormOpen(false)} goal={editingGoal} />
+      <GoalHistoryModal goal={historyGoal} onClose={() => setHistoryGoal(null)} />
       <GoalContributionModal
         open={contributionOpen}
         onClose={() => setContributionOpen(false)}

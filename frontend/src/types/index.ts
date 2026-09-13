@@ -620,6 +620,22 @@ export interface Goal {
   by_account: GoalReservation[];
 }
 
+/** Строка истории накопления. */
+export interface GoalContribution {
+  id: number;
+  amount: string;
+  date: string;
+  note: string | null;
+  account_id: number | null;
+  account_name: string | null;
+  /** Трата, которой цель была реализована. Такой взнос объясняет, куда
+   *  делись отложенные деньги, и поэтому не удаляется — только правится. */
+  transaction_id: number | null;
+  /** Накоплено на этот день. Считает сервер: правило «по дате, а при
+   *  равных датах по порядку ввода» должно быть одно. */
+  running_total: string;
+}
+
 export interface GoalInput {
   // Завершение цели идёт тем же PATCH, что и переименование: отдельный
   // маршрут «закрыть» описывал бы то же самое вторым способом.

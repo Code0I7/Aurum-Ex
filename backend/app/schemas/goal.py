@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from app.models.enums import GoalStatus
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class GoalCreate(BaseModel):
@@ -80,6 +80,50 @@ class GoalContributionCreate(BaseModel):
         if value == 0:
             raise ValueError("amount must not be zero")
         return value
+
+
+class GoalContributionUpdate(BaseModel):
+    """Правка взноса.
+
+    Взнос — отметка «столько отложено», а не движение денег, и править её
+    так же нормально, как править описание операции. До сих пор было
+    нельзя: ошибся на нуле — и единственным способом починить оставался
+    обратный взнос. «Накоплено» сходилось, а история оставалась с двумя
+    строками, которых не было.
+    """
+
+    amount: Decimal | None = None
+    date: date_ | None = None
+    note: str | None = Field(default=None, max_length=200)
+    account_id: int | None = None
+
+    @field_validator("amount")
+    @classmethod
+    def _reject_zero(cls, value: Decimal | None) -> Decimal | None:
+        if value == 0:
+            raise ValueError("amount must not be zero")
+        return value
+
+
+class GoalContributionRead(BaseModel):
+    """Строка истории накопления."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    amount: Decimal
+    date: date_
+    note: str | None = None
+    account_id: int | None = None
+    account_name: str | None = None
+    # Трата, которой цель была реализована. Такой взнос объясняет, куда
+    # делись отложенные деньги, и поэтому не удаляется — только правится.
+    transaction_id: int | None = None
+    # Накоплено на этот день — сумма всех взносов по эту строку
+    # включительно. Считается на сервере: правило «по дате, а при равных
+    # датах по порядку ввода» должно быть одно, а не по копии в каждом
+    # месте, где рисуют лесенку.
+    running_total: Decimal = Decimal("0")
 
 
 class GoalRead(BaseModel):

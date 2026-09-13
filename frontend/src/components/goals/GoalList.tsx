@@ -1,4 +1,13 @@
-import { CheckCircle2, Flag, PiggyBank, Pencil, RotateCcw, Trash2, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Flag,
+  History,
+  PiggyBank,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import { formatCurrency, getIntlLocale, pluralizeRu } from "@/lib/format";
 import { useTranslation, type Language } from "@/lib/i18n";
 import type { Goal, GoalStatus } from "@/types";
@@ -7,6 +16,8 @@ interface GoalListProps {
   items: Goal[];
   onContribute: (goal: Goal) => void;
   onEdit: (goal: Goal) => void;
+  /** История накопления: как набралась нынешняя сумма. */
+  onHistory: (goal: Goal) => void;
   onDelete: (goal: Goal) => void;
   /** Завершить цель или вернуть её в работу. */
   onStatusChange: (goal: Goal, status: GoalStatus) => void;
@@ -18,7 +29,14 @@ function formatTargetDate(isoDate: string): string {
   );
 }
 
-export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange }: GoalListProps) {
+export function GoalList({
+  items,
+  onContribute,
+  onEdit,
+  onHistory,
+  onDelete,
+  onStatusChange,
+}: GoalListProps) {
   const { t } = useTranslation();
 
   if (items.length === 0) {
@@ -108,6 +126,15 @@ export function GoalList({ items, onContribute, onEdit, onDelete, onStatusChange
                     </button>
                   </>
                 )}
+                <button
+                  type="button"
+                  aria-label={t("goal.history.title")}
+                  title={t("goal.history.title")}
+                  onClick={() => onHistory(goal)}
+                  className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+                >
+                  <History size={15} />
+                </button>
                 <button
                   type="button"
                   aria-label={t("common.edit")}

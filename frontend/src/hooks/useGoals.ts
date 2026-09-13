@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addGoalContribution,
+  deleteGoalContribution,
+  fetchGoalContributions,
+  updateGoalContribution,
   createGoal,
   deleteGoal,
   fetchGoals,
@@ -52,6 +55,41 @@ export function useDeleteGoal() {
   const invalidate = useInvalidateGoals();
   return useMutation({
     mutationFn: (id: number) => deleteGoal(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** История накопления одной цели. Отдельным запросом, а не частью списка
+ *  целей: список отвечает на «сколько накоплено», история — на «как». */
+export function useGoalContributions(goalId: number | null) {
+  return useQuery({
+    queryKey: ["goals", "contributions", goalId],
+    queryFn: () => fetchGoalContributions(goalId as number),
+    enabled: goalId !== null,
+  });
+}
+
+export function useUpdateGoalContribution() {
+  const invalidate = useInvalidateGoals();
+  return useMutation({
+    mutationFn: ({
+      goalId,
+      contributionId,
+      input,
+    }: {
+      goalId: number;
+      contributionId: number;
+      input: Partial<GoalContributionInput>;
+    }) => updateGoalContribution(goalId, contributionId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteGoalContribution() {
+  const invalidate = useInvalidateGoals();
+  return useMutation({
+    mutationFn: ({ goalId, contributionId }: { goalId: number; contributionId: number }) =>
+      deleteGoalContribution(goalId, contributionId),
     onSuccess: invalidate,
   });
 }

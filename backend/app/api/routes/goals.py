@@ -5,6 +5,8 @@ from app.api.deps import get_session
 from app.schemas.goal import (
     AccountReservation,
     GoalContributionCreate,
+    GoalContributionRead,
+    GoalContributionUpdate,
     GoalCreate,
     GoalRead,
     GoalUpdate,
@@ -12,9 +14,12 @@ from app.schemas.goal import (
 from app.services.goal_service import (
     add_contribution,
     create_goal,
+    delete_contribution,
     delete_goal,
+    list_contributions,
     list_goals,
     list_reservations,
+    update_contribution,
     update_goal,
 )
 
@@ -58,3 +63,31 @@ async def add_contribution_route(
     goal_id: int, payload: GoalContributionCreate, session: AsyncSession = Depends(get_session)
 ) -> GoalRead:
     return await add_contribution(session, goal_id, payload)
+
+
+@router.get("/{goal_id}/contributions", response_model=list[GoalContributionRead])
+async def list_contributions_route(
+    goal_id: int, session: AsyncSession = Depends(get_session)
+) -> list[GoalContributionRead]:
+    """История накопления: чем и когда набралась нынешняя сумма."""
+    return await list_contributions(session, goal_id)
+
+
+@router.patch("/{goal_id}/contributions/{contribution_id}", response_model=GoalRead)
+async def update_contribution_route(
+    goal_id: int,
+    contribution_id: int,
+    payload: GoalContributionUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> GoalRead:
+    return await update_contribution(session, goal_id, contribution_id, payload)
+
+
+@router.delete("/{goal_id}/contributions/{contribution_id}", response_model=GoalRead)
+async def delete_contribution_route(
+    goal_id: int, contribution_id: int, session: AsyncSession = Depends(get_session)
+) -> GoalRead:
+    """Отвечает целью, а не пустотой: убрав взнос, интерфейс обязан сразу
+    показать новое «накоплено», иначе цифра под названием остаётся старой
+    до следующего обновления страницы."""
+    return await delete_contribution(session, goal_id, contribution_id)

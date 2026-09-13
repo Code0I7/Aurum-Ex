@@ -37,6 +37,8 @@ from app.models.goal import Goal, GoalContribution
 from app.schemas.goal import (
     AccountReservation,
     GoalContributionCreate,
+    GoalContributionRead,
+    GoalContributionUpdate,
     GoalCreate,
     GoalRead,
     GoalReservation,
@@ -277,6 +279,87 @@ async def update_goal(session: AsyncSession, goal_id: int, payload: GoalUpdate) 
         goal.closed_at = date_.today() if new_status is not GoalStatus.ACTIVE else None
     for field, value in updates.items():
         setattr(goal, field, value)
+    await session.commit()
+    return await _read_one(session, goal_id)
+
+
+async def list_contributions(session: AsyncSession, goal_id: int) -> list[GoalContributionRead]:
+    """История накопления по цели, от первого взноса к последнему.
+
+    Порядок — по дате, а при равных датах по номеру записи: два взноса
+    одного дня различает только очередь ввода, и лесенка «накоплено»
+    обязана рисоваться в том же порядке, в каком считается.
+    """
+    if await session.get(Goal, goal_id) is None:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    rows = (
+        await session.execute(
+            select(GoalContribution, Account.name)
+            .outerjoin(Account, Account.id == GoalContribution.account_id)
+            .where(GoalContribution.goal_id == goal_id)
+            .order_by(GoalContribution.date, GoalContribution.id)
+        )
+    ).all()
+
+    running = Decimal("0")
+    history: list[GoalContributionRead] = []
+    for contribution, account_name in rows:
+        running += contribution.amount
+        history.append(
+            GoalContributionRead(
+                id=contribution.id,
+                amount=contribution.amount,
+                date=contribution.date,
+                note=contribution.note,
+                account_id=contribution.account_id,
+                account_name=account_name,
+                transaction_id=contribution.transaction_id,
+                running_total=running,
+            )
+        )
+    return history
+
+
+async def _contribution_of_goal(
+    session: AsyncSession, goal_id: int, contribution_id: int
+) -> GoalContribution:
+    """Взнос именно этой цели.
+
+    Проверка на принадлежность не формальность: адрес правки собирается из
+    двух номеров, и без неё чужой взнос правился бы через свою цель.
+    """
+    contribution = await session.get(GoalContribution, contribution_id)
+    if contribution is None or contribution.goal_id != goal_id:
+        raise HTTPException(status_code=404, detail="Contribution not found")
+    return contribution
+
+
+async def update_contribution(
+    session: AsyncSession, goal_id: int, contribution_id: int, payload: GoalContributionUpdate
+) -> GoalRead:
+    contribution = await _contribution_of_goal(session, goal_id, contribution_id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(contribution, field, value)
+    await session.commit()
+    return await _read_one(session, goal_id)
+
+
+async def delete_contribution(session: AsyncSession, goal_id: int, contribution_id: int) -> GoalRead:
+    """Убирает взнос из истории.
+
+    Взнос, которым цель была реализована, удалить нельзя: он привязан к
+    трате и объясняет, куда делись отложенные деньги. Убрать его — значит
+    оставить покупку без объяснения, а цель — с деньгами, которых на счёте
+    давно нет. Править сумму и дату у такого взноса при этом можно.
+    """
+    contribution = await _contribution_of_goal(session, goal_id, contribution_id)
+    if contribution.transaction_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="This contribution is tied to the purchase that spent the goal",
+        )
+    await session.delete(contribution)
     await session.commit()
     return await _read_one(session, goal_id)
 
