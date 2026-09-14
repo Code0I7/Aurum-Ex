@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
+import { currentZoom } from "@/lib/scale";
 
 interface HelpBadgeProps {
   /** Ключ перевода с объяснением раздела. */
@@ -22,6 +23,35 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLSpanElement>(null);
+  const tip = useRef<HTMLSpanElement>(null);
+  // Сдвиг подсказки влево, если справа ей не хватает экрана.
+  const [shift, setShift] = useState(0);
+
+  /*
+   * Подсказка открывается от кружка вправо — и если кружок стоит у правого
+   * края (название раздела в шапке на телефоне), она уходит за экран, и
+   * прочитать можно только начало. Поэтому после открытия она меряется и
+   * сдвигается ровно настолько, чтобы поместиться, но не левее экрана.
+   *
+   * Замер — в пикселях экрана, а сдвиг ставится в пикселях разметки: при
+   * увеличенном интерфейсе это разные единицы (см. lib/scale.ts).
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setShift(0);
+      return;
+    }
+    const node = tip.current;
+    if (!node) return;
+    const zoom = currentZoom();
+    const rect = node.getBoundingClientRect();
+    const margin = 8 * zoom;
+    let offset = 0;
+    const overflowRight = rect.right - (window.innerWidth - margin);
+    if (overflowRight > 0) offset = -overflowRight;
+    if (rect.left + offset < margin) offset = margin - rect.left;
+    setShift(offset / zoom);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -77,6 +107,8 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
         // `100vw` внутри увеличенного корня умножается на масштаб ещё раз, и
         // при 300% на телефоне подсказка вышла бы втрое шире экрана.
         <span
+          ref={tip}
+          style={shift ? { transform: `translateX(${shift}px)` } : undefined}
           role="tooltip"
           className="absolute left-0 top-8 z-50 w-72 max-w-[min(18rem,calc(var(--app-vw)_-_2rem))] rounded-lg border border-border bg-surface-1 p-3 text-xs font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-lg"
         >

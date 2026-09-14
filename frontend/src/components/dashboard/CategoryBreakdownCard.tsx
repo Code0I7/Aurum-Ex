@@ -3,21 +3,30 @@ import { SquareDivide } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { CategoryBreakdownModal } from "@/components/categories/CategoryBreakdownModal";
+import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { translateCategoryName } from "@/lib/categoryLabels";
 import type { CategoryBreakdownItem } from "@/types";
-import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 
-interface SpendingByCategoryCardProps {
+interface CategoryBreakdownCardProps {
+  title: string;
+  /** Что сказать, когда за период нет ни одной операции этого вида. */
+  emptyLabel: string;
   items: CategoryBreakdownItem[];
-  /** Высота задаётся снаружи: на обзоре карточка тянется до низа стопки
-   *  справа, иначе под ней остаётся пустая полоса. */
+  /** Высота задаётся снаружи: в сетке обзора карточка тянется до низа
+   *  своей строки, иначе рядом с соседкой у неё разный нижний край. */
   className?: string;
 }
 
-function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: CategoryBreakdownItem }> }) {
+function DonutTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: CategoryBreakdownItem }>;
+}) {
   if (!active || !payload?.length) return null;
   const item = payload[0].payload;
   return (
@@ -30,37 +39,47 @@ function DonutTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   );
 }
 
-export function SpendingByCategoryCard({ items, className }: SpendingByCategoryCardProps) {
+/** Условный номер для доли «Прочее»: у неё нет своей категории, а окну
+ *  разбивки номер нужен, чтобы отличить «прямые траты в самой категории»
+ *  от подкатегорий. Ни одна настоящая категория с ним не совпадёт. */
+const OTHER_SLICE_ID = -1;
+
+/**
+ * Разбивка расходов или доходов по категориям: круг сверху, список под ним.
+ *
+ * Одна карточка на оба вида, а не две копии. Расходы и доходы стоят на
+ * обзоре рядом и обязаны выглядеть и считаться одинаково — две копии
+ * разошлись бы при первой же правке одной из них.
+ *
+ * Круг над списком, а не слева от него. Карточка теперь в половину прежней
+ * ширины, и рядом с кругом списку не оставалось бы места ни на название,
+ * ни на сумму.
+ *
+ * Показываются семь крупнейших категорий и доля «Прочее». Остальные не
+ * пропадают: «Прочее» открывается тем же окном, что и подкатегории, — со
+ * списком того, что в неё свёрнуто.
+ */
+export function CategoryBreakdownCard({ title, emptyLabel, items, className }: CategoryBreakdownCardProps) {
   const { t } = useTranslation();
-  // The breakdown lives in a modal, not expanded inline — a category with
-  // many subcategories (or many split purchases) would otherwise push this
-  // row taller than the fixed-height donut next to it, throwing the
-  // side-by-side layout out of alignment.
+  // Разбивка — в окне, а не раскрытием в строке: категория с десятком
+  // подкатегорий иначе растянула бы карточку и сломала бы ровный край с
+  // соседними.
   const [breakdownItem, setBreakdownItem] = useState<CategoryBreakdownItem | null>(null);
   const hasData = items.length > 0;
-  // Recharts needs a numeric dataKey — API amounts arrive as strings (Decimal
-  // is serialized as string to avoid float precision loss).
+  // Recharts нужна числовая величина, а суммы с сервера приходят строками.
   const chartData = items.map((item) => ({ ...item, amount: Number(item.amount) }));
 
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>{t("dashboard.spendingByCategoryTitle")}</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {!hasData ? (
-          <p className="py-10 text-center text-sm text-text-muted">{t("dashboard.noExpensesThisMonth")}</p>
+          <p className="py-10 text-center text-sm text-text-muted">{emptyLabel}</p>
         ) : (
-          /* Круг и список встают в ряд по ширине САМОЙ карточки, а не
-             экрана. Ширина экрана отвечала не на тот вопрос: при
-             увеличенном интерфейсе колонка обзора становится узкой, а сам
-             экран по меркам вёрстки остаётся широким — круг в 256 точек и
-             список рядом переставали помещаться и вылезали на соседнюю
-             карточку. Порог — та ширина, при которой списку остаётся хотя
-             бы двести точек на название и сумму. */
-          <div className="@container">
-            <div className="chart-palette flex flex-col items-center gap-6 @lg:flex-row @lg:items-center">
-            <div className="h-56 w-56 shrink-0 sm:h-64 sm:w-64">
+          <div className="chart-palette flex flex-col items-center gap-4">
+            <div className="h-40 w-40 shrink-0 sm:h-44 sm:w-44">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -83,16 +102,17 @@ export function SpendingByCategoryCard({ items, className }: SpendingByCategoryC
               </ResponsiveContainer>
             </div>
 
-            <ul className="w-full min-w-0 flex-1 divide-y divide-gridline">
+            <ul className="w-full min-w-0 divide-y divide-gridline">
               {items.map((item) => {
                 const Icon = getCategoryIcon(item.icon);
                 const hasChildren = item.children.length > 0;
                 return (
-                  <li key={item.category_id ?? "other"} className="flex items-center gap-2 py-2 first:pt-0 last:pb-0">
-                    {/* Fixed-width slot on every row, populated or not — the
-                        amount column at the row's end must stay flush right
-                        the same way whether or not this row has a
-                        breakdown to open. */}
+                  <li
+                    key={item.category_id ?? "other"}
+                    className="flex items-center gap-2 py-2 first:pt-0 last:pb-0"
+                  >
+                    {/* Место под кнопку есть у каждой строки, даже без неё:
+                        суммы в конце строк обязаны стоять ровным столбцом. */}
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center">
                       {hasChildren && (
                         <button
@@ -122,15 +142,14 @@ export function SpendingByCategoryCard({ items, className }: SpendingByCategoryC
               })}
             </ul>
           </div>
-          </div>
         )}
       </CardContent>
 
-      {breakdownItem && breakdownItem.category_id !== null && (
+      {breakdownItem && (
         <CategoryBreakdownModal
           open
           onClose={() => setBreakdownItem(null)}
-          categoryId={breakdownItem.category_id}
+          categoryId={breakdownItem.category_id ?? OTHER_SLICE_ID}
           categoryName={breakdownItem.name}
           totalAmount={breakdownItem.amount}
           children={breakdownItem.children}

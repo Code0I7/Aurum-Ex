@@ -46,8 +46,13 @@ export function AccountBalancesCard({
   // как голые числа — ровно та ошибка, из-за которой сто евро выглядели
   // как сто рублей. Знак «примерно» ставится, когда валют больше одной:
   // пересчёт сделан по сегодняшнему курсу, а он завтра другой.
-  const assets = accounts.filter((account) => account.nature === "asset");
-  const total = assets.reduce((sum, account) => sum + Number(account.balance_base), 0);
+  // Итог — сумма всех строк списка, включая кредитки с минусом.
+  //
+  // Раньше складывались одни счета-активы, и итог молча расходился со
+  // списком прямо под ним: 127 тысяч сверху, а в списке кредитка на −54.
+  // Выглядело так, будто минус сидит внутри этих 127, — а его там не было
+  // вовсе. Число над списком обязано быть суммой этого списка.
+  const total = accounts.reduce((sum, account) => sum + Number(account.balance_base), 0);
   const mixed = new Set(accounts.map((account) => account.currency)).size > 1;
 
   return (
@@ -168,14 +173,23 @@ function AccountBar({
 
   return (
     <>
+      {/* Отрезки — отдельными скруглёнными полосками с просветом, а не
+          вырезом внутри одной полосы.
+
+          Вырез рисовался рамкой цвета карточки, и заметен был ровно тогда,
+          когда этот цвет отличался от цвета полосы. У части оформлений не
+          отличался: три цели подряд сливались в одну жёлтую заливку, и
+          границы находились только наведением. Просвет — это настоящая
+          пустота, сквозь неё виден фон, какой бы он ни был, и граница
+          видна в любой теме. */}
       <span
-        className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-surface-2"
+        className="mt-1.5 flex h-2 gap-[3px]"
         role="presentation"
         onPointerLeave={() => setHover(null)}
         onPointerCancel={() => setHover(null)}
       >
         <span
-          className="block h-full bg-success/70 transition-[width,filter] hover:brightness-125"
+          className="block h-full rounded-full bg-success/70 transition-[width,filter] hover:brightness-125"
           style={{ width: `${(free / balance) * 100}%` }}
           onPointerEnter={follow(freeLabel, free)}
           onPointerMove={follow(freeLabel, free)}
@@ -187,7 +201,7 @@ function AccountBar({
             // Золотом, а не цветом цели: цвет у целей не задаётся, а
             // придумывать его по номеру значило бы, что один и тот же
             // отрезок меняет цвет при добавлении соседней цели.
-            className="block h-full border-l-2 border-surface-1 bg-accent transition-[width,filter] hover:brightness-125"
+            className="block h-full rounded-full bg-accent transition-[width,filter] hover:brightness-125"
             style={{
               width: `${(Number(item.amount) / balance) * 100}%`,
               // Совсем маленькая цель иначе исчезает целиком под вырезом:

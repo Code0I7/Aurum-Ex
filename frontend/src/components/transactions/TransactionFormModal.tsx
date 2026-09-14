@@ -628,7 +628,15 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                 долг, вернули именно долг. */}
             {peopleRows.length === 0 ? (
               <div>
-                <Label htmlFor="counterparty">{t("transactions.form.counterpartyLabel")}</Label>
+                {/* «Кому» у исходящего и «От кого» у входящего: одно слово на
+                    оба направления заставляло бы переводить подпись в уме. */}
+                <Label htmlFor="counterparty">
+                  {t(
+                    form.type === "external_in"
+                      ? "transactions.form.counterpartyFromLabel"
+                      : "transactions.form.counterpartyLabel"
+                  )}
+                </Label>
                 <DirectoryPicker
                   id="counterparty"
                   options={counterparties ?? []}
@@ -776,8 +784,16 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
                 расхода — самый частый случай. */}
             {isTransit && (
               <div>
+                {/* У исходящего транзита «От кого» — чьи деньги я передаю. У
+                    входящего так назвать нельзя: «От кого» там уже стоит
+                    выше, у контрагента, и две одинаковые подписи подряд
+                    читались бы как один вопрос. */}
                 <LabelWithHelp htmlFor="transit_party" hintKey="transactions.form.transitPartyHint">
-                  {t("transactions.form.transitFromLabel")}
+                  {t(
+                    form.type === "external_in"
+                      ? "transactions.form.transitOwnerLabel"
+                      : "transactions.form.transitFromLabel"
+                  )}
                 </LabelWithHelp>
                 <DirectoryPicker
                   id="transit_party"

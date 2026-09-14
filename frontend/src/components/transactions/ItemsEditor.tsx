@@ -132,9 +132,10 @@ export function ItemsEditor({ items, onChange, total }: ItemsEditorProps) {
         </button>
       </div>
 
-      {items.length === 0 ? (
-        <p className="text-xs text-text-muted">{t("items.emptyHint")}</p>
-      ) : (
+      {/* Пустой чек ничего не пишет: объяснение, зачем нужны позиции, живёт
+          в подсказке «!» у заголовка, а строка текста под каждой пустой
+          формой читалась бы один раз и мешала бы всегда. */}
+      {items.length === 0 ? null : (
         <ul className="space-y-2">
           {items.map((item, index) => (
             <li key={index} className="rounded-lg border border-border p-2.5">

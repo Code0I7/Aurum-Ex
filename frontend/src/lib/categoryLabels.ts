@@ -23,6 +23,9 @@ const DEFAULT_CATEGORY_KEYS: Record<string, TranslationKey> = {
   Benefits: "category.benefits",
   "Item Sales": "category.itemSales",
   "Other Income": "category.otherIncome",
+  // Сводная доля графика по категориям: сервер называет её по-английски,
+  // и без перевода русский интерфейс показывал «Other».
+  Other: "category.other",
 };
 
 export function translateCategoryName(name: string): string {

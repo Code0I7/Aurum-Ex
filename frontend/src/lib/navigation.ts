@@ -63,21 +63,25 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     labelKey: "nav.group.analysis",
+    // Капитал первым: это итог, ради которого открывают раздел, а отчёты
+    // и движение денежных средств объясняют, как он получился.
     items: [
-      { labelKey: "nav.cashFlow", to: "/cash-flow", icon: Activity, hintKey: "help.cashFlow" },
-      { labelKey: "nav.reports", to: "/reports", icon: PieChart, hintKey: "help.reports" },
       { labelKey: "nav.netWorth", to: "/net-worth", icon: TrendingUp, hintKey: "help.netWorth" },
+      { labelKey: "nav.reports", to: "/reports", icon: PieChart, hintKey: "help.reports" },
+      { labelKey: "nav.cashFlow", to: "/cash-flow", icon: Activity, hintKey: "help.cashFlow" },
       { labelKey: "nav.advice", to: "/advice", icon: Lightbulb, hintKey: "help.advice" },
     ],
   },
   {
     labelKey: "nav.group.plans",
+    // От цели к исполнению: на что копим, как планируем, в какие рамки
+    // укладываемся, кому должны — и что повторяется само.
     items: [
-      { labelKey: "nav.budget", to: "/budget", icon: Target, hintKey: "help.budget" },
-      { labelKey: "nav.planning", to: "/planning", icon: CalendarRange, hintKey: "help.planning" },
       { labelKey: "nav.goals", to: "/goals", icon: Flag, hintKey: "help.goals" },
-      { labelKey: "nav.recurring", to: "/recurring", icon: Repeat, hintKey: "help.recurring" },
+      { labelKey: "nav.planning", to: "/planning", icon: CalendarRange, hintKey: "help.planning" },
+      { labelKey: "nav.budget", to: "/budget", icon: Target, hintKey: "help.budget" },
       { labelKey: "nav.debts", to: "/debts", icon: HandCoins, hintKey: "help.debts" },
+      { labelKey: "nav.recurring", to: "/recurring", icon: Repeat, hintKey: "help.recurring" },
     ],
   },
   {

@@ -14,6 +14,7 @@ import {
 } from "@/hooks/useInvestments";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency, formatSignedCurrency } from "@/lib/format";
+import { useNetWorthSummary } from "@/hooks/useNetWorth";
 import type { InvestmentKind, InvestmentPortfolio } from "@/types";
 
 const KINDS: Array<InvestmentKind | "all"> = ["all", "stock", "bond", "fund", "crypto", "metal", "other"];
@@ -28,6 +29,10 @@ const KINDS: Array<InvestmentKind | "all"> = ["all", "stock", "bond", "fund", "c
  */
 export function InvestmentsPage() {
   const { t } = useTranslation();
+  // Долг по кредиткам и рассрочкам — для совета над разделом. Период
+  // короткий: само число от периода не зависит, берётся сегодняшнее.
+  const { data: netWorth } = useNetWorthSummary("30d");
+  const debt = Number(netWorth?.liabilities ?? 0);
   const { data: portfolios } = useInvestmentPortfolios();
   const createPortfolio = useCreatePortfolio();
   const [portfolioModalOpen, setPortfolioModalOpen] = useState(false);
@@ -65,6 +70,16 @@ export function InvestmentsPage() {
 
   return (
     <div className="space-y-5">
+      {/* Совет стоит здесь, а не на вкладке долгов: вопрос «куда вложить»
+          задают именно тут, и ответ «сначала закройте долг» полезен ровно
+          в момент выбора. Проценты по кредитной карте почти всегда выше
+          доходности любой бумаги, и погашение долга — вложение с
+          гарантированной отдачей. Показывается, только когда долг есть. */}
+      {debt > 0 && (
+        <p className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-text-primary">
+          {t("investments.payDebtFirst", { amount: formatCurrency(debt) })}
+        </p>
+      )}
       <Card>
         <CardHeader className="items-start">
           <div>

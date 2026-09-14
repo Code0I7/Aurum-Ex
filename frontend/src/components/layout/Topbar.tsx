@@ -24,8 +24,13 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
       >
         <Menu size={20} />
       </button>
-      <h1 className="flex min-w-0 items-center gap-2 truncate text-lg font-semibold text-text-primary">
-        {activeItem ? t(activeItem.labelKey) : "Aurum-Ex"}
+      {/* Обрезается только название, а не весь заголовок. Обрезка — это
+          overflow: hidden, и стояла она на h1 вместе с кружком «!»: кружок
+          нажимался, подсказка открывалась — и тут же отрезалась краем
+          заголовка. Со стороны это выглядело как кнопка, которая не
+          нажимается. */}
+      <h1 className="flex min-w-0 items-center gap-2 text-lg font-semibold text-text-primary">
+        <span className="truncate">{activeItem ? t(activeItem.labelKey) : "Aurum-Ex"}</span>
         {/* Место для объяснения одно на всё приложение — у названия
             вкладки. Разделы, где пояснять нечего, кружка просто не имеют, и
             заголовок от этого не съезжает. */}

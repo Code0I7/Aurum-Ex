@@ -189,6 +189,17 @@ export function NetWorthChart({
                   </span>
                 </span>
               )}
+              {/* Долг по кредиткам и рассрочкам. Он уже вычтен из капитала;
+                  строка объясняет итог — «72 тысячи, когда на счетах 127» —
+                  и появляется, только когда должно что-то. */}
+              {Number(summary.liabilities) > 0 && (
+                <span>
+                  {t("netWorth.liabilitiesShort")}:{" "}
+                  <span className="tabular-nums text-danger">
+                    −{formatCurrency(summary.liabilities, shown)}
+                  </span>
+                </span>
+              )}
             </p>
           )}
           {asOfPast && lastDate && (

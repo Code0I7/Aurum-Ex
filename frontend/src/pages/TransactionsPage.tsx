@@ -386,8 +386,10 @@ export function TransactionsPage() {
           {/* Расчёты с людьми были в форме, но не в фильтре: найти их можно
               было только глазами по списку. Подписи те же, что в форме, —
               человек ищет то, что сам туда и записал. */}
-          <option value="external_out">{t("transactions.form.typeExternalOut")}</option>
-          <option value="external_in">{t("transactions.form.typeExternalIn")}</option>
+          {/* Во множественном числе, в отличие от формы: фильтр отбирает
+              все такие операции, а в форме заводится одна. */}
+          <option value="external_out">{t("transactions.filterExternalOut")}</option>
+          <option value="external_in">{t("transactions.filterExternalIn")}</option>
         </Select>
         {/* Человек — сразу за видом операции: он уточняет именно его, и
             между ними не должно стоять ничего постороннего. */}

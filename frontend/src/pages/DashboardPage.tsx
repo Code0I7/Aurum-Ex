@@ -1,7 +1,7 @@
 import { MonthSelector } from "@/components/layout/MonthSelector";
 import { YearSelector } from "@/components/layout/YearSelector";
 import { StatCard } from "@/components/dashboard/StatCard";
-import { SpendingByCategoryCard } from "@/components/dashboard/SpendingByCategoryCard";
+import { CategoryBreakdownCard } from "@/components/dashboard/CategoryBreakdownCard";
 import { RecentTransactionsCard } from "@/components/dashboard/RecentTransactionsCard";
 import { AccountBalancesCard } from "@/components/dashboard/AccountBalancesCard";
 import { LargestExpensesCard } from "@/components/dashboard/LargestExpensesCard";
@@ -207,10 +207,22 @@ export function DashboardPage() {
           на широком числа ни на что не влияют, и место каждой карточки
           названо строкой и колонкой. */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <div className="order-1 lg:col-start-1 lg:row-start-1 lg:row-span-2">
-          <SpendingByCategoryCard
+        {/* Доходы и расходы по категориям — рядом, доходы слева, как в
+            ряду показателей над ними. Каждая карточка в половину прежней
+            ширины, поэтому круг у них над списком, а не сбоку. На телефоне
+            они встают друг под другом. */}
+        <div className="order-1 grid gap-4 sm:grid-cols-2 lg:col-start-1 lg:row-start-1 lg:row-span-2">
+          <CategoryBreakdownCard
+            title={t("dashboard.incomeByCategoryTitle")}
+            emptyLabel={t("dashboard.noIncomeThisPeriod")}
+            items={data?.income_by_category ?? []}
+            className="h-full"
+          />
+          <CategoryBreakdownCard
+            title={t("dashboard.spendingByCategoryTitle")}
+            emptyLabel={t("dashboard.noExpensesThisMonth")}
             items={data?.spending_by_category ?? []}
-            className="lg:h-full"
+            className="h-full"
           />
         </div>
 

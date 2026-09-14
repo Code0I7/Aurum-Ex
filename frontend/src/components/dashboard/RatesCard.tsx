@@ -68,11 +68,18 @@ export function RatesCard({ className }: {
         ) : (rates ?? []).length === 0 ? (
           <p className="py-6 text-center text-sm text-text-muted">{t("dashboard.ratesEmpty")}</p>
         ) : (
-          <ul className="divide-y divide-gridline">
-            {(rates ?? []).map((row) => (
-              <RateRow key={row.code} row={row} language={language} />
-            ))}
-          </ul>
+          /* Колонки по ширине самой карточки, а не экрана: карточка стоит
+             в узкой правой колонке обзора, и ширина экрана о её месте
+             ничего не говорит. На широкой — три колонки, девять курсов
+             в три строки; уже — две; на телефоне одна, и список просто
+             растёт вниз. */
+          <div className="@container">
+            <ul className="grid grid-cols-1 gap-x-6 @sm:grid-cols-2 @xl:grid-cols-3">
+              {(rates ?? []).map((row) => (
+                <RateRow key={row.code} row={row} language={language} />
+              ))}
+            </ul>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -93,7 +100,9 @@ function RateRow({ row, language }: { row: CurrencyRate; language: Language }) {
     row.rate !== null && row.previous !== null ? Number(row.rate) - Number(row.previous) : null;
 
   return (
-    <li className="flex items-center justify-between gap-3 py-2">
+    // Черта под каждой строкой, а не между ними: в сетке «между» у каждой
+    // колонки своё, и divide-y рисовал бы черты вперемешку.
+    <li className="flex items-center justify-between gap-3 border-b border-gridline py-2">
       <span className="min-w-0">
         <span className="block truncate text-sm">
           <span className="font-medium">{row.code}</span>{" "}

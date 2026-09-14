@@ -367,7 +367,10 @@ function ViewRow({
         {amount > 0 ? "+" : "−"}
         {formatCurrency(Math.abs(amount))}
       </span>
-      <span className="w-24 shrink-0 text-right text-xs tabular-nums text-text-muted">
+      {/* Накоплено на этот день — только на широком экране. На телефоне
+          строка и так тесная, а то же число есть в подсказке графика над
+          списком. */}
+      <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-text-muted sm:block">
         {formatCurrency(row.running_total)}
       </span>
       <span className="flex shrink-0 gap-1">
@@ -421,12 +424,17 @@ function EditRow({
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-2 py-2">
+    // Сетка, а не строка с переносом. В строке поля шли подряд с жёсткой
+    // шириной — дата 160 точек, сумма 130, — и на телефоне заметке между
+    // ними оставалось ноль: поле схлопывалось, а кнопки выталкивались за
+    // край окна. На узком экране дата с суммой делят первую строку, заметка
+    // занимает вторую целиком, кнопки — третью. На широком всё в одну.
+    <li className="grid grid-cols-2 items-center gap-2 py-2 sm:grid-cols-[10rem_8rem_minmax(0,1fr)_auto]">
       <Input
         type="date"
         value={date}
         onChange={(event) => setDate(event.target.value)}
-        className="w-40"
+        className="w-full min-w-0"
       />
       {/* Знак минуса вводится руками, как и при создании: вынос — это тот
           же взнос в другую сторону, а не отдельная кнопка. */}
@@ -435,20 +443,22 @@ function EditRow({
         step="0.01"
         value={amount}
         onChange={(event) => setAmount(event.target.value)}
-        className="w-32"
+        className="w-full min-w-0"
       />
       <Input
         value={note}
         placeholder={t("goal.history.noNote")}
         onChange={(event) => setNote(event.target.value)}
-        className="min-w-0 flex-1"
+        className="col-span-2 w-full min-w-0 sm:col-span-1"
       />
-      <Button type="button" onClick={handleSave} disabled={saveContribution.isPending}>
-        <Check size={15} />
-      </Button>
-      <Button type="button" variant="ghost" onClick={onDone}>
-        <X size={15} />
-      </Button>
+      <span className="col-span-2 flex justify-end gap-2 sm:col-span-1">
+        <Button type="button" onClick={handleSave} disabled={saveContribution.isPending}>
+          <Check size={15} />
+        </Button>
+        <Button type="button" variant="ghost" onClick={onDone}>
+          <X size={15} />
+        </Button>
+      </span>
     </li>
   );
 }

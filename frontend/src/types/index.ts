@@ -407,6 +407,8 @@ export interface DashboardSummary {
   net: string;
   transferred_out: string;
   spending_by_category: CategoryBreakdownItem[];
+  // Доходы по категориям — тем же правилом, что и расходы.
+  income_by_category: CategoryBreakdownItem[];
   // Остатки всегда текущие, независимо от периода.
   accounts: DashboardAccountBalance[];
   // null, когда за период не введено ни часа работы.
@@ -535,6 +537,9 @@ export interface NetWorthSummary {
   liquid: string;
   // Имущество личного пользования — входит в current, но отдельной строкой.
   personal_use: string;
+  /** Долг по кредиткам и рассрочкам, положительным числом. Уже вычтен из
+   *  current и liquid; отдельно — чтобы итог не был загадкой. */
+  liabilities: string;
   range: NetWorthRange;
   current: string;
   change_amount: string;

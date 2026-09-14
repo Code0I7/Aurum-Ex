@@ -100,7 +100,7 @@ async def test_subcategory_spending_rolls_up_into_its_parent(client: AsyncClient
     assert money(breakdown["Groceries"]["amount"]) == Decimal("75.00")
 
 
-async def test_more_than_eight_expense_categories_roll_up_into_other(client: AsyncClient, account_id, categories):
+async def test_more_than_seven_expense_categories_roll_up_into_other(client: AsyncClient, account_id, categories):
     expense_categories = [c for c in categories.values() if c["kind"] == "expense"]
     # The default seed only ships 8 expense categories (see app/db/seed.py) —
     # add a 9th ourselves rather than depending on that number ever changing.
@@ -120,13 +120,21 @@ async def test_more_than_eight_expense_categories_roll_up_into_other(client: Asy
     resp = await client.get("/dashboard/summary", params={"year": 2026, "month": 8})
     breakdown = resp.json()["spending_by_category"]
 
-    assert len(breakdown) == 9  # 8 explicit categories + one "Other" rollup
+    # Семь крупнейших и доля «Прочее»: карточки расходов и доходов стоят
+    # рядом, каждая в половину прежней ширины, и восемь строк под кругом там
+    # уже не помещаются.
+    assert len(breakdown) == 8
     other = [row for row in breakdown if row["category_id"] is None]
     assert len(other) == 1
     assert other[0]["name"] == "Other"
-    # The 9th (smallest, index 8) category's 10.00 must be folded into Other,
-    # not silently dropped from the total.
-    assert money(other[0]["amount"]) == Decimal("10.00")
+    # Две самые мелкие категории (20.00 и 10.00) свёрнуты в «Прочее», а не
+    # потеряны из итога.
+    assert money(other[0]["amount"]) == Decimal("30.00")
+    # И видно, что именно в неё вошло: доля «Прочее» открывается списком.
+    assert sorted(money(child["amount"]) for child in other[0]["children"]) == [
+        Decimal("10.00"),
+        Decimal("20.00"),
+    ]
 
 
 async def test_split_transaction_rolls_up_into_one_slice_with_a_children_breakdown(

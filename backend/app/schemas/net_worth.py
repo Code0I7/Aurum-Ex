@@ -97,6 +97,11 @@ class NetWorthSummary(BaseModel):
     liquid: Decimal = Decimal("0")
     # Имущество личного пользования — входит в current, но отдельной строкой.
     personal_use: Decimal = Decimal("0")
+    # Долг по кредиткам и рассрочкам — положительным числом, «сколько
+    # должен». Уже вычтен из current и liquid; отдельно нужен затем, чтобы
+    # итог не выглядел загадкой: 72 тысячи, когда на счетах 127, объясняются
+    # ровно этой строкой.
+    liabilities: Decimal = Decimal("0")
     change_amount: Decimal
     change_percent: float | None
     series: list[NetWorthPoint]

@@ -25,7 +25,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
 from app.models.asset import Asset, AssetValuation
-from app.models.enums import AccountKind, AssetClass, CapitalRole, RiskLevel, TransactionType
+from app.models.enums import (
+    AccountKind,
+    AccountNature,
+    AssetClass,
+    CapitalRole,
+    RiskLevel,
+    TransactionType,
+)
 from app.models.transaction import Transaction
 from app.services.account_service import get_balances_by_account
 from app.services.currency_service import (
@@ -108,8 +115,41 @@ def _daily_series(events: list[tuple[date_, Decimal]], start: date_, end: date_)
     return points
 
 
+def _counted_account(
+    kind: AccountKind,
+    nature: AccountNature,
+    kinds: set[AccountKind] | None,
+    debt_only: bool,
+) -> bool:
+    """Входит ли счёт в денежный ряд.
+
+    По умолчанию — деньги за вычетом долгов: денежные счета плюс все счета
+    с природой «обязательство». Минус на кредитке и есть долг, и остаток
+    такого счёта отрицателен сам по себе — прибавить его значит вычесть
+    долг.
+
+    Раньше отбор шёл по одному виду счёта, и кредитной карты в нём не было
+    вовсе. Капитал и «быстрые деньги» показывали сумму положительных счетов,
+    а долг по картам не вычитался никогда: 127 тысяч там, где на самом деле
+    72. Хотя в описании «быстрых денег» с самого начала было сказано «за
+    вычетом долга по картам».
+
+    `kinds` — срез внутри положительных денег (например, одни наличные):
+    долгов в нём нет по определению. `debt_only` — сам долг, отдельно.
+    """
+    if debt_only:
+        return nature is AccountNature.LIABILITY
+    if kinds is not None:
+        return kind in kinds and nature is not AccountNature.LIABILITY
+    return nature is AccountNature.LIABILITY or kind in CASH_ACCOUNT_TYPES
+
+
 async def _cash_cumulative_events(
-    session: AsyncSession, currency: str, kinds: set[AccountKind] | None = None
+    session: AsyncSession,
+    currency: str,
+    kinds: set[AccountKind] | None = None,
+    *,
+    debt_only: bool = False,
 ) -> list[tuple[date_, Decimal]]:
     """Накопительный итог по денежным счетам, день за днём.
 
@@ -142,12 +182,12 @@ async def _cash_cumulative_events(
     """
     target = currency.upper()
     accounts_result = await session.execute(
-        select(Account.id, Account.kind, Account.opening_balance, Account.currency)
+        select(Account.id, Account.kind, Account.nature, Account.opening_balance, Account.currency)
     )
     cash_accounts = {
         acc_id: opening or Decimal("0")
-        for acc_id, acc_kind, opening, acc_currency in accounts_result.all()
-        if acc_kind in (kinds if kinds is not None else CASH_ACCOUNT_TYPES)
+        for acc_id, acc_kind, acc_nature, opening, acc_currency in accounts_result.all()
+        if _counted_account(acc_kind, acc_nature, kinds, debt_only)
         and (acc_currency or "").upper() == target
     }
     cash_account_ids = set(cash_accounts)
@@ -402,9 +442,13 @@ async def _capital_by_currency(session: AsyncSession) -> dict[str, Decimal]:
     totals: dict[str, Decimal] = defaultdict(Decimal)
 
     balances = await get_balances_by_account(session)
-    accounts = (await session.execute(select(Account.id, Account.kind, Account.currency))).all()
-    for account_id, kind, currency in accounts:
-        if kind in CASH_ACCOUNT_TYPES:
+    accounts = (
+        await session.execute(select(Account.id, Account.kind, Account.nature, Account.currency))
+    ).all()
+    for account_id, kind, nature, currency in accounts:
+        # Тот же отбор, что и у ряда: долг по карте в чужой валюте — тоже
+        # часть «в других валютах», только со знаком минус.
+        if _counted_account(kind, nature, None, False):
             totals[(currency or "").upper()] += balances.get(account_id, Decimal("0"))
 
     latest = await _latest_asset_values(session)
@@ -452,8 +496,17 @@ async def get_net_worth_summary(
     # итог, даже если где-то в расчёте появится ещё одна поправка.
     physical_events = await _cash_cumulative_events(session, target, kinds={AccountKind.CASH})
     physical_today = physical_events[-1][1] if physical_events else Decimal("0")
-    bank_today = cash_today - physical_today
-    capital_roles = await _capital_role_summary(session, current_by_asset, cash_today)
+    # Долг — отдельным рядом тем же расчётом. cash_today уже за его вычетом;
+    # положительные деньги получаются обратным сложением, и так три числа
+    # сходятся всегда, а не только пока в расчёте нет новых поправок.
+    debt_events = await _cash_cumulative_events(session, target, debt_only=True)
+    debt_today = debt_events[-1][1] if debt_events else Decimal("0")
+    money_today = cash_today - debt_today
+    bank_today = money_today - physical_today
+    # Разрезы по роли и по риску — про то, в чём лежит капитал, а долг ни в
+    # чём не лежит. Отдавать им чистый итог значило бы получить отрицательную
+    # «долю денег» у всякого, кто должен по карте больше, чем держит на счетах.
+    capital_roles = await _capital_role_summary(session, current_by_asset, money_today)
 
     end = min(end_date, today) if end_date is not None else today
     if start_date is not None:
@@ -486,9 +539,12 @@ async def get_net_worth_summary(
         float(change_amount / start_value * 100) if range_key != "all" and start_value else None
     )
 
-    risk_levels = await _risk_level_summary(session, current_by_asset, cash_today)
+    risk_levels = await _risk_level_summary(session, current_by_asset, money_today)
 
-    total = cash_today + sum(class_totals.values(), Decimal("0"))
+    # Проценты разбивки — от того, что есть, а не от капитала за вычетом
+    # долгов: разбивка отвечает на «из чего состоит имущество», и доли в ней
+    # обязаны складываться в сто, сколько бы ни было должно по картам.
+    total = money_today + sum(class_totals.values(), Decimal("0"))
 
     # Быстрые деньги — это денежный итог: он уже считается по счетам,
     # природа которых учтена (карта с долгом уменьшает его). Вложения и
@@ -547,6 +603,7 @@ async def get_net_worth_summary(
     currencies = sorted({base, target} | {code for code in by_currency if code})
 
     return NetWorthSummary(
+        liabilities=-debt_today,
         range=range_key,
         currency=target,
         currencies=currencies,

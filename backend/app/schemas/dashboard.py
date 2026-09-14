@@ -84,6 +84,9 @@ class DashboardSummary(BaseModel):
     net: Decimal
     transferred_out: Decimal
     spending_by_category: list[CategoryBreakdownItem]
+    # Доходы по категориям — тем же правилом, что и расходы: семь крупнейших
+    # и доля «Прочее» со свёрнутыми внутри.
+    income_by_category: list[CategoryBreakdownItem] = []
 
     # Остатки по счетам: «сколько у меня сейчас и где».
     accounts: list[AccountBalanceItem] = []

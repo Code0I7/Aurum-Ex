@@ -64,11 +64,19 @@ export function GoalList({
 
         return (
           <li key={goal.id} className="py-3">
-            <div className="flex items-center gap-3">
+            {/* Две строки: название с суммой, под ними кнопки.
+
+                Раньше всё стояло в одну строку — значок, название, сумма и
+                до шести кнопок. На телефоне на название оставалось меньше
+                ширины одного слова, и оно обрезалось до «Гейм…». Кнопки
+                ушли на свою строку везде, а не только на телефоне: одна и та
+                же цель не должна выглядеть по-разному на двух экранах, и
+                длинное название мешает и на широком. */}
+            <div className="flex items-start gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-2">
                 <Flag size={16} className="text-text-secondary" />
               </span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
+              <span className="min-w-0 flex-1 break-words pt-0.5 text-sm font-medium text-text-primary">
                 {goal.name}
                 {goal.by_account.length > 0 && (
                   <span className="block truncate text-xs font-normal text-text-muted">
@@ -78,10 +86,12 @@ export function GoalList({
                   </span>
                 )}
               </span>
-              <span className="shrink-0 text-sm tabular-nums text-text-primary">
-                {formatCurrency(shown)} <span className="text-text-muted">/ {formatCurrency(target)}</span>
+              <span className="shrink-0 pt-0.5 text-right text-sm tabular-nums text-text-primary">
+                {formatCurrency(shown)}
+                <span className="block text-xs text-text-muted">/ {formatCurrency(target)}</span>
               </span>
-              <span className="flex shrink-0 gap-1">
+            </div>
+            <div className="mt-1 flex flex-wrap justify-end gap-1 pl-12">
                 {isClosed ? (
                   <button
                     type="button"
@@ -151,7 +161,6 @@ export function GoalList({
                 >
                   <Trash2 size={15} />
                 </button>
-              </span>
             </div>
             <div className="mt-2 flex items-center gap-2 pl-12">
               <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
