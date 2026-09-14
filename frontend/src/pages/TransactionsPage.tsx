@@ -12,6 +12,7 @@ import { TransactionsGrid } from "@/components/transactions/TransactionsGrid";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
 import { DEFAULT_LAYOUT, reconcileLayout, type ColumnLayout } from "@/components/transactions/columns";
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
+import { TransferMatchesNotice } from "@/components/transactions/TransferMatchesNotice";
 import {
   useTransactions,
   useDeleteTransaction,
@@ -277,6 +278,9 @@ export function TransactionsPage() {
 
   return (
     <div className="space-y-5">
+      {/* Над всем остальным: повтор перевода портит остатки всех страниц,
+          и узнать о нём надо раньше, чем начнёшь сверять цифры. */}
+      <TransferMatchesNotice />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className={`min-w-0 flex-1 space-y-3 ${isSearching ? "pointer-events-none opacity-50" : ""}`}>
           {/* Выбор года стоит здесь, рядом с выбором периода, а не сбоку от

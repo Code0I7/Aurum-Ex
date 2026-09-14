@@ -19,7 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.account import Account
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
-from app.services.transaction_service import counted_only, earnings_and_spending_only
+from app.services.currency_service import to_base
+from app.services.transaction_service import (
+    converted_only,
+    counted_only,
+    earnings_and_spending_only,
+)
 from app.schemas.cash_flow import CashFlowPoint, CashFlowResponse
 
 
@@ -42,17 +47,24 @@ async def get_cash_flow(
 
     # Начальные остатки: сумма и дата, с которой счёт считается открытым.
     # Нулевые не берём — они ничего не добавляют, но растянули бы диапазон.
-    openings = [
-        (opening_date, amount)
-        for opening_date, amount in (
-            await session.execute(
-                select(Account.opening_date, Account.opening_balance).where(
-                    Account.opening_balance.is_not(None),
-                    Account.opening_balance != 0,
-                )
+    #
+    # Остаток лежит в валюте счёта, а оборот считается в валюте установки,
+    # поэтому он приводится курсом дня открытия — как операция того же
+    # дня. Счёт без даты открытия берёт сегодняшний курс: другой даты у его
+    # денег нет. Курса нет — остаток в оборот не входит, как и операция без
+    # курса.
+    openings: list[tuple[date_ | None, Decimal]] = []
+    for opening_date, amount, currency in (
+        await session.execute(
+            select(Account.opening_date, Account.opening_balance, Account.currency).where(
+                Account.opening_balance.is_not(None),
+                Account.opening_balance != 0,
             )
-        ).all()
-    ]
+        )
+    ).all():
+        _, amount_base = await to_base(session, amount, currency, opening_date or date_.today())
+        if amount_base is not None:
+            openings.append((opening_date, amount_base))
 
     # Диапазон расширяется до самого раннего остатка: счёт мог быть открыт
     # раньше первой записи, и обрезать его значило бы потерять деньги, с
@@ -88,11 +100,13 @@ async def get_cash_flow(
             extract("year", Transaction.date).label("year"),
             extract("month", Transaction.date).label("month"),
             Transaction.type,
-            func.sum(Transaction.amount).label("amount"),
+            # В валюте установки: месяц складывает операции всех счетов.
+            func.sum(Transaction.amount_base).label("amount"),
         )
         .where(
             earnings_and_spending_only(),
             counted_only(),
+            converted_only(),
             Transaction.date >= effective_start,
             Transaction.date <= effective_end,
         )

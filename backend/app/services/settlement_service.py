@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.counterparty import Counterparty
 from app.models.enums import SettlementKind, TransactionType
 from app.models.transaction import Transaction, TransactionCounterpartySplit
-from app.services.transaction_service import counted_only
+from app.services.transaction_service import converted_only, counted_only, split_base_amount
 
 
 class SettlementTotals:
@@ -275,8 +275,12 @@ async def get_transit_by_person(
             Transaction.type,
             Transaction.counterparty_id,
             Transaction.transit_party_id,
-            Transaction.amount,
-        ).where(Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only())
+            # В валюте установки — как и расчёты с людьми выше: через
+            # человека могли пройти деньги с разных счетов.
+            Transaction.amount_base,
+        ).where(
+            Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only(), converted_only()
+        )
     )
 
     # Транзит, разделённый между людьми: у операции контрагент пуст, и
@@ -287,10 +291,12 @@ async def get_transit_by_person(
             Transaction.type,
             TransactionCounterpartySplit.counterparty_id,
             Transaction.transit_party_id,
-            TransactionCounterpartySplit.amount,
+            split_base_amount(TransactionCounterpartySplit.amount),
         )
         .join(Transaction, Transaction.id == TransactionCounterpartySplit.transaction_id)
-        .where(Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only())
+        .where(
+            Transaction.settlement_kind == SettlementKind.TRANSIT, counted_only(), converted_only()
+        )
     )
 
     rows = [*(await session.execute(stmt)).all(), *(await session.execute(shares_stmt)).all()]

@@ -24,7 +24,9 @@ import {
   translateCategoryName,
 } from "@/lib/categoryLabels";
 import { fetchSimilarTransactions } from "@/api/transactions";
-import type { SimilarTransaction } from "@/types";
+import { checkTransferMatch } from "@/api/transferMatches";
+import { TransferMatchSideRow } from "@/components/transactions/TransferMatchesNotice";
+import type { SimilarTransaction, TransferCounterpart } from "@/types";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useAppSettings } from "@/hooks/useSettings";
 import { DirectoryPicker } from "@/components/transactions/DirectoryPicker";
@@ -454,13 +456,77 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       if (transaction) {
         await updateTransaction.mutateAsync({ id: transaction.id, input: payload });
       } else {
-        if (!(await confirmNoDuplicate(payload))) return;
+        const transferAnswer = await confirmNotRecordedTransfer(payload);
+        if (transferAnswer === "cancelled") return;
+        // Про этот перевод уже спросили — второй вопрос о том же дне был бы
+        // о том же самом и только раздражал бы.
+        if (transferAnswer === "none" && !(await confirmNoDuplicate(payload))) return;
         await createTransaction.mutateAsync(payload);
       }
       onClose();
     } catch {
       setError(t("transactions.form.saveError"));
     }
+  }
+
+  /**
+   * Спрашивает, если этот перевод между своими счетами, похоже, уже записан.
+   *
+   * Перевод заносят по выпискам, а выписок две — по банку на каждую
+   * сторону. Идя по выписке второго банка, человек видит приход и заносит
+   * его, не помня, что перевод уже записан из первой выписки. Узнать об
+   * этом до записи лучше, чем разбирать повтор потом.
+   *
+   * Спрашивает, а не запрещает: совпадение суммы и дня бывает честным.
+   * Если записали всё равно, пара появится в «Повторах переводов» на
+   * странице операций, и там её можно объединить.
+   *
+   * Ответ «none» — спрашивать было не о чем.
+   */
+  async function confirmNotRecordedTransfer(
+    payload: TransactionInput
+  ): Promise<"none" | "confirmed" | "cancelled"> {
+    // Те же правила, что у поиска пар на сервере: разделённая трата,
+    // чек и «не учитывать» половиной перевода не бывают.
+    if (!["transfer", "income", "expense"].includes(payload.type)) return "none";
+    if (payload.is_excluded || (payload.splits?.length ?? 0) > 0 || (payload.items?.length ?? 0) > 0) {
+      return "none";
+    }
+
+    let found: TransferCounterpart[];
+    try {
+      found = await checkTransferMatch({
+        type: payload.type,
+        account_id: payload.account_id,
+        amount: payload.amount,
+        date: payload.date,
+        transfer_account_id: payload.transfer_account_id,
+        transfer_amount: payload.transfer_amount,
+      });
+    } catch {
+      // Как и у проверки повторов дня: сбой проверки не должен мешать
+      // сохранить операцию.
+      return "none";
+    }
+    if (found.length === 0) return "none";
+
+    const recorded = found.some((item) => item.kind !== "halves");
+    const confirmed = await confirm({
+      title: t("transferMatches.formTitle"),
+      tone: "danger",
+      confirmLabel: t("transactions.duplicateConfirm"),
+      message: (
+        <span className="block">
+          {t(recorded ? "transferMatches.formRecorded" : "transferMatches.formHalf")}
+          <span className="mt-2 block divide-y divide-border rounded-lg border border-border px-2.5 py-1.5">
+            {found.map((item) => (
+              <TransferMatchSideRow key={item.transaction.id} side={item.transaction} />
+            ))}
+          </span>
+        </span>
+      ),
+    });
+    return confirmed ? "confirmed" : "cancelled";
   }
 
   /**

@@ -30,6 +30,7 @@ from app.api.routes import (
     settlements,
     tags,
     transactions,
+    transfer_matches,
     work_periods,
     spreadsheet_import,
 )
@@ -106,6 +107,9 @@ app.include_router(directories.router, prefix="/api", dependencies=_protected)
 app.include_router(accounts.router, prefix="/api", dependencies=_protected)
 app.include_router(categories.router, prefix="/api", dependencies=_protected)
 app.include_router(currencies.router, prefix="/api", dependencies=_protected)
+# Раньше операций: у тех есть маршруты с номером операции в пути, и
+# «transfer-matches» не должно даже пытаться разбираться как номер.
+app.include_router(transfer_matches.router, prefix="/api", dependencies=_protected)
 app.include_router(transactions.router, prefix="/api", dependencies=_protected)
 app.include_router(assets.router, prefix="/api", dependencies=_protected)
 app.include_router(net_worth.router, prefix="/api", dependencies=_protected)

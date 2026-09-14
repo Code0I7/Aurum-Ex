@@ -24,7 +24,7 @@ from app.models.category import Category
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction, TransactionSplit
 from app.services.category_tree import load_category_tree
-from app.services.transaction_service import counted_only
+from app.services.transaction_service import converted_only, counted_only, split_base_amount
 
 
 @dataclass
@@ -75,13 +75,27 @@ async def _raw_category_contributions(
     per split line — never both for the same transaction, since a
     transaction is either plain (category_id set, no splits) or split
     (category_id NULL, 2+ splits), enforced at write time."""
-    plain_stmt = select(Transaction.id, Transaction.category_id, Transaction.amount).where(
-        Transaction.type == transaction_type, Transaction.category_id.is_not(None), counted_only()
+    # Суммы в валюте установки: разбивка складывает операции всех счетов
+    # (см. transaction_service.converted_only).
+    plain_stmt = select(Transaction.id, Transaction.category_id, Transaction.amount_base).where(
+        Transaction.type == transaction_type,
+        Transaction.category_id.is_not(None),
+        counted_only(),
+        converted_only(),
     )
     split_stmt = (
-        select(TransactionSplit.transaction_id, TransactionSplit.category_id, TransactionSplit.amount)
+        select(
+            TransactionSplit.transaction_id,
+            TransactionSplit.category_id,
+            split_base_amount(TransactionSplit.amount),
+        )
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
-        .where(Transaction.type == transaction_type, TransactionSplit.category_id.is_not(None), counted_only())
+        .where(
+            Transaction.type == transaction_type,
+            TransactionSplit.category_id.is_not(None),
+            counted_only(),
+            converted_only(),
+        )
     )
     if start_date is not None:
         plain_stmt = plain_stmt.where(Transaction.date >= start_date)
@@ -178,17 +192,20 @@ async def monthly_amounts_by_category(
     план может стоять и на подкатегории, и на ветке целиком, и решать, что
     с чем сравнивать, — дело плана, а не этой функции.
     """
+    # В валюте установки — как и сводка выше: план сравнивается с фактом
+    # всех счетов сразу.
     plain_stmt = select(
-        Transaction.date, Transaction.category_id, Transaction.amount
+        Transaction.date, Transaction.category_id, Transaction.amount_base
     ).where(
         Transaction.type == transaction_type,
         Transaction.category_id.is_not(None),
         Transaction.date >= start_date,
         Transaction.date <= end_date,
         counted_only(),
+        converted_only(),
     )
     split_stmt = (
-        select(Transaction.date, TransactionSplit.category_id, TransactionSplit.amount)
+        select(Transaction.date, TransactionSplit.category_id, split_base_amount(TransactionSplit.amount))
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .where(
             Transaction.type == transaction_type,
@@ -196,6 +213,7 @@ async def monthly_amounts_by_category(
             Transaction.date >= start_date,
             Transaction.date <= end_date,
             counted_only(),
+            converted_only(),
         )
     )
 

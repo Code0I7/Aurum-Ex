@@ -38,7 +38,7 @@ from app.models.transaction import Transaction, TransactionSplit
 from app.models.plan import Plan
 from app.services.category_tree import load_category_tree
 from app.services.plan_service import workdays_by_month, expand_plan
-from app.services.transaction_service import counted_only
+from app.services.transaction_service import converted_only, counted_only, split_base_amount
 from app.schemas.budget import BudgetCreate, BudgetStatus, BudgetStatusResponse, BudgetUpdate
 
 _EAGER = (selectinload(Budget.category),)
@@ -185,24 +185,32 @@ async def get_budget_status(session: AsyncSession, year: int, month: int) -> Bud
     # lives on its split lines instead (see category_rollup.py), so a plain
     # sum on Transaction.category_id alone would silently under-count a
     # budget funded partly by split purchases.
+    #
+    # Лимит бюджета задан в валюте установки, и сравнивать с ним можно
+    # только траты в ней же.
     plain_stmt = (
-        select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount), 0))
+        select(Transaction.category_id, func.coalesce(func.sum(Transaction.amount_base), 0))
         .where(
             Transaction.category_id.in_(counted_ids),
             Transaction.type == TransactionType.EXPENSE,
             counted_only(),
+            converted_only(),
             Transaction.date >= start,
             Transaction.date <= end,
         )
         .group_by(Transaction.category_id)
     )
     split_stmt = (
-        select(TransactionSplit.category_id, func.coalesce(func.sum(TransactionSplit.amount), 0))
+        select(
+            TransactionSplit.category_id,
+            func.coalesce(func.sum(split_base_amount(TransactionSplit.amount)), 0),
+        )
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .where(
             TransactionSplit.category_id.in_(counted_ids),
             Transaction.type == TransactionType.EXPENSE,
             counted_only(),
+            converted_only(),
             Transaction.date >= start,
             Transaction.date <= end,
         )

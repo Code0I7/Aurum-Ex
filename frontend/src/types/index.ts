@@ -348,6 +348,9 @@ export interface CategoryBreakdownChildItem {
   color: string;
   icon: string | null;
   amount: string;
+  // Своя разбивка строки — только внутри доли «Прочее»: там строка — целая
+  // категория, и у неё могут быть подкатегории.
+  children?: CategoryBreakdownChildItem[];
 }
 
 export interface CategoryBreakdownItem {
@@ -1134,6 +1137,41 @@ export interface SimilarTransaction {
   category_name: string | null;
   // Порядок внутри дня: две поездки на автобусе различаются только им.
   day_order: number;
+}
+
+// Пара записей, похожих на один перевод между своими счетами, записанный
+// дважды — по выписке отправителя и по выписке получателя (см. backend
+// services/transfer_match_service.py).
+//
+//   halves           — трата на одном счёте и доход на другом;
+//   transfer_and_in  — перевод уже есть, и приход занесён ещё доходом;
+//   transfer_and_out — перевод уже есть, и списание занесено ещё тратой;
+//   transfer_twice   — один перевод записан два раза.
+export type TransferMatchKind = "halves" | "transfer_and_in" | "transfer_and_out" | "transfer_twice";
+
+export interface TransferMatchSide {
+  id: number;
+  type: TransactionType;
+  date: string;
+  amount: string;
+  currency: string;
+  account_name: string;
+  // Только у перевода: куда пришло.
+  transfer_account_name: string | null;
+  description: string | null;
+  category_name: string | null;
+}
+
+export interface TransferMatch {
+  kind: TransferMatchKind;
+  // Что останется и что удалится при склейке.
+  keep: TransferMatchSide;
+  drop: TransferMatchSide;
+}
+
+export interface TransferCounterpart {
+  kind: TransferMatchKind;
+  transaction: TransferMatchSide;
 }
 
 export interface WatchRow {

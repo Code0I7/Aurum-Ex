@@ -47,6 +47,7 @@ from app.models.transaction import (
     TransactionItem,
     TransactionSplit,
 )
+from app.models.transfer_match import TransferMatchDismissal
 from app.schemas.backup import (
     AccountBackup,
     AppSettingsBackup,
@@ -82,6 +83,7 @@ from app.schemas.backup import (
     TransactionBackup,
     TransactionCounterpartySplitBackup,
     TransactionSplitBackup,
+    TransferMatchDismissalBackup,
 )
 
 BACKUP_FORMAT_VERSION = 1
@@ -96,6 +98,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     counterparty_splits = (
         (await session.execute(select(TransactionCounterpartySplit))).scalars().all()
     )
+    dismissals = (await session.execute(select(TransferMatchDismissal))).scalars().all()
     assets = (await session.execute(select(Asset))).scalars().all()
     valuations = (await session.execute(select(AssetValuation))).scalars().all()
     crypto_portfolios = (await session.execute(select(CryptoPortfolio))).scalars().all()
@@ -143,6 +146,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         transaction_counterparty_splits=[
             TransactionCounterpartySplitBackup.model_validate(row) for row in counterparty_splits
         ],
+        transfer_match_dismissals=[TransferMatchDismissalBackup.model_validate(row) for row in dismissals],
         assets=[AssetBackup.model_validate(row) for row in assets],
         asset_valuations=[AssetValuationBackup.model_validate(row) for row in valuations],
         crypto_portfolios=[CryptoPortfolioBackup.model_validate(row) for row in crypto_portfolios],
@@ -216,6 +220,13 @@ def _validate_references(payload: BackupPayload) -> None:
             raise HTTPException(
                 400,
                 f"Counterparty split {s.id} references unknown counterparty_id {s.counterparty_id}",
+            )
+
+    for d in payload.transfer_match_dismissals:
+        if d.first_id not in transaction_ids or d.second_id not in transaction_ids:
+            raise HTTPException(
+                400,
+                f"Transfer match dismissal ({d.first_id}, {d.second_id}) references an unknown transaction",
             )
 
     for v in payload.asset_valuations:
@@ -309,6 +320,7 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         # here anyway to keep this block's ordering self-documenting.
         await session.execute(delete(TransactionSplit))
         await session.execute(delete(TransactionCounterpartySplit))
+        await session.execute(delete(TransferMatchDismissal))
         await session.execute(delete(Transaction))
         await session.execute(delete(Tag))
         await session.execute(delete(Asset))
@@ -357,6 +369,9 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         session.add_all(
             TransactionCounterpartySplit(**row.model_dump())
             for row in payload.transaction_counterparty_splits
+        )
+        session.add_all(
+            TransferMatchDismissal(**row.model_dump()) for row in payload.transfer_match_dismissals
         )
 
         session.add_all(AssetValuation(**row.model_dump()) for row in payload.asset_valuations)

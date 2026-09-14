@@ -51,7 +51,7 @@ from app.schemas.directories import (
     StoreRead,
     StoreUpdate,
 )
-from app.services.transaction_service import counted_only
+from app.services.transaction_service import converted_only, counted_only
 
 router = APIRouter(tags=["directories"])
 
@@ -118,13 +118,15 @@ async def _spend_by_store(session: AsyncSession) -> dict[int, tuple[Decimal, Dec
         await session.execute(
             select(
                 Transaction.store_id,
-                func.sum(Transaction.amount),
-                func.sum(case((Transaction.date >= year_ago, Transaction.amount), else_=0)),
+                # В валюте установки: в одном магазине платят с разных карт.
+                func.sum(Transaction.amount_base),
+                func.sum(case((Transaction.date >= year_ago, Transaction.amount_base), else_=0)),
             )
             .where(
                 Transaction.store_id.is_not(None),
                 Transaction.type == TransactionType.EXPENSE,
                 counted_only(),
+                converted_only(),
             )
             .group_by(Transaction.store_id)
         )

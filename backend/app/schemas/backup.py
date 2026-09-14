@@ -153,6 +153,18 @@ class TransactionCounterpartySplitBackup(BaseModel):
     note: str | None
 
 
+class TransferMatchDismissalBackup(BaseModel):
+    """Ответ «это разные операции» по паре, похожей на один перевод.
+
+    В копии, потому что это решение человека, а не вычисление: без него
+    после восстановления все отклонённые пары вернулись бы в список."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    first_id: int
+    second_id: int
+
+
 class AssetBackup(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -595,6 +607,8 @@ class BackupPayload(BaseModel):
     transaction_counterparty_splits: list[TransactionCounterpartySplitBackup] = Field(
         default_factory=list
     )
+    # Пусто в копии, снятой до появления поиска повторов переводов.
+    transfer_match_dismissals: list[TransferMatchDismissalBackup] = Field(default_factory=list)
     assets: list[AssetBackup]
     asset_valuations: list[AssetValuationBackup]
     # Defaulted so a backup exported before crypto holdings/portfolios

@@ -14,6 +14,11 @@ class CategoryBreakdownChildItem(BaseModel):
     color: str
     icon: str | None
     amount: Decimal
+    # Своя разбивка строки — только внутри доли «Прочее». Там строка — целая
+    # категория верхнего уровня, свёрнутая в «Прочее», и у неё могут быть
+    # подкатегории, как у любой категории основного списка. Без них «Еда»,
+    # попавшая в «Прочее», открывалась бы одной суммой без разбивки.
+    children: list["CategoryBreakdownChildItem"] = Field(default_factory=list)
 
 
 class CategoryBreakdownItem(BaseModel):

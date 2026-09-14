@@ -24,6 +24,7 @@ from app.schemas.reports import (
     CategorySpendingReport,
 )
 from app.services.category_rollup import rollup_spending_by_top_level_category
+from app.services.transaction_service import converted_only, counted_only, split_base_amount
 
 
 def _next_month(year: int, month: int) -> tuple[int, int]:
@@ -47,13 +48,19 @@ async def get_category_spending_report(
     # Plain transactions filed directly under one of these categories, plus
     # split lines that assign part of a transaction to one of them — same
     # two sources category_rollup.py unions for the Dashboard/ranking report.
-    plain_stmt = select(Transaction.id, Transaction.date, Transaction.amount).where(
-        Transaction.category_id.in_(category_ids)
+    #
+    # Суммы в валюте установки, и только учитываемые операции — так же, как
+    # в рейтинге категорий рядом. Раньше отчёт по одной категории брал
+    # сумму как есть и не отбрасывал «не учитывать»: возвращённая покупка
+    # сидела в итоге категории, хотя из рейтинга и с обзора уже выпала, и
+    # одна и та же категория показывала два разных числа.
+    plain_stmt = select(Transaction.id, Transaction.date, Transaction.amount_base).where(
+        Transaction.category_id.in_(category_ids), counted_only(), converted_only()
     )
     split_stmt = (
-        select(TransactionSplit.transaction_id, Transaction.date, TransactionSplit.amount)
+        select(TransactionSplit.transaction_id, Transaction.date, split_base_amount(TransactionSplit.amount))
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
-        .where(TransactionSplit.category_id.in_(category_ids))
+        .where(TransactionSplit.category_id.in_(category_ids), counted_only(), converted_only())
     )
     if start_date:
         plain_stmt = plain_stmt.where(Transaction.date >= start_date)

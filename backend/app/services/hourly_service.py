@@ -44,7 +44,7 @@ from app.models.enums import TransactionType
 from app.models.transaction import Transaction
 from app.models.work_period import WorkPeriod
 from app.services.currency_service import quantize_money
-from app.services.transaction_service import counted_only
+from app.services.transaction_service import converted_only, counted_only
 
 # Сколько месяцев в окне, включая сам месяц покупки. Три — компромисс:
 # одного мало (аванс и зарплата разъезжаются по разным месяцам), год уже
@@ -129,9 +129,10 @@ async def get_hourly_rates(session: AsyncSession, today: date_ | None = None) ->
             select(
                 func.extract("year", Transaction.date),
                 func.extract("month", Transaction.date),
-                func.sum(Transaction.amount),
+                # В валюте установки: ставка показывается в ней.
+                func.sum(Transaction.amount_base),
             )
-            .where(Transaction.type == TransactionType.INCOME, counted_only())
+            .where(Transaction.type == TransactionType.INCOME, counted_only(), converted_only())
             .group_by(func.extract("year", Transaction.date), func.extract("month", Transaction.date))
         )
     ).all()

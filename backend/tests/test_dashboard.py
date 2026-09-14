@@ -135,6 +135,51 @@ async def test_more_than_seven_expense_categories_roll_up_into_other(client: Asy
         Decimal("10.00"),
         Decimal("20.00"),
     ]
+    # Свёрнутые категории без подкатегорий приходят без своей разбивки.
+    assert all(child["children"] == [] for child in other[0]["children"])
+
+
+async def test_a_category_folded_into_other_keeps_its_subcategories(
+    client: AsyncClient, account_id, categories
+):
+    """Категория, попавшая в «Прочее», в окне «Прочего» раскрывается так же,
+    как в основном списке: иначе «Еда» с подкатегориями выглядела бы там
+    одной суммой без разбивки."""
+    expense_categories = [c for c in categories.values() if c["kind"] == "expense"]
+    extra = (
+        await client.post(
+            "/categories", json={"name": "Extra Expense", "kind": "expense", "color": "#123456", "sort_order": 99}
+        )
+    ).json()
+    extra_sub = (
+        await client.post(
+            "/categories",
+            json={"name": "Extra Sub", "kind": "expense", "color": "#654321", "parent_id": extra["id"]},
+        )
+    ).json()
+
+    # Восемь крупных категорий по 100 и самая мелкая — «Extra» с 3 на себе
+    # и 2 в подкатегории.
+    for category in expense_categories[:8]:
+        await client.post(
+            "/transactions",
+            json=_txn(account_id, amount="100.00", category_id=category["id"], date="2026-08-01"),
+        )
+    for category_id, amount in ((extra["id"], "3.00"), (extra_sub["id"], "2.00")):
+        await client.post(
+            "/transactions",
+            json=_txn(account_id, amount=amount, category_id=category_id, date="2026-08-01"),
+        )
+
+    breakdown = (await client.get("/dashboard/summary", params={"year": 2026, "month": 8})).json()[
+        "spending_by_category"
+    ]
+    other = next(row for row in breakdown if row["category_id"] is None)
+    folded = next(child for child in other["children"] if child["category_id"] == extra["id"])
+
+    assert money(folded["amount"]) == Decimal("5.00")
+    leaves = {child["name"]: money(child["amount"]) for child in folded["children"]}
+    assert leaves == {"Extra Expense": Decimal("3.00"), "Extra Sub": Decimal("2.00")}
 
 
 async def test_split_transaction_rolls_up_into_one_slice_with_a_children_breakdown(

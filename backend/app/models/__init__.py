@@ -16,6 +16,7 @@ from app.models.settings import AppSettings
 from app.models.store import Store
 from app.models.tag import Tag
 from app.models.transaction import Transaction, TransactionItem, TransactionSplit
+from app.models.transfer_match import TransferMatchDismissal
 from app.models.unit import Unit
 from app.models.user import Session, User
 from app.models.widget import DashboardWidget
@@ -53,6 +54,7 @@ __all__ = [
     "Transaction",
     "TransactionItem",
     "TransactionSplit",
+    "TransferMatchDismissal",
     "Unit",
     "User",
     "WorkPeriod",

@@ -36,7 +36,7 @@ from app.services.currency_service import convert_balance, get_current_rates, qu
 from app.services.hourly_service import elapsed_hours
 from app.services.category_rollup import rollup_spending_by_top_level_category
 from app.services.settlement_service import get_reserved_by_account
-from app.services.transaction_service import counted_only
+from app.services.transaction_service import converted_only, counted_only
 
 # Categorical slots are capped at 8 (dataviz skill: a 9th series folds into "Other",
 # never a generated hue) — this is also the exact size of the default category set.
@@ -189,14 +189,16 @@ async def _largest_block(
             Transaction.id,
             Transaction.date,
             Transaction.description,
-            Transaction.amount,
+            # В валюте установки, как и итог «Расходы» над списком: иначе
+            # трата на 100 € стояла бы ниже покупки на 500 ₽.
+            Transaction.amount_base,
             Category.name,
             Account.name,
         )
         .join(Account, Account.id == Transaction.account_id)
         .outerjoin(Category, Category.id == Transaction.category_id)
-        .where(Transaction.type == TransactionType.EXPENSE, counted_only())
-        .order_by(Transaction.amount.desc())
+        .where(Transaction.type == TransactionType.EXPENSE, counted_only(), converted_only())
+        .order_by(Transaction.amount_base.desc())
         .limit(LARGEST_COUNT)
     )
     if start is not None:
@@ -267,6 +269,16 @@ async def _category_breakdown(
                     CategoryBreakdownChildItem(
                         category_id=row.category_id, name=row.name, color=row.color, icon=row.icon,
                         amount=row.amount,
+                        # Подкатегории свёрнутой категории едут вместе с
+                        # ней: в окне «Прочего» её можно раскрыть так же,
+                        # как в основном списке.
+                        children=[
+                            CategoryBreakdownChildItem(
+                                category_id=child.category_id, name=child.name, color=child.color,
+                                icon=child.icon, amount=child.amount,
+                            )
+                            for child in row.children
+                        ],
                     )
                     for row in rest_rows
                 ],
@@ -295,9 +307,11 @@ async def get_dashboard_summary(
             accounts=await _accounts_block(session),
         )
 
+    # Итоги в валюте установки: доход и расходы складывают операции всех
+    # счетов, и сумма «как есть» делала 100 € сотней рублей.
     totals_stmt = (
-        select(Transaction.type, func.coalesce(func.sum(Transaction.amount), 0))
-        .where(Transaction.date >= start, Transaction.date <= end, counted_only())
+        select(Transaction.type, func.coalesce(func.sum(Transaction.amount_base), 0))
+        .where(Transaction.date >= start, Transaction.date <= end, counted_only(), converted_only())
         .group_by(Transaction.type)
     )
     totals_result = await session.execute(totals_stmt)
