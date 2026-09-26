@@ -638,6 +638,9 @@ export interface Goal {
   status: GoalStatus;
   // Дата завершения. Пусто, пока копится.
   closed_at: string | null;
+  // Когда цель появилась в приложении. По ней активные цели стоят в списке:
+  // новые сверху (см. components/goals/goalOrder.ts).
+  created_at: string;
   current_amount: string;
   // Сколько всего вносили, без учёта возвратов. У завершённой цели
   // это единственное осмысленное число.

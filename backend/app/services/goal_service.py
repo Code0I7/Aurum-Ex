@@ -55,6 +55,10 @@ _SELECT_WITH_TOTAL = (
         Goal.account_id,
         Goal.status,
         Goal.closed_at,
+        # Дата создания уходит наружу: список целей упорядочен по ней, а
+        # решает порядок интерфейс — там же, где стоит переключатель
+        # «сначала новые / сначала старые».
+        Goal.created_at,
         func.coalesce(func.sum(GoalContribution.amount), 0).label("current_amount"),
         func.coalesce(
             func.sum(case((GoalContribution.amount > 0, GoalContribution.amount), else_=0)), 0
@@ -72,7 +76,10 @@ _SELECT_WITH_TOTAL = (
         Goal.closed_at,
         Goal.created_at,
     )
-    .order_by(Goal.created_at)
+    # Новые сверху, и порядок определён до конца: у целей, перенесённых из
+    # таблицы одним заходом, дата создания одна на всех, и без номера в
+    # сортировке они выстраивались как придётся — на вид по алфавиту.
+    .order_by(Goal.created_at.desc(), Goal.id.desc())
 )
 
 
@@ -128,6 +135,7 @@ def _to_read(row: Row, by_account: list[GoalReservation]) -> GoalRead:
         account_id=row.account_id,
         status=row.status,
         closed_at=row.closed_at,
+        created_at=row.created_at,
         days_saving=days_saving,
         days_to_plan=days_to_plan,
         days_taken=days_taken,
@@ -235,30 +243,14 @@ async def create_goal(session: AsyncSession, payload: GoalCreate) -> GoalRead:
     )
     session.add(goal)
     await session.commit()
-    # Числа из дат считаются той же функцией, что и при чтении списка:
-    # только что созданная цель обязана отвечать то же самое, что ответит
-    # через секунду на обновлении страницы.
-    days_saving, days_to_plan, days_taken = _goal_days(
-        goal.started_on, goal.planned_on, goal.closed_at, goal.status
-    )
-    return GoalRead(
-        id=goal.id,
-        name=goal.name,
-        target_amount=goal.target_amount,
-        started_on=goal.started_on,
-        planned_on=goal.planned_on,
-        account_id=goal.account_id,
-        status=goal.status,
-        closed_at=goal.closed_at,
-        days_saving=days_saving,
-        days_to_plan=days_to_plan,
-        days_taken=days_taken,
-        current_amount=Decimal("0"),
-        deposited=Decimal("0"),
-        remaining=goal.target_amount,
-        percent=0.0,
-        is_reached=False,
-    )
+    # Ответ читается тем же запросом, что и список: только что созданная цель
+    # обязана отвечать то же самое, что ответит через секунду на обновлении
+    # страницы, — включая числа из дат, которые считаются одной функцией.
+    #
+    # Раньше ответ собирался здесь руками. Пока полей было мало, это
+    # сходилось, но дату создания ставит сама база, и в объекте после записи
+    # её нет: пришлось бы либо идти за ней в базу, либо отдать пустоту.
+    return await _read_one(session, goal.id)
 
 
 async def update_goal(session: AsyncSession, goal_id: int, payload: GoalUpdate) -> GoalRead:

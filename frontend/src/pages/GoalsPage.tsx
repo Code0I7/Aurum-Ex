@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Plus } from "lucide-react";
 import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -7,8 +7,10 @@ import { GoalList } from "@/components/goals/GoalList";
 import { GoalFormModal } from "@/components/goals/GoalFormModal";
 import { GoalContributionModal } from "@/components/goals/GoalContributionModal";
 import { GoalHistoryModal } from "@/components/goals/GoalHistoryModal";
+import { sortGoals, type GoalOrder } from "@/components/goals/goalOrder";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useDeleteGoal, useGoals, useUpdateGoal } from "@/hooks/useGoals";
+import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import type { Goal, GoalStatus } from "@/types";
@@ -22,6 +24,10 @@ export function GoalsPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  // Направление — настройка, а не место в приложении: человек решает раз и
+  // ждёт того же порядка завтра. Одно на оба списка: «сначала новые» — это
+  // ответ на вопрос о времени, а не о конкретном разделе.
+  const [order, setOrder] = useLocalStorageState<GoalOrder>("aurum:goals-order", "newest");
   const [contributionOpen, setContributionOpen] = useState(false);
   const [contributingGoal, setContributingGoal] = useState<Goal | null>(null);
   // История открывается по самой цели, а не по флагу: модалка тянет её
@@ -73,14 +79,45 @@ export function GoalsPage() {
     updateGoal.mutate({ id: goal.id, input: { status } });
   }
 
-  const active = (goals ?? []).filter((goal) => goal.status === "active");
-  const closed = (goals ?? []).filter((goal) => goal.status !== "active");
+  // Активные — по дате создания, завершённые — по дате сбора (см.
+  // goalOrder.ts). Раньше порядок не задавался вовсе: у целей, перенесённых
+  // из таблицы, дата создания одна на всех, и база отдавала их как придётся —
+  // на вид по алфавиту.
+  const active = sortGoals(
+    (goals ?? []).filter((goal) => goal.status === "active"),
+    order
+  );
+  const closed = sortGoals(
+    (goals ?? []).filter((goal) => goal.status !== "active"),
+    order
+  );
+
+  /** Переключатель направления: значок показывает, куда сейчас смотрит
+   *  список, а подсказка называет это словами. */
+  function OrderToggle() {
+    const label = t(order === "newest" ? "goal.orderNewestFirst" : "goal.orderOldestFirst");
+    const Icon = order === "newest" ? ArrowDownWideNarrow : ArrowUpNarrowWide;
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        onClick={() => setOrder(order === "newest" ? "oldest" : "newest")}
+        className="rounded-md p-1 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+      >
+        <Icon size={15} />
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-5">
       <Card>
         <CardHeader>
-          <CardTitle>{t("goal.activeTitle")}</CardTitle>
+          <span className="flex items-center gap-1.5">
+            <CardTitle>{t("goal.activeTitle")}</CardTitle>
+            <OrderToggle />
+          </span>
           <PageActions>
             <Button onClick={openCreateModal}>
               <Plus size={16} />
@@ -110,7 +147,10 @@ export function GoalsPage() {
       {closed.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>{t("goal.closedTitle")}</CardTitle>
+            <span className="flex items-center gap-1.5">
+              <CardTitle>{t("goal.closedTitle")}</CardTitle>
+              <OrderToggle />
+            </span>
           </CardHeader>
           <CardContent>
             <GoalList

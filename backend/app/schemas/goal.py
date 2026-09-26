@@ -1,4 +1,5 @@
 from datetime import date as date_
+from datetime import datetime
 from decimal import Decimal
 
 from app.models.enums import GoalStatus
@@ -139,6 +140,10 @@ class GoalRead(BaseModel):
     # Фактическое завершение — достигнута или отменена. Пусто, пока
     # копится. Правится руками: см. GoalUpdate.
     closed_at: date_ | None = None
+    # Когда цель появилась в приложении. Отдаётся для порядка в списке:
+    # активные цели идут от новых к старым, и это единственная дата,
+    # которая есть у любой цели.
+    created_at: datetime
     current_amount: Decimal
     # Сколько всего вносили, без учёта возвратов. У завершённой цели это
     # единственное осмысленное число: перенос старой таблицы записывал

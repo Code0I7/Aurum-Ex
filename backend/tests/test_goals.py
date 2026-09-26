@@ -32,3 +32,20 @@ async def test_negative_contribution_is_allowed(client: AsyncClient):
 
     assert resp.status_code == 201
     assert money(resp.json()["current_amount"]) == money("150")
+
+
+async def test_goals_come_back_newest_first_with_a_creation_date(client: AsyncClient):
+    """Порядок задан до конца, и у каждой цели есть дата создания.
+
+    Раньше порядок не задавался вовсе: у целей, перенесённых из таблицы одним
+    заходом, дата создания одна на всех, и база отдавала их как придётся — на
+    вид по алфавиту. Сортировать список по дате интерфейс не мог: даты он не
+    получал.
+    """
+    first = (await client.post("/goals", json={"name": "Аптечка", "target_amount": "1000"})).json()
+    second = (await client.post("/goals", json={"name": "Автобус", "target_amount": "2000"})).json()
+
+    listing = (await client.get("/goals")).json()
+
+    assert [row["id"] for row in listing] == [second["id"], first["id"]]
+    assert first["created_at"] and listing[0]["created_at"]
