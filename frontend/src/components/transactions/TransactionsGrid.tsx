@@ -4,6 +4,7 @@ import { ArrowRight, ChevronDown, ChevronRight, GripVertical, Pencil, SquareDivi
 import { useCategories } from "@/hooks/useCategories";
 import { useCounterparties, useParticipants, useStores } from "@/hooks/useDirectories";
 import { categoryPath } from "@/lib/categoryLabels";
+import { ElidedText } from "@/components/ui/ElidedText";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
 import { formatWorkCost, rateForDate } from "@/lib/hours";
@@ -301,7 +302,12 @@ export function TransactionsGrid({
               style={{ color: tx.category.color }}
               aria-hidden
             />
-            <span className="truncate">{categoryPath(tx.category, categories)}</span>
+            {/* Ячейка узкая, а путь бывает в три-четыре звена: сворачивается
+                середина, название категории остаётся целым. */}
+            <ElidedText
+              text={categoryPath(tx.category, categories)}
+              className="min-w-0 flex-1"
+            />
           </span>
         );
       }

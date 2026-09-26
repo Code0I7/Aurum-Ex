@@ -14,25 +14,26 @@ import { DEFAULT_LAYOUT, reconcileLayout, type ColumnLayout } from "@/components
 import { TransactionFormModal } from "@/components/transactions/TransactionFormModal";
 import { TransferMatchesNotice } from "@/components/transactions/TransferMatchesNotice";
 import {
+  EMPTY_FILTERS,
+  filterQuery,
+  TransactionFiltersPanel,
+  type TransactionFilterValues,
+} from "@/components/transactions/TransactionFiltersPanel";
+import {
   useTransactions,
   useDeleteTransaction,
   useInfiniteTransactions,
   useReorderTransaction,
   useTransactionYears,
 } from "@/hooks/useTransactions";
-import { useCategories } from "@/hooks/useCategories";
-import { useAccounts } from "@/hooks/useAccounts";
-import { useCounterparties, useStores } from "@/hooks/useDirectories";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useViewDefault } from "@/hooks/useViewDefault";
 import { useAppSettings } from "@/hooks/useSettings";
-import { useTags } from "@/hooks/useTags";
 import type { TransactionSort } from "@/api/transactions";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
-import { CategoryPicker } from "@/components/categories/CategoryPicker";
-import type { Transaction, TransactionType } from "@/types";
+import type { Transaction } from "@/types";
 
 
 
@@ -60,7 +61,6 @@ export function TransactionsPage() {
   // page doesn't reset back to the current month.
   const [searchParams] = useSearchParams();
   const { data: settings } = useAppSettings();
-  const { data: accounts } = useAccounts(false);
   // Сколько подгружать за раз — настройка, а не константа. Список и так
   // ограничен выбранным месяцем, который переключается кнопками, но
   // месяцы разной плотности: две с половиной тысячи операций за четыре
@@ -89,21 +89,20 @@ export function TransactionsPage() {
     "aurum:transactions-scope",
     "month"
   );
-  const [type, setType] = useSessionState<TransactionType | "">("aurum:tx-type", "");
-  // Человек, с которым шёл расчёт. Спрашивают о нём тогда же, когда о долге:
-  // «сколько я ему передал» — вопрос к списку операций, а не к сводке, и
-  // искать их глазами по месяцам занимает больше времени, чем сам разговор.
-  const [counterpartyId, setCounterpartyId] = useSessionState<string>("aurum:tx-counterparty", "");
-  // Где куплено. Того же товара в разных магазинах хватает, чтобы сравнить
-  // цены, — а до сих пор выписку по одному магазину нельзя было получить
-  // вовсе, хотя поле в операции есть с самого начала.
-  const [storeId, setStoreId] = useSessionState<string>("aurum:tx-store", "");
-  const [categoryId, setCategoryId] = useSessionState<string>("aurum:tx-category", "");
-  // Выписка по одному счёту. Без неё распутать пару счетов вроде «карта и
-  // рассрочка того же магазина» невозможно: движения между ними видно
-  // только вперемешку со всем остальным.
-  const [accountId, setAccountId] = useSessionState<string>("aurum:tx-account", "");
-  const [tagId, setTagId] = useSessionState<string>("aurum:tx-tag", "");
+  // Все отборы одним значением, а не семью отдельными: их больше десяти, и
+  // каждый новый требовал бы ещё одной строки состояния, ещё одного ключа
+  // сеанса и ещё одного «не забыть сбросить страницу». Что каждый из них
+  // значит для сервера, знает сама панель (см. filterQuery).
+  //
+  // Человек, с которым шёл расчёт, живёт там же: спрашивают о нём тогда же,
+  // когда о долге, — «сколько я ему передал» это вопрос к списку операций.
+  // Как и выписка по счёту, без которой не распутать пару счетов вроде
+  // «карта и рассрочка того же магазина», и место покупки, по которому
+  // сравнивают цены.
+  const [filters, setFilters] = useSessionState<TransactionFilterValues>(
+    "aurum:tx-filters",
+    EMPTY_FILTERS
+  );
   const [sort, setSort] = useSessionState<TransactionSort>("aurum:tx-sort", "date_desc");
   const [page, setPage] = useSessionState("aurum:tx-page", 1);
 
@@ -182,14 +181,7 @@ export function TransactionsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  const { data: categories } = useCategories();
-  const { data: tags } = useTags();
-  const { data: counterparties } = useCounterparties();
-  const { data: stores } = useStores();
   const { data: years } = useTransactionYears();
-  // Человека спрашивают только у расчётов: у покупки в магазине контрагента
-  // нет, и пустой список там обещал бы отбор, которого не существует.
-  const showPartyFilter = type === "external_out" || type === "external_in";
   // Фильтры общие для обоих режимов; различается только то, как запрашиваются
   // страницы — по одной или с накоплением.
   const commonFilters = {
@@ -200,15 +192,7 @@ export function TransactionsPage() {
     year: isSearching || scope === "all" ? undefined : year,
     month: isSearching || scope !== "month" ? undefined : month,
     search: isSearching ? search : undefined,
-    type: type || undefined,
-    // Только когда поле видно. Фильтр, который не показан, но продолжает
-    // сужать список, читается как поломанный период: строк мало, а почему —
-    // не видно нигде.
-    counterparty_id: showPartyFilter && counterpartyId ? Number(counterpartyId) : undefined,
-    category_id: categoryId ? Number(categoryId) : undefined,
-    store_id: storeId ? Number(storeId) : undefined,
-    account_id: accountId ? Number(accountId) : undefined,
-    tag_id: tagId ? Number(tagId) : undefined,
+    ...filterQuery(filters),
     sort,
     page_size: pageSize,
   };
@@ -232,16 +216,6 @@ export function TransactionsPage() {
     { key: "year", label: t("dashboard.rangeYear") },
     { key: "all", label: t("dashboard.rangeAll") },
   ];
-  // Grouped by kind and hierarchical within each group (a subcategory right
-  // under its own parent, indented) — a bare "Sweets" option next to
-  // top-level categories reads as if it were one itself.
-  const filterCategories = (categories ?? [])
-    .filter((category) => category.kind === "expense" || category.kind === "income")
-    .map((category) => ({
-      ...category,
-      group: t(category.kind === "expense" ? "reports.expenseGroup" : "reports.incomeGroup"),
-    }));
-
   function openCreateModal() {
     setEditingTransaction(null);
     setModalOpen(true);
@@ -371,125 +345,30 @@ export function TransactionsPage() {
       </div>
       {isSearching && <p className="text-xs text-text-muted">{t("transactions.searchAcrossAllTime")}</p>}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <Select
-          value={type}
-          onChange={(event) => {
-            setType(event.target.value as TransactionType | "");
-            // Уходя с расчётов, снимаем и человека: иначе он остался бы
-            // висеть в сессии и сузил бы следующий отбор молча.
-            setCounterpartyId("");
-            setPage(1);
-          }}
-          className="sm:w-48"
-        >
-          <option value="">{t("transactions.allTypes")}</option>
-          <option value="expense">{t("transactions.expense")}</option>
-          <option value="income">{t("transactions.income")}</option>
-          <option value="transfer">{t("transactions.transfer")}</option>
-          {/* Расчёты с людьми были в форме, но не в фильтре: найти их можно
-              было только глазами по списку. Подписи те же, что в форме, —
-              человек ищет то, что сам туда и записал. */}
-          {/* Во множественном числе, в отличие от формы: фильтр отбирает
-              все такие операции, а в форме заводится одна. */}
-          <option value="external_out">{t("transactions.filterExternalOut")}</option>
-          <option value="external_in">{t("transactions.filterExternalIn")}</option>
-        </Select>
-        {/* Человек — сразу за видом операции: он уточняет именно его, и
-            между ними не должно стоять ничего постороннего. */}
-        {showPartyFilter && (
+      {/* Отборов больше десяти, и в строку они не встают. В ней остаются
+          период выше, поиск и сортировка, а остальное — за кнопкой
+          «Фильтры» с числом активных (см. TransactionFiltersPanel). */}
+      <TransactionFiltersPanel
+        value={filters}
+        onChange={(next) => {
+          setFilters(next);
+          setPage(1);
+        }}
+        trailing={
           <Select
-            value={counterpartyId}
+            value={sort}
             onChange={(event) => {
-              setCounterpartyId(event.target.value);
+              setSort(event.target.value as TransactionSort);
               setPage(1);
             }}
-            className="sm:w-44"
+            className="w-full sm:w-56"
           >
-            <option value="">{t("transactions.allCounterparties")}</option>
-            {(counterparties ?? []).map((counterparty) => (
-              <option key={counterparty.id} value={counterparty.id}>
-                {counterparty.name}
-              </option>
-            ))}
+            <option value="date_desc">{t("transactions.sortDateDesc")}</option>
+            <option value="amount_desc">{t("transactions.sortAmountDesc")}</option>
+            <option value="amount_asc">{t("transactions.sortAmountAsc")}</option>
           </Select>
-        )}
-        <Select
-          value={accountId}
-          onChange={(event) => {
-            setAccountId(event.target.value);
-            setPage(1);
-          }}
-          className="sm:w-44"
-        >
-          <option value="">{t("transactions.allAccounts")}</option>
-          {(accounts ?? []).map((account) => (
-            <option key={account.id} value={account.id}>
-              {account.name}
-            </option>
-          ))}
-        </Select>
-        <CategoryPicker
-          categories={filterCategories}
-          value={categoryId}
-          onChange={(value) => {
-            setCategoryId(value);
-            setPage(1);
-          }}
-          className="sm:w-56"
-          placeholder={t("transactions.allCategories")}
-          emptyLabel={t("transactions.allCategories")}
-        />
-        {/* Место — сразу за категорией: «куда ушли деньги» и «где это
-            купили» человек спрашивает подряд. Показывается, только когда
-            магазины заведены: пустой список обещал бы отбор, которого нет. */}
-        {stores && stores.length > 0 && (
-          <Select
-            value={storeId}
-            onChange={(event) => {
-              setStoreId(event.target.value);
-              setPage(1);
-            }}
-            className="sm:w-44"
-          >
-            <option value="">{t("transactions.allStores")}</option>
-            {stores.map((store) => (
-              <option key={store.id} value={store.id}>
-                {store.name}
-              </option>
-            ))}
-          </Select>
-        )}
-        {tags && tags.length > 0 && (
-          <Select
-            value={tagId}
-            onChange={(event) => {
-              setTagId(event.target.value);
-              setPage(1);
-            }}
-            className="sm:w-48"
-          >
-            <option value="">{t("transactions.allTags")}</option>
-            {tags.map((tag) => (
-              <option key={tag.id} value={tag.id}>
-                {tag.name}
-              </option>
-            ))}
-          </Select>
-        )}
-        <Select
-          value={sort}
-          onChange={(event) => {
-            setSort(event.target.value as TransactionSort);
-            setPage(1);
-          }}
-          className="sm:w-56"
-        >
-          <option value="date_desc">{t("transactions.sortDateDesc")}</option>
-          <option value="amount_desc">{t("transactions.sortAmountDesc")}</option>
-          <option value="amount_asc">{t("transactions.sortAmountAsc")}</option>
-        </Select>
-      </div>
+        }
+      />
 
       <Card>
         {/* На узком экране заголовок и панель управления встают в две

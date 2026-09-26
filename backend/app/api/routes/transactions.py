@@ -308,8 +308,15 @@ async def list_transactions(
     # Новые измерения Aurum-Ex. Все необязательные — фильтр по ним имеет
     # смысл, только когда поля заполняют.
     participant_id: int | None = None,
+    # «Участник не указан» — чтобы найти операции, где его забыли поставить.
+    # Отдельным признаком, а не значением participant_id: ноль или минус
+    # единица здесь были бы номерами, и однажды совпали бы с настоящим.
+    no_participant: bool = False,
     store_id: int | None = None,
     counterparty_id: int | None = None,
+    # Банк, а не счёт: у одного банка бывает и карта, и рассрочка, и сверять
+    # выписку удобнее по всем его счетам сразу.
+    bank_id: int | None = None,
     # Записи, помеченные "не учитывать", по умолчанию видны наравне с
     # остальными: они и заведены ради того, чтобы о покупке помнить.
     # Скрыть их — отдельное решение пользователя.
@@ -375,9 +382,27 @@ async def list_transactions(
     if participant_id is not None:
         stmt = stmt.where(Transaction.participant_id == participant_id)
         count_stmt = count_stmt.where(Transaction.participant_id == participant_id)
+    if no_participant:
+        # Переводы между своими счетами тоже попадут: поле у них есть, хотя
+        # заполняют его редко. Сузить отбор до трат и доходов можно видом
+        # операции — решать, что именно человек считает забытым, фильтр не
+        # берётся.
+        stmt = stmt.where(Transaction.participant_id.is_(None))
+        count_stmt = count_stmt.where(Transaction.participant_id.is_(None))
     if store_id is not None:
         stmt = stmt.where(Transaction.store_id == store_id)
         count_stmt = count_stmt.where(Transaction.store_id == store_id)
+    if bank_id is not None:
+        # Обе стороны перевода — по той же причине, что и у отбора по счёту:
+        # перевод между двумя картами одного банка иначе показался бы
+        # половиной движения.
+        bank_accounts = select(Account.id).where(Account.bank_id == bank_id).scalar_subquery()
+        bank_filter = or_(
+            Transaction.account_id.in_(bank_accounts),
+            Transaction.transfer_account_id.in_(bank_accounts),
+        )
+        stmt = stmt.where(bank_filter)
+        count_stmt = count_stmt.where(bank_filter)
     if counterparty_id is not None:
         # Обе стороны, а не только контрагент. У транзита их две: деньги
         # брата, переданные маме, стоят у мамы в counterparty и у брата в

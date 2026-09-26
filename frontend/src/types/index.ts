@@ -71,6 +71,8 @@ export interface AccountWithBalance extends Account {
 export interface AccountInput {
   name: string;
   kind: AccountKind;
+  // Банк, в котором открыт счёт. Необязателен: наличные и копилка ничьи.
+  bank_id?: number | null;
   // Валюта счёта. Меняется и потом: операции счёта переходят в новую
   // валюту вместе с ним, а пересчёт в валюту установки выполняется заново
   // по курсам на их даты.

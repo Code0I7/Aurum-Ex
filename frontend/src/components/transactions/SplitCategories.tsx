@@ -1,4 +1,5 @@
 import { categoryPath } from "@/lib/categoryLabels";
+import { ElidedText } from "@/components/ui/ElidedText";
 import { formatCurrency } from "@/lib/format";
 import { getCategoryIcon } from "@/lib/icons";
 import type { Category, TransactionSplit } from "@/types";
@@ -112,7 +113,9 @@ export function SplitCategories({
                 style={{ color: group.color ?? "var(--text-muted)" }}
                 aria-hidden
               />
-              <span className="truncate">{group.path}</span>
+              {/* Как и у одиночной категории: сворачивается середина пути,
+                  а название остаётся целым. */}
+              <ElidedText text={group.path} className="min-w-0 flex-1" />
               {/* «×2» не обрезается: длинный путь уйдёт в многоточие, а
                   сколько раз категория встретилась, должно быть видно. */}
               {group.count > 1 && (

@@ -20,7 +20,11 @@ export interface TransactionFilters {
   type?: string;
   // Новые измерения Aurum-Ex.
   participant_id?: number;
+  // «Участник не указан»: найти операции, где его забыли поставить.
+  no_participant?: boolean;
   store_id?: number;
+  // Банк счёта — все его счета сразу.
+  bank_id?: number;
   counterparty_id?: number;
   include_excluded?: boolean;
   search?: string;

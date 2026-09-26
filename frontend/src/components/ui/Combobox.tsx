@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { ElidedText } from "@/components/ui/ElidedText";
 import { currentZoom, layoutViewport } from "@/lib/scale";
 
 /**
@@ -61,6 +62,10 @@ interface ComboboxProps {
    *  `search`. Для категорий — расширенную: «Зарплата» без родителя не
    *  отвечает, чья это зарплата. */
   selectedLabel?: "label" | "search";
+  /** Подписи — путь из звеньев, и при нехватке места сворачивать надо
+   *  середину, а не конец: у категории конец пути и есть ответ. Включается
+   *  там, где подписи такие (см. CategoryPicker). */
+  elideMiddle?: boolean;
 }
 
 /** Нормализация для поиска: регистр и «ё» не должны мешать найти. */
@@ -92,6 +97,7 @@ export function Combobox({
   className,
   searchFrom = 8,
   selectedLabel = "label",
+  elideMiddle = false,
 }: ComboboxProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -260,11 +266,18 @@ export function Combobox({
         )}
       >
         {selected?.icon}
-        <span className={cn("min-w-0 flex-1 truncate", !selected && "text-text-muted")}>
-          {selected
-            ? (selectedLabel === "search" && selected.search) || selected.label
-            : (value === "" && emptyLabel) || placeholder}
-        </span>
+        {selected && elideMiddle ? (
+          <ElidedText
+            text={(selectedLabel === "search" && selected.search) || selected.label}
+            className="min-w-0 flex-1"
+          />
+        ) : (
+          <span className={cn("min-w-0 flex-1 truncate", !selected && "text-text-muted")}>
+            {selected
+              ? (selectedLabel === "search" && selected.search) || selected.label
+              : (value === "" && emptyLabel) || placeholder}
+          </span>
+        )}
         <ChevronDown size={14} className="shrink-0 text-text-muted" />
       </button>
 
@@ -333,9 +346,16 @@ export function Combobox({
                       style={{ paddingLeft: 12 + (query.trim() ? 0 : (option.depth ?? 0) * 14) }}
                     >
                       {option.icon}
-                      <span className="min-w-0 flex-1 truncate">
-                        {query.trim() ? option.search || option.label : option.label}
-                      </span>
+                      {elideMiddle ? (
+                        <ElidedText
+                          text={query.trim() ? option.search || option.label : option.label}
+                          className="min-w-0 flex-1"
+                        />
+                      ) : (
+                        <span className="min-w-0 flex-1 truncate">
+                          {query.trim() ? option.search || option.label : option.label}
+                        </span>
+                      )}
                       {option.hint ? <span className="shrink-0 text-xs text-text-muted">{option.hint}</span> : null}
                       {option.value === value ? <Check size={14} className="shrink-0 text-accent" /> : null}
                     </button>

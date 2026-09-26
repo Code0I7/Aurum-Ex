@@ -60,6 +60,19 @@ function invalidatePeople(queryClient: ReturnType<typeof useQueryClient>) {
 }
 
 
+export function useCreateBank() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { name: string }) => api.post<Bank>("/banks", payload),
+    // И счета: у них в ответе лежит сам банк, а не только его номер.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["banks"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+}
+
+
 export function useCreateParticipant() {
   const queryClient = useQueryClient();
   return useMutation({

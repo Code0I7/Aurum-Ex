@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
+import { DirectoryPicker } from "@/components/transactions/DirectoryPicker";
 import { useCreateAccount, useUpdateAccount } from "@/hooks/useAccounts";
+import { useBanks, useCreateBank } from "@/hooks/useDirectories";
 import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { AccountKind, AccountWithBalance } from "@/types";
@@ -15,12 +17,14 @@ interface AccountFormModalProps {
 
 const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "crypto", "loan", "other"];
 
-const EMPTY_FORM = { name: "", kind: "checking" as AccountKind, currency: "" };
+const EMPTY_FORM = { name: "", kind: "checking" as AccountKind, currency: "", bank_id: "" };
 
 export function AccountFormModal({ open, onClose, account }: AccountFormModalProps) {
   const { t, language, currency } = useTranslation();
   const createAccount = useCreateAccount();
   const updateAccount = useUpdateAccount();
+  const { data: banks } = useBanks();
+  const createBank = useCreateBank();
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +35,12 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
     // случай, а валютная заводится раз в несколько лет.
     setForm(
       account
-        ? { name: account.name, kind: account.kind, currency: account.currency }
+        ? {
+            name: account.name,
+            kind: account.kind,
+            currency: account.currency,
+            bank_id: account.bank_id ? String(account.bank_id) : "",
+          }
         : { ...EMPTY_FORM, currency }
     );
     setError(null);
@@ -46,11 +55,15 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
     event.preventDefault();
     setError(null);
 
+    // Банк уходит номером или пустотой: в состоянии формы он строкой, как
+    // и любой выбор из справочника.
+    const payload = { ...form, bank_id: form.bank_id ? Number(form.bank_id) : null };
+
     try {
       if (account) {
-        await updateAccount.mutateAsync({ id: account.id, input: form });
+        await updateAccount.mutateAsync({ id: account.id, input: payload });
       } else {
-        await createAccount.mutateAsync(form);
+        await createAccount.mutateAsync(payload);
       }
       onClose();
     } catch {
@@ -120,6 +133,23 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
               </option>
             ))}
           </Select>
+        </div>
+
+        {/* Банк. Поле было в базе с самого начала, но указать его было
+            негде, и отбор операций по банку оказывался пустым. Заводится
+            тут же вводом названия — ходить за этим в справочник значит
+            прервать заведение счёта. */}
+        <div>
+          <Label htmlFor="account-bank">{t("account.form.bankLabel")}</Label>
+          <DirectoryPicker
+            id="account-bank"
+            options={banks ?? []}
+            value={form.bank_id}
+            onChange={(value) => setForm((prev) => ({ ...prev, bank_id: value }))}
+            emptyLabel={t("account.form.noBank")}
+            placeholder={t("account.form.bankPlaceholder")}
+            onCreate={async (name) => (await createBank.mutateAsync({ name })).id}
+          />
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}
