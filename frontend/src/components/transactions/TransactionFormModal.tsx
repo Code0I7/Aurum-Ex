@@ -593,6 +593,9 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
       open={open}
       onClose={onClose}
       title={transaction ? t("transactions.form.editTitle") : t("transactions.form.newTitle")}
+      // Место окна помнится до конца сеанса: операции правят одну за другой,
+      // и отодвигать окно от списка на каждую — работа вместо работы.
+      positionKey="transaction-form"
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>

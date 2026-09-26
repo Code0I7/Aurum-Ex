@@ -455,6 +455,9 @@ const ru = {
   "transactions.loadedCount": "Показано {{loaded}} из {{total}}",
   "transactions.groupRepeatsHint": "Одинаковые операции одного дня показываются одной строкой: четыре поездки на автобусе — как «Автобус ×4». Записи при этом остаются отдельными.",
   "transactions.viewList": "Список",
+  "common.peek": "Подсмотреть, что под окном — держите нажатой",
+  "common.pinWindow": "Приколоть окно на месте",
+  "common.unpinWindow": "Открепить окно",
   "common.close": "Закрыть",
   // Заголовок и кнопка окна подтверждения — того, что заменило системное
   // окно браузера.
@@ -1600,6 +1603,9 @@ const en: Record<keyof typeof ru, string> = {
   "transactions.loadedCount": "Showing {{loaded}} of {{total}}",
   "transactions.groupRepeatsHint": "Identical operations from the same day collapse into one row: four bus rides show as \"Bus ×4\". The records themselves stay separate.",
   "transactions.viewList": "List",
+  "common.peek": "Peek behind the window — hold it down",
+  "common.pinWindow": "Pin the window in place",
+  "common.unpinWindow": "Unpin the window",
   "common.close": "Close",
   "common.confirmTitle": "Confirm",
   "common.confirm": "Confirm",
