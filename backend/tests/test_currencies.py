@@ -176,16 +176,16 @@ async def test_a_stand_in_rate_is_replaced_once_the_bank_publishes(
     навсегда останется посчитанной по вчерашнему курсу."""
 
     async def before_publication(_on_date):
-        return {"USD": Decimal("84.35")}, date(2026, 9, 11)
+        return {"USD": Decimal("84.35")}, {"USD": "R01235"}, date(2026, 9, 11)
 
     async def after_publication(_on_date):
-        return {"USD": Decimal("84.25")}, date(2026, 9, 12)
+        return {"USD": Decimal("84.25")}, {"USD": "R01235"}, date(2026, 9, 12)
 
-    monkeypatch.setattr(cbr_service, "fetch_rates", before_publication)
+    monkeypatch.setattr(cbr_service, "fetch_daily", before_publication)
     assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 1
     assert (await _stored_usd(session)).published_for == date(2026, 9, 11)
 
-    monkeypatch.setattr(cbr_service, "fetch_rates", after_publication)
+    monkeypatch.setattr(cbr_service, "fetch_daily", after_publication)
     assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 1
 
     stored = await _stored_usd(session)
@@ -198,15 +198,15 @@ async def test_a_published_rate_is_never_touched_again(session: AsyncSession, mo
     Второе нажатие «обновить» ничего не переписывает и ничего не сохраняет."""
 
     async def published(_on_date):
-        return {"USD": Decimal("84.25")}, date(2026, 9, 12)
+        return {"USD": Decimal("84.25")}, {"USD": "R01235"}, date(2026, 9, 12)
 
     async def nonsense(_on_date):
-        return {"USD": Decimal("99.99")}, date(2026, 9, 12)
+        return {"USD": Decimal("99.99")}, {"USD": "R01235"}, date(2026, 9, 12)
 
-    monkeypatch.setattr(cbr_service, "fetch_rates", published)
+    monkeypatch.setattr(cbr_service, "fetch_daily", published)
     assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 1
 
-    monkeypatch.setattr(cbr_service, "fetch_rates", nonsense)
+    monkeypatch.setattr(cbr_service, "fetch_daily", nonsense)
     assert await cbr_service.sync_rates_for_date(session, date(2026, 9, 12)) == 0
 
     assert (await _stored_usd(session)).rate == Decimal("84.25")

@@ -20,7 +20,9 @@ GOOGLEFINANCE и возвращала 0,9999995974, из-за чего кажд�
 пользователю приходилось править вручную.
 """
 from dataclasses import dataclass
+import calendar
 from datetime import date as date_
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
@@ -306,3 +308,80 @@ def convert_balance(amount: Decimal, currency: str, rates: dict[str, Decimal]) -
     """
     rate = rates.get(currency.upper(), Decimal("1"))
     return (Decimal(amount) * rate).quantize(_CENTS, rounding=ROUND_HALF_UP)
+
+
+@dataclass
+class RateSeriesPoint:
+    """Одна точка графика курса."""
+
+    date: date_
+    rate: Decimal
+
+
+def _each_day(start: date_, end: date_) -> list[date_]:
+    days: list[date_] = []
+    day = start
+    while day <= end:
+        days.append(day)
+        day += timedelta(days=1)
+    return days
+
+
+def _month_ends(start: date_, end: date_) -> list[date_]:
+    """По одной дате на каждый месяц диапазона — последний его день, а у
+    текущего месяца последний прошедший: курса на будущее не существует."""
+    ends: list[date_] = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        last = calendar.monthrange(year, month)[1]
+        ends.append(min(date_(year, month, last), end))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return ends
+
+
+async def rate_series(
+    session: AsyncSession, code: str, start: date_, end: date_, monthly: bool = False
+) -> list[RateSeriesPoint]:
+    """Курс валюты по дням или по месяцам за период.
+
+    Пропущенные дни не пропускаются: по выходным и праздникам ЦБ не публикует
+    котировки, и в эти дни действует курс последнего рабочего дня — ровно так
+    его читает и всё остальное приложение (см. get_rate). Поэтому в ряду за
+    неделю семь точек, а не пять: суббота с воскресеньем повторяют пятницу, и
+    это не дырка в данных, а положение дел.
+
+    По месяцам берётся последний курс месяца: «сколько стоил доллар в конце
+    марта» — вопрос, на который отвечает месячная точка. Среднее за месяц
+    отвечало бы на другой, и сравнить его с курсом на экране было бы нельзя.
+
+    Дни до самого первого известного курса в ряд не попадают: рисовать линию
+    там, где данных нет, значит придумать её.
+    """
+    code = code.upper()
+    base = (await get_base_currency(session)).upper()
+    if code == base:
+        return []
+
+    # До конца периода, но без нижней границы: курс последнего рабочего дня
+    # перед началом периода нужен первой же точке.
+    rows = (
+        await session.execute(
+            select(ExchangeRate.rate_date, ExchangeRate.rate)
+            .where(ExchangeRate.code == code, ExchangeRate.rate_date <= end)
+            .order_by(ExchangeRate.rate_date)
+        )
+    ).all()
+    if not rows:
+        return []
+
+    days = _month_ends(start, end) if monthly else _each_day(start, end)
+    points: list[RateSeriesPoint] = []
+    index = 0
+    current: Decimal | None = None
+    for day in days:
+        while index < len(rows) and rows[index][0] <= day:
+            current = rows[index][1]
+            index += 1
+        if current is not None:
+            points.append(RateSeriesPoint(date=day, rate=current))
+    return points

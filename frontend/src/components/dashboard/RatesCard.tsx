@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { RateHistoryModal } from "@/components/dashboard/RateHistoryModal";
 import { useRates, useSyncRates } from "@/hooks/useCurrencies";
 import { CURRENCIES } from "@/lib/currency";
 import { formatRate, formatTransactionDate } from "@/lib/format";
@@ -26,6 +28,9 @@ export function RatesCard({ className }: {
   const { t, language } = useTranslation();
   const { data: rates, isLoading } = useRates();
   const sync = useSyncRates();
+  // Какая валюта открыта графиком. Null — окно закрыто; второго состояния на
+  // «открыто» не нужно.
+  const [historyCode, setHistoryCode] = useState<string | null>(null);
 
   // Дата самого свежего курса — по ней видно, насколько цифры устарели и
   // стоит ли жать обновление. Берётся максимум, а не первая попавшаяся:
@@ -76,12 +81,20 @@ export function RatesCard({ className }: {
           <div className="@container">
             <ul className="grid grid-cols-1 gap-x-6 @sm:grid-cols-2 @xl:grid-cols-3">
               {(rates ?? []).map((row) => (
-                <RateRow key={row.code} row={row} language={language} />
+                <RateRow
+                  key={row.code}
+                  row={row}
+                  language={language}
+                  onOpen={() => setHistoryCode(row.code)}
+                />
               ))}
             </ul>
           </div>
         )}
       </CardContent>
+      {/* График за период — по нажатию на валюту. Окно живёт здесь, а не в
+          строке: строк девять, и девять закрытых окон в разметке ни к чему. */}
+      <RateHistoryModal code={historyCode} onClose={() => setHistoryCode(null)} />
     </Card>
   );
 }
@@ -93,7 +106,16 @@ function currencyName(code: string, language: Language): string {
   return language === "ru" ? option.nameRu : option.nameEn;
 }
 
-function RateRow({ row, language }: { row: CurrencyRate; language: Language }) {
+function RateRow({
+  row,
+  language,
+  onOpen,
+}: {
+  row: CurrencyRate;
+  language: Language;
+  /** Открыть график этой валюты. */
+  onOpen: () => void;
+}) {
   const { t } = useTranslation();
 
   const change =
@@ -102,7 +124,15 @@ function RateRow({ row, language }: { row: CurrencyRate; language: Language }) {
   return (
     // Черта под каждой строкой, а не между ними: в сетке «между» у каждой
     // колонки своё, и divide-y рисовал бы черты вперемешку.
-    <li className="flex items-center justify-between gap-3 border-b border-gridline py-2">
+    <li className="border-b border-gridline">
+      {/* Вся строка — кнопка: цель для пальца шириной в строку, а не в
+          название валюты. */}
+      <button
+        type="button"
+        onClick={onOpen}
+        title={t("rates.openHistory")}
+        className="flex w-full items-center justify-between gap-3 py-2 text-left hover:text-text-primary"
+      >
       <span className="min-w-0">
         <span className="block truncate text-sm">
           <span className="font-medium">{row.code}</span>{" "}
@@ -135,6 +165,7 @@ function RateRow({ row, language }: { row: CurrencyRate; language: Language }) {
           </span>
         )}
       </span>
+      </button>
     </li>
   );
 }

@@ -366,6 +366,9 @@ class CurrencyBackup(BaseModel):
     symbol: str | None = None
     name: str | None = None
     cbr_nominal: int = 1
+    # Внутренний код валюты у источника курсов. Пусто в копии, снятой до его
+    # появления: он и так заполнится при первой загрузке курсов.
+    cbr_code: str | None = None
     is_active: bool = True
 
 

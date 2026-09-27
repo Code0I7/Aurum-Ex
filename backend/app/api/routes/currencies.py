@@ -16,13 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
 from app.models.currency import Currency, ExchangeRate
-from app.services.cbr_service import CbrUnavailable, sync_rates_for_date
+from app.services.cbr_service import (
+    CbrUnavailable,
+    sync_history_if_needed,
+    sync_rates_for_date,
+    sync_recent_history,
+)
 from app.services.currency_service import (
     currencies_in_use,
     dates_awaiting_rates,
     get_base_currency,
     get_current_rates,
     rate_overview,
+    rate_series,
     recompute_missing_base_amounts,
 )
 
@@ -49,6 +55,23 @@ class RateRow(BaseModel):
     # Валютой ведётся счёт или записана операция — значит, курс нужен
     # расчётам, и убрать её из списка нельзя.
     in_use: bool = False
+
+
+class RatePoint(BaseModel):
+    """Одна точка графика курса."""
+
+    date: date_
+    rate: Decimal
+
+
+class RateHistory(BaseModel):
+    code: str
+    start_date: date_
+    end_date: date_
+    points: list[RatePoint]
+    # Источник не ответил. Отдаём то, что уже лежит в базе, и говорим об этом:
+    # пустой график без объяснения читается как «курса не существует».
+    source_unavailable: bool = False
 
 
 class WatchAdd(BaseModel):
@@ -132,6 +155,10 @@ async def sync_rates(
 
     try:
         saved = await sync_rates_for_date(session, target)
+        # И последняя неделя заодно — одним обращением на валюту. Без неё
+        # динамика считалась не за день: в базе лежали только те дни, за
+        # которыми ходили, и между двумя нажатиями оказывалась неделя.
+        saved += await sync_recent_history(session)
     except CbrUnavailable as error:
         # 502, а не 500: сломалась внешняя система, а не приложение.
         raise HTTPException(status_code=502, detail=str(error)) from error
@@ -238,3 +265,58 @@ async def remove_from_watchlist(
         raise HTTPException(status_code=404, detail="Currency not found")
     await session.delete(currency)
     await session.commit()
+
+
+# Насколько длинный период можно спросить за раз. Год с запасом: за год
+# источник отдаёт около двухсот шестидесяти записей одним ответом, а больший
+# период на графике всё равно не читается.
+MAX_HISTORY_DAYS = 400
+
+
+@router.get("/{code}/history", response_model=RateHistory)
+async def read_rate_history(
+    code: str,
+    start_date: date_ = Query(..., description="Начало периода"),
+    end_date: date_ = Query(..., description="Конец периода"),
+    monthly: bool = Query(default=False, description="По месяцам, а не по дням"),
+    session: AsyncSession = Depends(get_session),
+) -> RateHistory:
+    """История курса одной валюты за период.
+
+    Недостающие дни догружаются с сайта ЦБ здесь же, при открытии: держать
+    всю историю всех валют на всякий случай незачем, а спросить её за раз
+    можно одним обращением на валюту (см. cbr_service.sync_history).
+
+    Конец периода обрезается сегодняшним днём: курса на будущее не
+    существует, а «год» на графике — это текущий год целиком, вместе с
+    месяцами, которые ещё не наступили.
+    """
+    code = code.upper()
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="end_date is earlier than start_date")
+    if (end_date - start_date).days > MAX_HISTORY_DAYS:
+        raise HTTPException(status_code=422, detail=f"period longer than {MAX_HISTORY_DAYS} days")
+
+    today = date_.today()
+    until = min(end_date, today)
+
+    source_unavailable = False
+    if until >= start_date:
+        try:
+            await sync_history_if_needed(session, code, start_date, until)
+        except CbrUnavailable:
+            # Показываем то, что есть: график без последних дней полезнее
+            # ошибки во весь экран.
+            source_unavailable = True
+
+    points = [
+        RatePoint(date=point.date, rate=point.rate)
+        for point in await rate_series(session, code, start_date, until, monthly=monthly)
+    ]
+    return RateHistory(
+        code=code,
+        start_date=start_date,
+        end_date=until,
+        points=points,
+        source_unavailable=source_unavailable,
+    )

@@ -1485,6 +1485,21 @@ export interface CategoryUsage {
  * Строка блока «Курсы»: сколько стоит одна единица валюты в валюте
  * установки.
  */
+/** Точка графика курса и весь ряд за период. */
+export interface RatePoint {
+  date: string;
+  rate: string;
+}
+
+export interface RateHistory {
+  code: string;
+  start_date: string;
+  end_date: string;
+  points: RatePoint[];
+  /** Сайт ЦБ не ответил: показано то, что уже загружено. */
+  source_unavailable: boolean;
+}
+
 export interface CurrencyRate {
   code: string;
   rate: string | null;
