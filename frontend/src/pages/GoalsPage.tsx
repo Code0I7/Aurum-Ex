@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Plus } from "lucide-react";
 import { PageActions } from "@/components/layout/PageActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -17,6 +18,7 @@ import type { Goal, GoalStatus } from "@/types";
 
 export function GoalsPage() {
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
   const { data: goals, isLoading } = useGoals();
   const deleteGoal = useDeleteGoal();
   const updateGoal = useUpdateGoal();
@@ -33,6 +35,18 @@ export function GoalsPage() {
   // История открывается по самой цели, а не по флагу: модалка тянет её
   // взносы, и null здесь означает «закрыто» без второго состояния.
   const [historyGoal, setHistoryGoal] = useState<Goal | null>(null);
+
+  // Цель в адресе — переход из подробностей счёта на обзоре: «а что это за
+  // цель, на которую отложено». Открывается история накопления: это ответ на
+  // вопрос «сколько и когда откладывали», с которым сюда и приходят.
+  const requestedGoal = searchParams.get("goal");
+  useEffect(() => {
+    if (!requestedGoal || !goals) return;
+    const goal = goals.find((item) => String(item.id) === requestedGoal);
+    if (goal) setHistoryGoal(goal);
+    // Один раз на приход по ссылке: дальше окна открывает человек.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedGoal, Boolean(goals)]);
 
   function openCreateModal() {
     setEditingGoal(null);

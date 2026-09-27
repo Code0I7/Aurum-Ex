@@ -111,6 +111,17 @@ export function TransactionsPage() {
   const deepLinkedMonth = searchParams.get("month") !== null;
   useEffect(() => {
     if (deepLinkedMonth) setScope("month");
+    // Счёт в адресе — переход из подробностей счёта на обзоре: «покажи, что
+    // по нему было». Период при этом расширяется до всей истории: выписка по
+    // счёту за один текущий месяц отвечает не на тот вопрос, с которым сюда
+    // пришли, а прочие отборы снимаются, чтобы список не оказался пустым
+    // из-за забытой в сеансе категории.
+    const account = searchParams.get("account");
+    if (account) {
+      setFilters({ ...EMPTY_FILTERS, accountId: account });
+      setScope("all");
+      setPage(1);
+    }
     // Один раз при заходе: дальше период переключает человек.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

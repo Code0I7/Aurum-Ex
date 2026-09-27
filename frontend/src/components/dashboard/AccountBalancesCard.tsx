@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
+import { AccountDetailsModal } from "@/components/dashboard/AccountDetailsModal";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/format";
 import { useReservations } from "@/hooks/useGoals";
@@ -32,6 +33,10 @@ export function AccountBalancesCard({
   // раньше, чем «сколько я стою». Период короткий — само число от него
   // не зависит, берётся текущее состояние.
   const { data: netWorth } = useNetWorthSummary("30d");
+  // Какой счёт раскрыт подробностями. Null — окно закрыто; на полосу
+  // отрезков на телефоне не нажать, а вопрос «на что отложено» задают именно
+  // там.
+  const [detailed, setDetailed] = useState<DashboardAccountBalance | null>(null);
 
   if (accounts.length === 0) return null;
 
@@ -82,7 +87,14 @@ export function AccountBalancesCard({
             const reserved = Number(account.reserved);
             return (
               <li key={account.account_id} className="py-2">
-                <div className="flex items-center justify-between gap-3">
+                {/* Вся строка — кнопка: на телефоне цель для пальца должна
+                    быть шириной в строку, а не в отрезок полосы. */}
+                <button
+                  type="button"
+                  onClick={() => setDetailed(account)}
+                  title={t("dashboard.accountDetails")}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                >
                 <span className="min-w-0">
                   <span className="block truncate text-sm">{account.name}</span>
                   {/* Отложенное дописывается второй строкой только когда оно
@@ -111,7 +123,7 @@ export function AccountBalancesCard({
                     </span>
                   )}
                 </span>
-                </div>
+                </button>
                 <AccountBar
                   balance={balance}
                   segments={byAccount.get(account.account_id) ?? []}
@@ -123,6 +135,13 @@ export function AccountBalancesCard({
           })}
         </ul>
       </CardContent>
+      {/* Окно живёт здесь, а не в строке: счетов бывает десяток, и десять
+          закрытых окон в разметке ни к чему. */}
+      <AccountDetailsModal
+        account={detailed}
+        reservations={detailed ? byAccount.get(detailed.account_id) ?? [] : []}
+        onClose={() => setDetailed(null)}
+      />
     </Card>
   );
 }
