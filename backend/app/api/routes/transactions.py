@@ -322,7 +322,7 @@ async def list_transactions(
     # Скрыть их — отдельное решение пользователя.
     include_excluded: bool = True,
     search: str | None = Query(default=None, min_length=1, max_length=255),
-    sort: Literal["date_desc", "amount_desc", "amount_asc"] = Query(default="date_desc"),
+    sort: Literal["date_desc", "date_asc", "amount_desc", "amount_asc"] = Query(default="date_desc"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
@@ -452,6 +452,11 @@ async def list_transactions(
         stmt = stmt.order_by(Transaction.amount.desc(), Transaction.id.desc())
     elif sort == "amount_asc":
         stmt = stmt.order_by(Transaction.amount.asc(), Transaction.id.desc())
+    elif sort == "date_asc":
+        # Старое сверху — чтение истории с начала: с чего счёт начался и что
+        # было дальше. Тот же порядок, в котором считается баланс, поэтому
+        # столбец «баланс после операции» читается сверху вниз как выписка.
+        stmt = stmt.order_by(Transaction.date.asc(), Transaction.day_order.asc(), Transaction.id.asc())
     else:
         # Новое сверху. day_order участвует в сортировке наравне с датой —
         # иначе баланс в строке перестанет соответствовать её месту на

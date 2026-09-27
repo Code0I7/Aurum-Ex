@@ -65,6 +65,9 @@ export function AccountList({ items, onEdit, onToggleArchived, onDelete }: Accou
                     {t("account.reservedShort", { amount: formatCurrency(reserved, account.currency) })}
                   </>
                 )}
+                {/* Начального остатка в строке нет: он свойство счёта, а не
+                    ответ на «сколько у меня сейчас», и читают его, открыв сам
+                    счёт. В списке он был бы четвёртым числом в строке. */}
               </span>
             </span>
             <span className="shrink-0 text-right">

@@ -4,6 +4,7 @@ import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { amountColorClass, amountSign } from "@/lib/transactionAmount";
 import { useTranslation } from "@/lib/i18n";
+import { AccountStartLabel, type AccountStart } from "@/components/transactions/AccountStartRow";
 import { categoryPath } from "@/lib/categoryLabels";
 import { useCategories } from "@/hooks/useCategories";
 import type { Transaction } from "@/types";
@@ -16,9 +17,21 @@ interface TransactionsTableProps {
    * lets a row's date carry the year and offers a way to jump back to
    * browsing that transaction's month instead of just listing it flat. */
   onJumpToMonth?: (transaction: Transaction) => void;
+  /** Начало счёта под списком — когда выбран один счёт и видно начало
+   *  его истории (см. AccountStartRow). */
+  accountStart?: AccountStart;
+  /** Новые операции сверху: от этого зависит, где стоит черта начала счёта. */
+  newestFirst?: boolean;
 }
 
-export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: TransactionsTableProps) {
+export function TransactionsTable({
+  items,
+  onEdit,
+  onDelete,
+  onJumpToMonth,
+  accountStart,
+  newestFirst = true,
+}: TransactionsTableProps) {
   const { t, currency: base } = useTranslation();
   const { data: categories } = useCategories();
 
@@ -33,6 +46,11 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
   return (
     <>
       <ul className="divide-y divide-gridline">
+        {accountStart && !newestFirst && (
+          <li className="bg-surface-2/30 px-1 py-1.5">
+            <AccountStartLabel start={accountStart} />
+          </li>
+        )}
         {items.map((tx) => {
           const isTransfer = tx.type === "transfer";
           const isSplit = tx.splits.length > 0;
@@ -129,6 +147,13 @@ export function TransactionsTable({ items, onEdit, onDelete, onJumpToMonth }: Tr
             </li>
           );
         })}
+        {/* Начало счёта — у самой старой операции: снизу, когда новые
+            сверху, и сверху, когда наоборот. */}
+        {accountStart && newestFirst && (
+          <li className="bg-surface-2/30 px-1 py-1.5">
+            <AccountStartLabel start={accountStart} />
+          </li>
+        )}
       </ul>
     </>
   );

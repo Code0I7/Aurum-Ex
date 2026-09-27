@@ -7,7 +7,7 @@ import type {
   TransactionType,
 } from "@/types";
 
-export type TransactionSort = "date_desc" | "amount_desc" | "amount_asc";
+export type TransactionSort = "date_desc" | "date_asc" | "amount_desc" | "amount_asc";
 
 export interface TransactionFilters {
   year?: number;

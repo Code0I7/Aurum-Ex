@@ -30,7 +30,7 @@ import type { SimilarTransaction, TransferCounterpart } from "@/types";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useAppSettings } from "@/hooks/useSettings";
 import { DirectoryPicker } from "@/components/transactions/DirectoryPicker";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import type {
   Tag,
   Transaction,
@@ -302,6 +302,20 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
   // «сколько пришло» — два разных числа: внутри одной валюты это одно и то
   // же, и второе поле означало бы возможность разойтись с самим собой.
   const sourceAccount = accounts?.find((account) => String(account.id) === form.account_id);
+  /**
+   * Дата раньше дня, с которого счёт считается открытым.
+   *
+   * Начальный остаток — это деньги, лежавшие на счёте до первой записи, и всё,
+   * что было раньше, в него уже входит. Операция с такой датой прибавится к
+   * нему сверху, то есть посчитается дважды.
+   *
+   * Предупреждение, а не запрет: неверной может оказаться как раз дата
+   * открытия счёта, и решать это человеку.
+   */
+  const beforeOpening =
+    sourceAccount?.opening_date && form.date && form.date < sourceAccount.opening_date
+      ? sourceAccount.opening_date
+      : null;
   const destinationAccount = accounts?.find(
     (account) => String(account.id) === form.transfer_account_id
   );
@@ -647,6 +661,13 @@ export function TransactionFormModal({ open, onClose, transaction }: Transaction
               value={form.date}
               onChange={(event) => setForm((prev) => ({ ...prev, date: event.target.value }))}
             />
+            {beforeOpening && (
+              <p className="mt-1 text-xs text-danger">
+                {t("transactions.form.beforeOpening", {
+                  date: formatTransactionDate(beforeOpening, true),
+                })}
+              </p>
+            )}
           </div>
         </div>
 

@@ -7,6 +7,7 @@ import { categoryPath } from "@/lib/categoryLabels";
 import { ElidedText } from "@/components/ui/ElidedText";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
+import { AccountStartLabel, type AccountStart } from "@/components/transactions/AccountStartRow";
 import { formatWorkCost, rateForDate } from "@/lib/hours";
 import { useHourlyRates } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
@@ -34,6 +35,9 @@ interface TransactionsGridProps {
   /** Показывать ли заголовки дней с итогами. Кому-то нужен сплошной
    * список без лишних строк. */
   dayDividers: boolean;
+  /** Начало счёта под списком — когда выбран один счёт и видно начало его
+   *  истории (см. AccountStartRow). */
+  accountStart?: AccountStart;
   /**
    * Идёт ли список по датам.
    *
@@ -43,6 +47,17 @@ interface TransactionsGridProps {
    * столько раз, сколько раз прерывается.
    */
   chronological: boolean;
+  /**
+   * Новые операции сверху.
+   *
+   * От этого зависят две вещи. Черта «начало счёта» стоит в конце списка,
+   * когда новые сверху, и в начале, когда старые сверху: начало счёта всегда у
+   * самой старой операции. И перетаскивание строк: место вставки считается
+   * как «сколько операций осталось ниже», а в обратном порядке это правило
+   * переворачивается — вместо того, чтобы переставлять не туда, в таком
+   * порядке перетаскивание выключено.
+   */
+  newestFirst: boolean;
 }
 
 /**
@@ -67,7 +82,9 @@ export function TransactionsGrid({
   onReorder,
   groupRepeats,
   dayDividers,
+  accountStart,
   chronological,
+  newestFirst,
 }: TransactionsGridProps) {
   const { t, currency: base } = useTranslation();
   const { data: categories } = useCategories();
@@ -155,6 +172,9 @@ export function TransactionsGrid({
   );
 
   const { drag, arm, move, end, consumeClickSuppression } = useRowDrag(handleDrop);
+  // См. newestFirst: в порядке «старые сверху» перестановка считалась бы
+  // наоборот, поэтому её тут просто нет.
+  const armRow = newestFirst ? arm : () => {};
 
   // Прокрутка таблицы вбок и её ползунок внизу экрана — два элемента,
   // показывающих одно и то же положение, поэтому их приходится держать в
@@ -431,6 +451,13 @@ export function TransactionsGrid({
           </tr>
         </thead>
         <tbody className="divide-y divide-gridline">
+          {accountStart && !newestFirst && (
+            <tr className="bg-surface-2/30">
+              <td colSpan={columns.length + 1} className="px-3 py-1.5">
+                <AccountStartLabel start={accountStart} />
+              </td>
+            </tr>
+          )}
           {groups.flatMap((groupRow, groupIndex) => {
             const collapsed = groupRow.items.length > 1;
             // Разделитель дня — как в банковском приложении: дата и итог
@@ -484,7 +511,7 @@ export function TransactionsGrid({
                     if ((event.target as HTMLElement).closest("button, a, input")) return;
                     const found = siblingsByRow.get(groupRow.key);
                     if (!found) return;
-                    arm(event, found.meta, found.siblings);
+                    armRow(event, found.meta, found.siblings);
                   }}
                   onPointerMove={move}
                   onPointerUp={end}
@@ -537,7 +564,7 @@ export function TransactionsGrid({
                                 event.stopPropagation();
                                 const found = siblingsByRow.get(groupRow.key);
                                 if (!found) return;
-                                arm(event, found.meta, found.siblings, true);
+                                armRow(event, found.meta, found.siblings, true);
                               }}
                               onPointerMove={move}
                               onPointerUp={end}
@@ -580,7 +607,7 @@ export function TransactionsGrid({
                 if ((event.target as HTMLElement).closest("button, a, input")) return;
                 const found = siblingsByRow.get(String(tx.id));
                 if (!found) return;
-                arm(event, found.meta, found.siblings);
+                armRow(event, found.meta, found.siblings);
               }}
               onPointerMove={move}
               onPointerUp={end}
@@ -655,7 +682,7 @@ export function TransactionsGrid({
                         onPointerDown={(event) => {
                           const found = siblingsByRow.get(String(tx.id));
                           if (!found) return;
-                          arm(event, found.meta, found.siblings, true);
+                          armRow(event, found.meta, found.siblings, true);
                         }}
                         // Только на узких экранах. Пальцем за тело строки
                         // тянуть нельзя: браузер решает «прокрутка или жест»
@@ -704,6 +731,15 @@ export function TransactionsGrid({
               )),
             ];
           })}
+          {/* Начало счёта — у самой старой операции: снизу, когда новые
+              сверху, и сверху, когда наоборот. */}
+          {accountStart && newestFirst && (
+            <tr className="bg-surface-2/30">
+              <td colSpan={columns.length + 1} className="px-3 py-1.5">
+                <AccountStartLabel start={accountStart} />
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
       </div>

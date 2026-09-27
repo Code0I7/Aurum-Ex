@@ -261,6 +261,21 @@ async def test_sort_amount_desc_and_asc_are_opposite_orders(client: AsyncClient,
     assert asc_amounts == list(reversed(desc_amounts))
 
 
+async def test_sort_oldest_first_reads_history_from_the_start(client: AsyncClient, account_id, categories):
+    """«Сначала старые» — чтение истории с начала: с чего счёт начался и что
+    было дальше. Порядок внутри дня при этом тоже прямой, а не обратный:
+    столбец «баланс после операции» должен читаться сверху вниз."""
+    category_id = categories["Groceries"]["id"]
+    for day in ("2026-03-01", "2026-03-05", "2026-03-05"):
+        await client.post("/transactions", json=_txn(account_id, category_id=category_id, date=day))
+
+    newest = (await client.get("/transactions", params={"sort": "date_desc"})).json()["items"]
+    oldest = (await client.get("/transactions", params={"sort": "date_asc"})).json()["items"]
+
+    assert [item["date"] for item in oldest] == ["2026-03-01", "2026-03-05", "2026-03-05"]
+    assert [item["id"] for item in oldest] == list(reversed([item["id"] for item in newest]))
+
+
 async def test_update_transaction_persists_changes(client: AsyncClient, account_id, categories):
     category_id = categories["Groceries"]["id"]
     created = await client.post("/transactions", json=_txn(account_id, category_id=category_id))

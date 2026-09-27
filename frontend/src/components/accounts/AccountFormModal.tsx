@@ -17,7 +17,14 @@ interface AccountFormModalProps {
 
 const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit_card", "cash", "investment", "crypto", "loan", "other"];
 
-const EMPTY_FORM = { name: "", kind: "checking" as AccountKind, currency: "", bank_id: "" };
+const EMPTY_FORM = {
+  name: "",
+  kind: "checking" as AccountKind,
+  currency: "",
+  bank_id: "",
+  opening_balance: "",
+  opening_date: "",
+};
 
 export function AccountFormModal({ open, onClose, account }: AccountFormModalProps) {
   const { t, language, currency } = useTranslation();
@@ -40,6 +47,11 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
             kind: account.kind,
             currency: account.currency,
             bank_id: account.bank_id ? String(account.bank_id) : "",
+            // Ноль показывается пустым полем: «ноль» и «не указано» для
+            // начального остатка одно и то же.
+            opening_balance:
+              Number(account.opening_balance) !== 0 ? String(account.opening_balance) : "",
+            opening_date: account.opening_date ?? "",
           }
         : { ...EMPTY_FORM, currency }
     );
@@ -56,8 +68,14 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
     setError(null);
 
     // Банк уходит номером или пустотой: в состоянии формы он строкой, как
-    // и любой выбор из справочника.
-    const payload = { ...form, bank_id: form.bank_id ? Number(form.bank_id) : null };
+    // и любой выбор из справочника. Пустой начальный остаток — это ноль, а
+    // пустая дата — «до начала учёта», и на сервере она так и хранится.
+    const payload = {
+      ...form,
+      bank_id: form.bank_id ? Number(form.bank_id) : null,
+      opening_balance: form.opening_balance.trim() === "" ? "0" : form.opening_balance,
+      opening_date: form.opening_date || null,
+    };
 
     try {
       if (account) {
@@ -133,6 +151,41 @@ export function AccountFormModal({ open, onClose, account }: AccountFormModalPro
               </option>
             ))}
           </Select>
+        </div>
+
+        {/* Начальный остаток — деньги, лежавшие на счёте до первой записи.
+            Он часть остатка, но не доход: заводить его приходом значило бы
+            записать заработок, которого в этот день не было.
+
+            Поле было в базе с самого начала, но указать его было негде:
+            остаток попадал в счёт только переносом таблицы, а в списке
+            операций его не видно вовсе — отсюда и вопрос «откуда сразу
+            5 210,40». Дата нужна, чтобы остаток встал в нужный месяц в
+            движении денежных средств; пустая означает «до начала учёта». */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="account-opening">{t("account.form.openingBalanceLabel")}</Label>
+            <Input
+              id="account-opening"
+              inputMode="decimal"
+              placeholder="0"
+              value={form.opening_balance}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, opening_balance: event.target.value }))
+              }
+            />
+          </div>
+          <div>
+            <Label htmlFor="account-opening-date">{t("account.form.openingDateLabel")}</Label>
+            <Input
+              id="account-opening-date"
+              type="date"
+              value={form.opening_date}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, opening_date: event.target.value }))
+              }
+            />
+          </div>
         </div>
 
         {/* Банк. Поле было в базе с самого начала, но указать его было

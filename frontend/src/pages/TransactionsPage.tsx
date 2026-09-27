@@ -26,6 +26,7 @@ import {
   useReorderTransaction,
   useTransactionYears,
 } from "@/hooks/useTransactions";
+import { useAccounts } from "@/hooks/useAccounts";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useViewDefault } from "@/hooks/useViewDefault";
@@ -193,6 +194,14 @@ export function TransactionsPage() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const { data: years } = useTransactionYears();
+  // Счета нужны одной строке под заголовком: начальный остаток выбранного
+  // счёта. Без неё список начинается суммой, которой в операциях нет, и
+  // объяснить её нечем — вопрос «откуда сразу семь тысяч» появляется сразу.
+  const { data: accounts } = useAccounts(false);
+  const selectedAccount =
+    filters.accountId
+      ? (accounts ?? []).find((account) => String(account.id) === filters.accountId)
+      : undefined;
   // Фильтры общие для обоих режимов; различается только то, как запрашиваются
   // страницы — по одной или с накоплением.
   const commonFilters = {
@@ -227,6 +236,44 @@ export function TransactionsPage() {
     { key: "year", label: t("dashboard.rangeYear") },
     { key: "all", label: t("dashboard.rangeAll") },
   ];
+  /**
+   * Начало счёта под списком: сумма, лежавшая на нём до первой записи.
+   *
+   * Показывается, только когда это правда конец истории счёта — иначе черта
+   * «начало счёта» стояла бы посреди неё. Значит: выбран один счёт, список
+   * идёт от новых к старым, до низа уже долистали, и выбранный период
+   * включает день открытия.
+   */
+  const openingInPeriod =
+    selectedAccount && selectedAccount.opening_date
+      ? scope === "all" ||
+        (scope === "year" && Number(selectedAccount.opening_date.slice(0, 4)) === year) ||
+        (scope === "month" &&
+          Number(selectedAccount.opening_date.slice(0, 4)) === year &&
+          Number(selectedAccount.opening_date.slice(5, 7)) === month)
+      : scope === "all";
+  // Самая старая операция на виду: при «новые сверху» это конец списка, при
+  // «старые сверху» — его начало, то есть первая страница.
+  const atOldest =
+    sort === "date_asc"
+      ? page === 1
+      : paging === "pages"
+        ? page >= totalPages
+        : !feed.hasNextPage;
+  const accountStart =
+    selectedAccount &&
+    Number(selectedAccount.opening_balance) !== 0 &&
+    (sort === "date_desc" || sort === "date_asc") &&
+    !isSearching &&
+    openingInPeriod &&
+    atOldest
+      ? {
+          date: selectedAccount.opening_date,
+          amount: selectedAccount.opening_balance,
+          currency: selectedAccount.currency,
+        }
+      : undefined;
+
   function openCreateModal() {
     setEditingTransaction(null);
     setModalOpen(true);
@@ -375,6 +422,7 @@ export function TransactionsPage() {
             className="w-full sm:w-56"
           >
             <option value="date_desc">{t("transactions.sortDateDesc")}</option>
+            <option value="date_asc">{t("transactions.sortDateAsc")}</option>
             <option value="amount_desc">{t("transactions.sortAmountDesc")}</option>
             <option value="amount_asc">{t("transactions.sortAmountAsc")}</option>
           </Select>
@@ -445,18 +493,22 @@ export function TransactionsPage() {
               <TransactionsGrid
                 items={items}
                 layout={layout}
+                accountStart={accountStart}
                 onEdit={openEditModal}
                 onDelete={handleDelete}
                 onReorder={handleReorder}
                 groupRepeats={groupRepeats}
                 dayDividers={dayDividers}
-                chronological={sort === "date_desc"}
+                chronological={sort === "date_desc" || sort === "date_asc"}
+                newestFirst={sort !== "date_asc"}
               />
             ) : (
               // При поиске остаётся список: результаты приходят из разных
               // месяцев, и колонка баланса в такой выборке смысла не имеет.
               <TransactionsTable
                 items={items}
+                accountStart={accountStart}
+                newestFirst={sort !== "date_asc"}
                 onEdit={openEditModal}
                 onDelete={handleDelete}
                 onJumpToMonth={isSearching ? handleJumpToMonth : undefined}

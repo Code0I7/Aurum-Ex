@@ -8,6 +8,9 @@
 
 Самостоятельно размещаемый учёт личных финансов. Сделан, чтобы заменить самодельную таблицу, которую люди ведут годами, — и ответить на вопросы, на которые такая таблица ответить не может.
 
+![Версия](https://img.shields.io/badge/%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F-1.0.0--beta.76-e0a400.svg)
+![Тесты](https://img.shields.io/badge/%D1%82%D0%B5%D1%81%D1%82%D0%BE%D0%B2-573%20%D0%BF%D1%80%D0%BE%D1%85%D0%BE%D0%B4%D1%8F%D1%82-brightgreen.svg)
+![Актуально на](https://img.shields.io/badge/%D0%B0%D0%BA%D1%82%D1%83%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE%20%D0%BD%D0%B0-2026--09--27-blue.svg)
 [![Форк Zproger/Aurum](https://img.shields.io/badge/%D1%84%D0%BE%D1%80%D0%BA-Zproger%2FAurum-6E7B74.svg)](https://github.com/Zproger/Aurum)
 [![Лицензия: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 
