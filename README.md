@@ -4,7 +4,7 @@
 
 [Русский](README.ru.md) • **English**
 
-**See where every rouble comes from. Know where every rouble goes.**
+**See where every dollar comes from. Know where every dollar goes.**
 
 A self-hosted personal finance app built to replace the kind of hand-made spreadsheet people keep for years — and to answer the questions such a spreadsheet cannot.
 
@@ -130,7 +130,7 @@ The interface is fully translated: the same screens in Russian live in
 ### Directories and data
 
 - **Categories** with arbitrary nesting, colours and icons, applied to a whole branch on request.
-- **Products, stores and units** with conversion to a base unit, so 1.5 l at 120 ₽ and 500 ml at 55 ₽ are finally comparable.
+- **Products, stores and units** with conversion to a base unit, so 1.5 l at $3.20 and 500 ml at $1.45 are finally comparable.
 - **Spreadsheet import** — bring in a Google Sheets ledger with a preview before anything is written, and automatic nesting of a flat category list. See [docs/spreadsheet-import.md](docs/spreadsheet-import.md).
 - **CSV import** of bank statements.
 - **Full backup and restore** covering every table, guarded by a test that counts every row before export and after restore.
