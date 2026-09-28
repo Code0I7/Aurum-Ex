@@ -99,7 +99,13 @@ function WatchTableRow({ row }: { row: WatchRow }) {
 
   return (
     <tr className="border-b border-border/40">
-      <th className="sticky left-0 z-10 truncate bg-surface-1 py-2 pr-3 text-left font-normal">{row.path}</th>
+      {/* Путь приходит с сервера именами из базы, а стандартные категории
+          хранятся там по-английски: без перевода в русском интерфейсе
+          строка читалась «Dining Out», хотя во всех остальных таблицах —
+          «Кафе и рестораны». Разделитель тот же, что у сервера. */}
+      <th className="sticky left-0 z-10 truncate bg-surface-1 py-2 pr-3 text-left font-normal">
+        {row.path.split(" · ").map(translateCategoryName).join(" · ")}
+      </th>
       {row.months.map((amount, index) => (
         <td key={index} className="px-2 py-2 text-right tabular-nums text-text-secondary">
           {Number(amount) === 0 ? (

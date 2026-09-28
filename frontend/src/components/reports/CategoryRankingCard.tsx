@@ -46,7 +46,10 @@ export function CategoryRankingCard({ items, isLoading, selectedCategoryId, onSe
               return (
                 <li key={item.category_id}>
                   <div
-                    className={`flex items-center gap-1 rounded-lg transition-colors hover:bg-surface-2 ${
+                    /* pr-3: сумма — последнее, что стоит в строке, и без
+                       отступа она упиралась в край карточки, а у выделенной
+                       строки ещё и вылезала за скруглённый угол подсветки. */
+                    className={`flex items-center gap-1 rounded-lg pr-3 transition-colors hover:bg-surface-2 ${
                       isSelected ? "bg-surface-2" : ""
                     }`}
                   >

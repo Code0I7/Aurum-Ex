@@ -1,6 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { formatCurrency, formatSignedCurrency } from "@/lib/format";
+import { formatCurrency, formatQuantity, formatSignedCurrency } from "@/lib/format";
 import type { InvestmentHolding } from "@/types";
 
 interface HoldingListProps {
@@ -36,7 +36,15 @@ export function HoldingList({ items, onOpen }: HoldingListProps) {
             >
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5 truncate text-sm font-medium text-text-primary">
-                  {holding.ticker ?? holding.name}
+                  {/* Название, а не тикер: тикер человек придумывает не
+                      всегда, а называет позицию всегда. Тикер рядом —
+                      пометкой, чтобы список читался и по коду. */}
+                  {holding.name}
+                  {holding.ticker && (
+                    <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-normal text-text-muted">
+                      {holding.ticker}
+                    </span>
+                  )}
                   {/* Продано больше, чем куплено — пропуск в данных.
                       Показывается значком, а не прячется: молчание тут
                       означало бы, что расчёт верен, а он неполон. */}
@@ -45,7 +53,7 @@ export function HoldingList({ items, onOpen }: HoldingListProps) {
                   )}
                 </span>
                 <span className="block truncate text-xs text-text-muted">
-                  {holding.quantity} ×{" "}
+                  {formatQuantity(holding.quantity)} ×{" "}
                   {holding.average_cost
                     ? formatCurrency(holding.average_cost, holding.currency)
                     : "—"}

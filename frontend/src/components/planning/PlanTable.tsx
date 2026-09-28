@@ -116,7 +116,7 @@ function BodyRow({ row, mode }: { row: PlanRow; mode: Mode }) {
           по которой таблицу и читают сверху вниз. */}
       <th
         className="sticky left-0 z-10 truncate bg-surface-1 py-2 pr-3 text-left font-normal"
-        title={row.path}
+        title={row.path.split(" · ").map(translateCategoryName).join(" · ")}
         style={{ paddingLeft: row.depth * 14 }}
       >
         {row.depth > 0 && <span className="mr-1 text-text-muted">└</span>}

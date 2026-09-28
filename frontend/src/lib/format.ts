@@ -118,6 +118,28 @@ export function trimTrailingZeros(value: string): string {
   return trimmed === "" || trimmed === "-" ? "0" : trimmed;
 }
 
+/** Количество бумаг, монет или единиц товара — для показа, не для ввода.
+ *
+ * База хранит количество с запасом знаков после запятой: крипту дробят до
+ * восьмого, а то и до восемнадцатого. Акциям этот запас не нужен, и
+ * «30.00000000 × 4 000,00 ₽» в списке читается как ошибка расчёта, хотя
+ * это просто хвост нулей. Лишние нули отбрасываются, значащие знаки
+ * остаются все до единого.
+ *
+ * Целая часть группируется через Intl, дробная приклеивается строкой:
+ * пропускать её через Number() значило бы округлить настоящее количество
+ * токена в восемнадцать знаков ради красивой записи. */
+export function formatQuantity(value: number | string): string {
+  const trimmed = trimTrailingZeros(String(value));
+  const negative = trimmed.startsWith("-");
+  const [whole, fraction] = trimmed.replace("-", "").split(".");
+  const locale = getIntlLocale();
+  const grouped = new Intl.NumberFormat(locale).format(BigInt(whole || "0"));
+  // Разделитель берётся у самой локали: запятая в русском, точка в английском.
+  const separator = (1.1).toLocaleString(locale).replace(/[0-9]/g, "");
+  return `${negative ? "-" : ""}${grouped}${fraction ? separator + fraction : ""}`;
+}
+
 const MONTH_LABELS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 const MONTH_LABELS_RU = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"] as const;
 

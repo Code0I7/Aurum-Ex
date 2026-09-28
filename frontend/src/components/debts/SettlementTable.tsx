@@ -46,7 +46,7 @@ export function SettlementTable({ items, transit = [] }: SettlementTableProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-muted">
-              <th className="py-2 pr-3 font-medium">{t("debts.people")}</th>
+              <th className="py-2 pr-3 font-medium">{t("debts.person")}</th>
               <th className="py-2 px-3 text-right font-medium">{t("debts.received")}</th>
               <th className="py-2 px-3 text-right font-medium">{t("debts.given")}</th>
               {showTransit && (

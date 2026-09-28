@@ -11,7 +11,7 @@ import {
   useUpdateHolding,
 } from "@/hooks/useInvestments";
 import { useTranslation } from "@/lib/i18n";
-import { formatCurrency, formatSignedCurrency, formatTransactionDate } from "@/lib/format";
+import { formatCurrency, formatQuantity, formatSignedCurrency, formatTransactionDate } from "@/lib/format";
 import type { TradeSide } from "@/types";
 
 interface HoldingDetailModalProps {
@@ -78,7 +78,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Cell label={t("investments.quantity")} value={holding.quantity} />
+            <Cell label={t("investments.quantity")} value={formatQuantity(holding.quantity)} />
             <Cell
               label={t("investments.averageCost")}
               value={
@@ -107,7 +107,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
 
           {Number(holding.oversold) > 0 && (
             <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-              {t("investments.oversoldWarning", { quantity: holding.oversold })}
+              {t("investments.oversoldWarning", { quantity: formatQuantity(holding.oversold) })}
             </p>
           )}
 
@@ -205,7 +205,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                       {lot.acquired_on ? formatTransactionDate(lot.acquired_on, true) : "—"}
                     </span>
                     <span className="tabular-nums">
-                      {lot.quantity} × {formatCurrency(lot.cost_per_unit, holding.currency)}
+                      {formatQuantity(lot.quantity)} × {formatCurrency(lot.cost_per_unit, holding.currency)}
                     </span>
                   </li>
                 ))}
@@ -220,7 +220,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                   <li key={disposal.trade_id} className="rounded-md border border-border p-2">
                     <div className="flex justify-between gap-3">
                       <span className="text-text-muted">
-                        {formatTransactionDate(disposal.trade_date, true)} · {disposal.quantity}
+                        {formatTransactionDate(disposal.trade_date, true)} · {formatQuantity(disposal.quantity)}
                       </span>
                       <span
                         className={`font-medium tabular-nums ${
@@ -234,7 +234,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                       {disposal.lots.map((lot, index) => (
                         <li key={index}>
                           {t("investments.fromLot", {
-                            quantity: lot.quantity,
+                            quantity: formatQuantity(lot.quantity),
                             price: formatCurrency(lot.cost_per_unit, holding.currency),
                             date: lot.acquired_on ? formatTransactionDate(lot.acquired_on, true) : "—",
                           })}
@@ -253,7 +253,7 @@ export function HoldingDetailModal({ holdingId, onClose }: HoldingDetailModalPro
                 <li key={trade.id} className="flex items-center justify-between gap-2 py-1.5">
                   <span className="min-w-0">
                     <span className="block text-text-secondary">
-                      {t(`investments.${trade.side}` as never)} {trade.quantity} ×{" "}
+                      {t(`investments.${trade.side}` as never)} {formatQuantity(trade.quantity)} ×{" "}
                       {formatCurrency(trade.price_per_unit, holding.currency)}
                     </span>
                     <span className="block text-xs text-text-muted">
