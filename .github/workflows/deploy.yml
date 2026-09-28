@@ -1,0 +1,55 @@
+# Доставка на сервер после зелёного CI.
+#
+# Запускается только по успешному прогону CI на main и только для этого
+# репозитория: у pull request из чужого форка секретов нет — так устроен
+# GitHub, и это здесь главная защита. Развернуть можно и руками, кнопкой
+# «Run workflow».
+#
+# Что видно публично: сам этот файл и журнал прогона. Адрес сервера,
+# пользователь и ключ лежат в секретах репозитория, в журнал не попадают и
+# в файле не написаны. Ключ развёртывания на сервере ограничен одной
+# командой (command="/root/aurum-deploy.sh" в authorized_keys): даже утекший,
+# он умеет только развернуть то, что лежит в origin/main, — ни оболочки, ни
+# доступа к соседним контейнерам он не даёт.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Две доставки подряд не толкаются: вторая ждёт, пока закончится первая.
+# Отменять начатую нельзя — на середине пересборки контейнеры уже подменены.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Развернуть на сервере
+    if: >-
+      github.repository == 'Code0I7/Aurum-Ex' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ключ и отпечаток сервера
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Отпечаток обязателен: без него ssh либо спросит подтверждение и
+          # повиснет, либо согласится на любой сервер, который ответит.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Развернуть
+        env:
+          DEPLOY_TARGET: ${{ secrets.DEPLOY_TARGET }}
+        # Команда не передаётся: сервер сам знает, что запускать по этому
+        # ключу. Всё, что пришло бы отсюда, он бы проигнорировал.
+        run: ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes "$DEPLOY_TARGET" deploy

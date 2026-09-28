@@ -162,7 +162,7 @@ async def test_expense_entered_again_for_a_recorded_transfer(client: AsyncClient
 async def test_the_same_transfer_twice_keeps_the_earlier_one(client: AsyncClient):
     first = await _account(client, "Первый банк")
     second = await _account(client, "Второй банк")
-    earlier = await _transfer(client, first, second, "2026-02-28", description="Из выписки Первый банк")
+    earlier = await _transfer(client, first, second, "2026-02-28", description="Из выписки первого банка")
     later = await _transfer(client, first, second, "2026-02-27")
 
     matches = (await client.get(MATCHES)).json()

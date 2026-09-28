@@ -8,6 +8,13 @@ on:
   push:
     branches: [main]
 
+# Пуш поверх ещё идущего прогона отменяет старый: проверять промежуточное
+# состояние ветки незачем, а минуты раннера не бесконечны даже там, где они
+# бесплатны.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
