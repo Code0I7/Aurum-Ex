@@ -336,6 +336,10 @@ class AppSettingsBackup(BaseModel):
     day_dividers_by_default: bool = True
     default_account_id: int | None = None
     show_cents: bool = True
+    # Язык установки. Со значением по умолчанию, как и всё, что появилось
+    # после первой версии формата: копия, снятая раньше, восстанавливается
+    # без правки файла.
+    language: str = "ru"
 
 
 # --- Справочники и разделы Aurum-Ex ---

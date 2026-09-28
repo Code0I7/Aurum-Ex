@@ -5,7 +5,7 @@ import { PageActionsProvider } from "@/components/layout/PageActions";
 import { Topbar } from "@/components/layout/Topbar";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { useAppSettings } from "@/hooks/useSettings";
-import { setCurrency, setShowCents } from "@/lib/i18n";
+import { applyInstallLanguage, setCurrency, setShowCents } from "@/lib/i18n";
 import { AccountsPage } from "@/pages/AccountsPage";
 import { AdvicePage } from "@/pages/AdvicePage";
 import { BudgetPage } from "@/pages/BudgetPage";
@@ -41,6 +41,8 @@ export default function App() {
     if (!settings) return;
     setCurrency(settings.currency);
     setShowCents(settings.show_cents);
+    // Язык установки — только для браузера, где выбора ещё не делали.
+    applyInstallLanguage(settings.language);
   }, [settings]);
 
   return (

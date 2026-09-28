@@ -5,6 +5,8 @@
 сам: первичная настройка работает ровно один раз, вход считает неудачные
 попытки, смена пароля требует текущего, сброс — аварийного ключа.
 """
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +26,7 @@ from app.services.auth_service import (
     reset_password_with_recovery_key,
     resolve_session,
 )
+from app.services.setup_service import apply_first_run_choice
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,6 +34,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class SetupRequest(BaseModel):
     username: str = Field(default="admin", min_length=1, max_length=100)
     password: str = Field(min_length=8, max_length=200)
+    # Язык и валюта установки. Необязательны: старый фронтенд их не шлёт, и
+    # настройка от этого ломаться не должна — тогда действуют значения по
+    # умолчанию, как было раньше.
+    language: Literal["ru", "en"] | None = None
+    currency: str | None = Field(default=None, min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
 
 
 class LoginRequest(BaseModel):
@@ -102,8 +110,15 @@ async def setup(
     """Первичная настройка: задаёт пароль и сразу впускает.
 
     Открыта без входа по необходимости и закрывается сама — второй вызов
-    отвечает 409 (см. auth_service.create_admin)."""
+    отвечает 409 (см. auth_service.create_admin).
+
+    Здесь же применяется выбор языка и валюты: другого момента, когда
+    приложение уже работает, а данных ещё нет, не будет (см.
+    services/setup_service.py). Порядок важен — сначала учётная запись:
+    если она не создалась, второй вызов настройки должен застать установку
+    нетронутой."""
     user = await create_admin(session, payload.username, payload.password)
+    await apply_first_run_choice(session, language=payload.language, currency=payload.currency)
     token = await authenticate(
         session,
         payload.username,

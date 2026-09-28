@@ -49,15 +49,25 @@ DEFAULT_CURRENCIES: list[tuple[str, str | None, str | None, int]] = [
 # Базовая мера — та, в которой человек сравнивает цены в магазине:
 # килограмм, литр, штука, метр. Грамм и миллилитр в этой роли давали
 # «0,074 за миллилитр» — арифметически верно и бесполезно.
+# (имя по-русски, имя по-английски, вид, коэффициент к базовой, базовая ли)
+#
+# Набор метрический и общемировой: галлонов, унций и пинт здесь намеренно
+# нет. Это не отказ от них — единицы заводятся руками в справочнике за
+# полминуты, — а выбор того, что предлагать по умолчанию: метрическую меру
+# поймут везде, а галлон за пределами двух стран читается как загадка.
+#
+# Имена на двух языках, потому что засев идёт на сервере, а язык до сих пор
+# жил только в браузере: до этой пары «кг» и «шт» доставались и тому, кто
+# открыл приложение по-английски.
 DEFAULT_UNITS = [
-    ("кг", UnitKind.MASS, Decimal("1"), True),
-    ("г", UnitKind.MASS, Decimal("0.001"), False),
-    ("л", UnitKind.VOLUME, Decimal("1"), True),
-    ("мл", UnitKind.VOLUME, Decimal("0.001"), False),
-    ("шт", UnitKind.COUNT, Decimal("1"), True),
-    ("упак", UnitKind.COUNT, Decimal("1"), False),
-    ("м", UnitKind.LENGTH, Decimal("1"), True),
-    ("оплата", UnitKind.SERVICE, Decimal("1"), True),
+    ("кг", "kg", UnitKind.MASS, Decimal("1"), True),
+    ("г", "g", UnitKind.MASS, Decimal("0.001"), False),
+    ("л", "l", UnitKind.VOLUME, Decimal("1"), True),
+    ("мл", "ml", UnitKind.VOLUME, Decimal("0.001"), False),
+    ("шт", "pcs", UnitKind.COUNT, Decimal("1"), True),
+    ("упак", "pack", UnitKind.COUNT, Decimal("1"), False),
+    ("м", "m", UnitKind.LENGTH, Decimal("1"), True),
+    ("оплата", "service", UnitKind.SERVICE, Decimal("1"), True),
 ]
 
 # (name, icon, color) — order doubles as sort_order / palette slot index.
@@ -135,16 +145,56 @@ async def seed_default_currencies(session: AsyncSession) -> None:
     await session.commit()
 
 
-async def seed_default_units(session: AsyncSession) -> None:
-    """Единицы измерения с коэффициентом приведения к базе своего вида."""
+async def seed_default_units(session: AsyncSession, language: str = "ru") -> None:
+    """Единицы измерения с коэффициентом приведения к базе своего вида.
+
+    Язык берётся из настроек установки, а на самом первом запуске его ещё
+    никто не выбирал — тогда засев идёт по-русски, а выбор на экране
+    первичной настройки переименовывает набор (см. rename_default_units).
+    Переносить засев целиком на момент настройки нельзя: установка с
+    заданным в .env паролем этот экран не показывает вовсе."""
     existing = await session.execute(select(Unit.id).limit(1))
     if existing.first() is not None:
         return
 
-    for order, (name, kind, factor, is_base) in enumerate(DEFAULT_UNITS):
+    for order, (name_ru, name_en, kind, factor, is_base) in enumerate(DEFAULT_UNITS):
+        name = name_en if language == "en" else name_ru
         session.add(Unit(name=name, kind=kind, factor=factor, is_base=is_base, sort_order=order))
 
     await session.commit()
+
+
+async def rename_default_units(session: AsyncSession, language: str) -> int:
+    """Переводит стандартные единицы на выбранный язык.
+
+    Переименовывается только то, что совпадает с засеянным именем другого
+    языка: «кг» → «kg», но «банка», заведённая человеком, остаётся банкой.
+    Ровно то же и с единицей, которую человек переименовал сам, — совпадения
+    не будет, и правка переживёт смену языка.
+
+    Возвращает число переименованных строк: вызывающему это нужно только для
+    журнала и тестов."""
+    names = {
+        (name_ru if language == "en" else name_en): (name_en if language == "en" else name_ru)
+        for name_ru, name_en, _kind, _factor, _base in DEFAULT_UNITS
+    }
+    units = (await session.execute(select(Unit))).scalars().all()
+    taken = {unit.name for unit in units}
+    renamed = 0
+    for unit in units:
+        replacement = names.get(unit.name)
+        # Занятое имя не трогаем: имя единицы уникально, и переименование
+        # упало бы на ограничении базы.
+        if replacement is None or replacement in taken:
+            continue
+        taken.discard(unit.name)
+        taken.add(replacement)
+        unit.name = replacement
+        renamed += 1
+
+    if renamed:
+        await session.commit()
+    return renamed
 
 
 async def seed_default_account(session: AsyncSession) -> None:

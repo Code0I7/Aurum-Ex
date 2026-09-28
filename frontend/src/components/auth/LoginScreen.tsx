@@ -1,10 +1,17 @@
 import { type FormEvent, useState } from "react";
 import { Logo } from "@/components/layout/Logo";
+import { PillSelector } from "@/components/layout/PillSelector";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
-import { Input, Label } from "@/components/ui/Input";
+import { Input, Label, Select } from "@/components/ui/Input";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import { completeSetup, login, recoverPassword } from "@/lib/auth";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type Language } from "@/lib/i18n";
+
+/** Валюта, предлагаемая по умолчанию для выбранного языка. Не «угадывание
+ *  страны по языку» — просто наиболее вероятный ответ, который человек
+ *  тут же и меняет, если он не тот. */
+const DEFAULT_CURRENCY: Record<Language, string> = { ru: "RUB", en: "USD" };
 
 type Mode = "login" | "setup" | "recover";
 
@@ -22,7 +29,7 @@ type Mode = "login" | "setup" | "recover";
  * HttpOnly-куке — на клиенте он нигде не сохраняется.
  */
 export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mode; recoveryAvailable: boolean }) {
-  const { t } = useTranslation();
+  const { t, language, setLanguage } = useTranslation();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
@@ -30,9 +37,18 @@ export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mo
   const [recoveryKey, setRecoveryKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Пусто — значит валюту ещё не трогали, и она следует за языком. После
+  // первого же выбора язык на неё больше не влияет: человек мог выбрать
+  // русский интерфейс и лей, и переключение языка не должно это отменять.
+  const [currency, setCurrency] = useState<string | null>(null);
 
   const isSetup = mode === "setup";
   const isRecover = mode === "recover";
+  const chosenCurrency = currency ?? DEFAULT_CURRENCY[language];
+  const languageOptions: Array<{ value: Language; label: string }> = [
+    { value: "ru", label: t("settings.languageRussian") },
+    { value: "en", label: t("settings.languageEnglish") },
+  ];
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -48,7 +64,7 @@ export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mo
 
     setBusy(true);
     try {
-      if (isSetup) await completeSetup(username, password);
+      if (isSetup) await completeSetup(username, password, language, chosenCurrency);
       else if (isRecover) await recoverPassword(recoveryKey, password);
       else await login(username, password);
 
@@ -80,6 +96,40 @@ export function LoginScreen({ mode: initialMode, recoveryAvailable }: { mode: Mo
           </div>
 
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
+            {/* Язык и валюта — только на первом запуске. Это единственный
+                момент, когда приложение уже работает, а данных ещё нет:
+                дальше валюту меняют в настройках, но начальный выбор
+                избавляет от правки счёта и единиц сразу после установки.
+                Язык переключает и сам экран — иначе выбор делался бы
+                вслепую. */}
+            {isSetup && (
+              <>
+                <div>
+                  <Label htmlFor="setup-language">{t("settings.language")}</Label>
+                  <PillSelector
+                    options={languageOptions}
+                    value={language}
+                    onChange={(next) => setLanguage(next)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="setup-currency">{t("settings.currency")}</Label>
+                  <Select
+                    id="setup-currency"
+                    value={chosenCurrency}
+                    onChange={(event) => setCurrency(event.target.value)}
+                  >
+                    {CURRENCIES.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {getCurrencyLabel(option.code, language)}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-text-muted">{t("auth.setupCurrencyHint")}</p>
+                </div>
+              </>
+            )}
+
             {!isRecover && (
               <div>
                 <Label htmlFor="auth-username">{t("auth.usernameLabel")}</Label>

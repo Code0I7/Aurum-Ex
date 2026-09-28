@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field
 
 class AppSettingsRead(BaseModel):
     currency: str
+    # Язык установки. Браузер, в котором язык уже выбирали, живёт со своим
+    # выбором; этот нужен новому браузеру и серверному засеву.
+    language: str = "ru"
     negative_cash_flow_threshold_months: int
     net_worth_decline_threshold_months: int
     risky_allocation_threshold_percent: int
@@ -39,6 +42,9 @@ class AppSettingsUpdate(BaseModel):
     # values from its curated currency list, but validate the shape anyway
     # since Intl.NumberFormat would otherwise silently accept garbage.
     currency: str | None = Field(default=None, min_length=3, max_length=3, pattern=r"^[A-Z]{3}$")
+    # Язык установки: сюда его пишет переключатель в настройках, чтобы
+    # следующее устройство открылось на том же языке.
+    language: Literal["ru", "en"] | None = None
     # Consecutive complete months before the corresponding alert fires.
     # Capped at 24 to match insights_service.py's MAX_LOOKBACK_MONTHS.
     negative_cash_flow_threshold_months: int | None = Field(default=None, ge=1, le=24)

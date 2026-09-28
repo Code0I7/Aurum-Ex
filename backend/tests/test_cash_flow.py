@@ -122,8 +122,8 @@ async def test_opening_balance_counts_as_earned(client: AsyncClient, categories)
     assert Decimal(january["opening"]) == Decimal("5210.40")
 
     # Сальдо за весь период совпадает с остатком на счёте — ради этого всё и
-    # затевалось.
-    assert Decimal(data["total_net"]) == Decimal("6354.71")
+    # затевалось: 5210,40 начального остатка минус тысяча расхода.
+    assert Decimal(data["total_net"]) == Decimal("4210.40")
     assert Decimal(data["total_opening"]) == Decimal("5210.40")
 
     accounts = (await client.get("/accounts")).json()

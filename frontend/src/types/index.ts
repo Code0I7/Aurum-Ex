@@ -978,6 +978,10 @@ export interface CryptoHistoryResponse {
 
 export interface AppSettings {
   currency: string;
+  // Язык установки: выбирается при первом запуске и служит языком по
+  // умолчанию для браузера, где выбора ещё не делали. Личный выбор в
+  // настройках сильнее и пишется сюда же.
+  language: "ru" | "en";
   negative_cash_flow_threshold_months: number;
   net_worth_decline_threshold_months: number;
   risky_allocation_threshold_percent: number;

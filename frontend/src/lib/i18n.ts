@@ -510,6 +510,7 @@ const ru = {
   "auth.errorInvalidCredentials": "Неверный логин или пароль",
   "auth.errorUnreachable": "Не удалось подключиться к серверу. Проверьте соединение и попробуйте снова.",
   "auth.setupSubtitle": "Задайте пароль для входа",
+  "auth.setupCurrencyHint": "Валюта, в которой считаются итоги. Её можно сменить и потом — в настройках.",
   "auth.setupButton": "Создать и войти",
   "auth.newPasswordLabel": "Новый пароль",
   "auth.confirmPasswordLabel": "Повторите пароль",
@@ -1683,6 +1684,7 @@ const en: Record<keyof typeof ru, string> = {
   "auth.errorInvalidCredentials": "Incorrect username or password",
   "auth.errorUnreachable": "Couldn't reach the server. Check your connection and try again.",
   "auth.setupSubtitle": "Choose a password to sign in",
+  "auth.setupCurrencyHint": "The currency the totals are counted in. It can be changed later in settings.",
   "auth.setupButton": "Create and sign in",
   "auth.newPasswordLabel": "New password",
   "auth.confirmPasswordLabel": "Repeat password",
@@ -2350,6 +2352,19 @@ function readInitialLanguage(): Language {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored === "ru" || stored === "en") return stored;
   return "ru";
+}
+
+/** Язык установки, пришедший с сервера.
+ *
+ * Применяется только там, где в этом браузере язык ещё не выбирали: выбор
+ * человека сильнее выбора установки, иначе переключатель в настройках
+ * отменялся бы на каждой перезагрузке. Зато новый телефон открывается на
+ * том языке, на котором работают, а не на русском по умолчанию. */
+export function applyInstallLanguage(language: Language): void {
+  if (localStorage.getItem(STORAGE_KEY)) return;
+  if (language === currentLanguage) return;
+  currentLanguage = language;
+  listeners.forEach((listener) => listener());
 }
 
 let currentLanguage: Language = readInitialLanguage();

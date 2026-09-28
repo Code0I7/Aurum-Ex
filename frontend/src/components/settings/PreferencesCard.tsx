@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/Card";
 import { PillSelector } from "@/components/layout/PillSelector";
 import { HelpBadge } from "@/components/ui/HelpBadge";
+import { useUpdateAppSettings } from "@/hooks/useSettings";
 import { useTranslation, type Language } from "@/lib/i18n";
 import { useTheme, type Theme } from "@/lib/theme";
 import { DESIGNS, useDesign, type Design } from "@/lib/design";
@@ -15,7 +16,17 @@ import { SCALES, useScale, type Scale } from "@/lib/scale";
  * характер, потом светло или темно. */
 export function PreferencesCard() {
   const { t, language, setLanguage } = useTranslation();
+  const updateSettings = useUpdateAppSettings();
   const { theme, setTheme } = useTheme();
+
+  /** Язык переключается в браузере сразу, а на сервер уходит как язык
+   *  установки: следующее устройство откроется на нём же, не переспрашивая.
+   *  Ответа не ждём — интерфейс не должен замирать из-за настройки, которая
+   *  на этом экране уже применилась. */
+  const changeLanguage = (next: Language) => {
+    setLanguage(next);
+    updateSettings.mutate({ language: next });
+  };
   const { design, setDesign } = useDesign();
   const { scale, setScale } = useScale();
 
@@ -46,7 +57,7 @@ export function PreferencesCard() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t("settings.language")}</p>
           <div className="mt-2">
-            <PillSelector options={languageOptions} value={language} onChange={setLanguage} />
+            <PillSelector options={languageOptions} value={language} onChange={changeLanguage} />
           </div>
         </div>
         <div className="pt-5 sm:pl-6 sm:pt-0">

@@ -94,8 +94,15 @@ export async function login(username: string, password: string): Promise<AuthSta
   return adopt(await post<AuthStateResponse>("/auth/login", { username, password }));
 }
 
-export async function completeSetup(username: string, password: string): Promise<AuthState> {
-  return adopt(await post<AuthStateResponse>("/auth/setup", { username, password }));
+/** Первичная настройка: пароль, а заодно язык и валюта установки. Язык и
+ *  валюта необязательны — без них сервер оставляет свои значения. */
+export async function completeSetup(
+  username: string,
+  password: string,
+  language?: string,
+  currency?: string
+): Promise<AuthState> {
+  return adopt(await post<AuthStateResponse>("/auth/setup", { username, password, language, currency }));
 }
 
 export async function logout(): Promise<void> {
