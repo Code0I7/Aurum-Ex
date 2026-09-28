@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useCreatePlan, useUpdatePlan } from "@/hooks/usePlans";
+import { newRowKey } from "@/lib/rowKey";
 import { useCategories } from "@/hooks/useCategories";
 import { useTranslation } from "@/lib/i18n";
 import { DEFAULT_RECURRENCE, type Recurrence } from "@/lib/recurrence";
@@ -42,7 +43,7 @@ interface PeriodRow {
 
 function emptyPeriod(validFrom = ""): PeriodRow {
   return {
-    key: crypto.randomUUID(),
+    key: newRowKey(),
     amount: "",
     valid_from: validFrom,
     valid_to: "",
@@ -95,7 +96,7 @@ export function PlanFormModal({ open, onClose, plan }: PlanFormModalProps) {
       });
       setPeriods(
         plan.periods.map((period) => ({
-          key: crypto.randomUUID(),
+          key: newRowKey(),
           amount: period.amount,
           valid_from: period.valid_from,
           valid_to: period.valid_to ?? "",

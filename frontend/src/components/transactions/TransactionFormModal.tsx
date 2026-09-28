@@ -19,6 +19,7 @@ import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
 import { useCreateTransaction, useUpdateTransaction } from "@/hooks/useTransactions";
 import { useTranslation } from "@/lib/i18n";
+import { newRowKey } from "@/lib/rowKey";
 import {
   buildHierarchicalCategories,
   translateCategoryName,
@@ -116,7 +117,7 @@ interface SplitRowState {
 }
 
 function emptySplitRow(): SplitRowState {
-  return { key: crypto.randomUUID(), category_id: "", amount: "", note: "" };
+  return { key: newRowKey(), category_id: "", amount: "", note: "" };
 }
 
 /** Доля одного человека в операции, разделённой между несколькими: долг
@@ -128,7 +129,7 @@ interface PersonRowState {
 }
 
 function emptyPersonRow(): PersonRowState {
-  return { key: crypto.randomUUID(), counterparty_id: "", amount: "" };
+  return { key: newRowKey(), counterparty_id: "", amount: "" };
 }
 
 // Cents, not floats — a plain Number sum of "0.10" + "0.20" style amounts can

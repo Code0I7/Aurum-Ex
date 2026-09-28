@@ -1,7 +1,7 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useTranslation, getLanguage } from "@/lib/i18n";
-import { formatCurrency, formatSignedCurrency, getMonthLabels } from "@/lib/format";
+import { formatCurrency, formatSignedCurrency, getIntlLocale, getMonthLabels } from "@/lib/format";
 import type { DashboardMonthPoint } from "@/types";
 import { ChartTooltipBox } from "@/components/charts/ChartTooltipBox";
 import { BAR_CURSOR } from "@/components/charts/cursors";
@@ -47,11 +47,21 @@ export function MonthlyFlowCard({ points }: { points: DashboardMonthPoint[] }) {
                 stroke="var(--gridline)"
                 interval="preserveStartEnd"
               />
+              {/* Подписи оси — короткой записью: «110 тыс.» вместо
+                  «110 000,00 ₽». Полная запись в шестизначные суммы не
+                  помещалась и обрезалась слева, превращая 110 000 в 10 000 —
+                  число, которого на графике нет. Точные суммы человек
+                  читает в подсказке, а ось нужна для порядка величин. */}
               <YAxis
                 tick={{ fontSize: 11, fill: "var(--text-muted)" }}
                 stroke="var(--gridline)"
-                width={64}
-                tickFormatter={(value: number) => formatCurrency(Math.abs(value))}
+                width={52}
+                tickFormatter={(value: number) =>
+                  new Intl.NumberFormat(getIntlLocale(), {
+                    notation: "compact",
+                    maximumFractionDigits: 1,
+                  }).format(Math.abs(value))
+                }
               />
               <Tooltip
                 isAnimationActive={false}
