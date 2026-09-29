@@ -82,13 +82,33 @@ export function CreditList({ items, onEdit }: CreditListProps) {
               label={t("debts.paymentDay")}
               value={item.payment_day ? t("debts.paymentDayValue", { day: item.payment_day }) : null}
             />
+            {/* Минимальный платёж — то, что реально придётся заплатить в
+                этом месяце, а рядом правило, по которому он вышел: без
+                правила число нечем проверить, без числа правило нечем
+                применить. */}
             <Row
               label={t("debts.minimumPayment")}
               value={
-                item.minimum_payment
-                  ? formatCurrency(item.minimum_payment, item.account_currency)
+                item.minimum_payment_due
+                  ? formatCurrency(item.minimum_payment_due, item.account_currency)
+                  : item.minimum_payment
+                    ? formatCurrency(item.minimum_payment, item.account_currency)
+                    : null
+              }
+            />
+            <Row
+              label={t("debts.minimumRule")}
+              value={
+                item.minimum_payment_percent
+                  ? t("debts.minimumRuleValue", {
+                      percent: Number(item.minimum_payment_percent),
+                      floor: item.minimum_payment
+                        ? formatCurrency(item.minimum_payment, item.account_currency)
+                        : "—",
+                    })
                   : null
               }
+              muted
             />
             <Row
               label={t("debts.monthlyInterest")}
@@ -106,7 +126,28 @@ export function CreditList({ items, onEdit }: CreditListProps) {
             />
           </dl>
 
-          {item.notes && <p className="mt-2 text-xs text-text-muted">{item.notes}</p>}
+          {/* Матрица ставок: снятие наличных стоит вдвое дороже покупок, и
+              вспоминают об этом обычно уже после снятия. */}
+          {item.rates.length > 0 && (
+            <ul className="mt-2 space-y-0.5 border-t border-border pt-2 text-xs">
+              {item.rates.map((rate) => (
+                <li key={rate.id} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate text-text-muted">
+                    {rate.name}
+                    {rate.condition ? ` · ${rate.condition}` : ""}
+                  </span>
+                  <span className="shrink-0 tabular-nums">{Number(rate.percent)}%</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Заметка в несколько строк: платы, бесплатные лимиты, неустойка.
+              whitespace-pre-line — чтобы переносы, которые человек поставил
+              сам, остались переносами. */}
+          {item.notes && (
+            <p className="mt-2 whitespace-pre-line text-xs text-text-muted">{item.notes}</p>
+          )}
         </li>
       ))}
     </ul>

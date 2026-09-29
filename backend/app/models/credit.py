@@ -22,7 +22,7 @@ estimate — never to pretend it knows the bank's number.
 from datetime import date as date_
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -44,10 +44,56 @@ class CreditTerms(Base, TimestampMixin):
     grace_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # День месяца, когда банк ждёт платёж, и его минимальный размер.
     payment_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Минимальный платёж задаётся двумя числами, потому что банки так его и
+    # задают: «не более 8% от задолженности, минимум 600 рублей». Процент
+    # без порога и порог без процента тоже осмысленны, поэтому оба
+    # необязательны и работают по отдельности.
     minimum_payment: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    minimum_payment_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
 
     opened_on: Mapped[date_ | None] = mapped_column(Date, nullable=True)
     closes_on: Mapped[date_ | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     account: Mapped["Account"] = relationship()
+    # Ставки, кроме основной. Основная остаётся в annual_rate_percent: по ней
+    # считается прикидка процентов, и сводке нужна одна цифра, а не список.
+    rates: Mapped[list["CreditRate"]] = relationship(
+        back_populates="terms",
+        cascade="all, delete-orphan",
+        order_by="CreditRate.sort_order",
+        lazy="selectin",
+    )
+
+
+class CreditRate(Base):
+    """Одна строка матрицы ставок.
+
+    В тарифе кредитной карты ставок семь, и какая применится, зависит от
+    двух вещей: что за операция (покупка, снятие наличных, плата) и когда
+    она была (первые тридцать дней с первой расходной операции или позже).
+    Свести это к одному числу нельзя — выбранное число окажется верным для
+    одной строки тарифа и неверным для шести остальных.
+
+    Расчётам матрица не нужна: проценты приложение не начисляет, а лишь
+    прикидывает по основной ставке. Она нужна человеку — в тот момент,
+    когда он думает, снять ли наличные с кредитки, и не хочет открывать
+    договор.
+    """
+
+    __tablename__ = "credit_rates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("credit_terms.account_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Что это за операция: «Покупки», «Снятие наличных», «Платы и прочее».
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    percent: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False)
+    # Когда применяется: «с 31-го дня», «в первые 30 дней», «в льготный
+    # период». Необязательно: у рассрочки условие одно и описывать его
+    # нечем.
+    condition: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    terms: Mapped["CreditTerms"] = relationship(back_populates="rates")

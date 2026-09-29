@@ -26,7 +26,7 @@ from app.models.asset import Asset, AssetValuation
 from app.models.budget import Budget
 from app.models.category import Category
 from app.models.counterparty import Counterparty
-from app.models.credit import CreditTerms
+from app.models.credit import CreditRate, CreditTerms
 from app.models.crypto import CryptoHolding, CryptoPortfolio, CryptoTransaction
 from app.models.currency import Currency, ExchangeRate
 from app.models.investment import InvestmentHolding, InvestmentPortfolio, InvestmentTrade
@@ -58,6 +58,7 @@ from app.schemas.backup import (
     BudgetBackup,
     CategoryBackup,
     CounterpartyBackup,
+    CreditRateBackup,
     CreditTermsBackup,
     CurrencyBackup,
     CryptoHoldingBackup,
@@ -120,6 +121,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
     products = (await session.execute(select(Product))).scalars().all()
     transaction_items = (await session.execute(select(TransactionItem))).scalars().all()
     credit_terms = (await session.execute(select(CreditTerms))).scalars().all()
+    credit_rates = (await session.execute(select(CreditRate))).scalars().all()
     plans = (await session.execute(select(Plan))).scalars().all()
     plan_periods = (await session.execute(select(PlanPeriod))).scalars().all()
     work_periods = (await session.execute(select(WorkPeriod))).scalars().all()
@@ -166,6 +168,7 @@ async def build_backup(session: AsyncSession) -> BackupPayload:
         products=[ProductBackup.model_validate(row) for row in products],
         transaction_items=[TransactionItemBackup.model_validate(row) for row in transaction_items],
         credit_terms=[CreditTermsBackup.model_validate(row) for row in credit_terms],
+        credit_rates=[CreditRateBackup.model_validate(row) for row in credit_rates],
         plans=[PlanBackup.model_validate(row) for row in plans],
         plan_periods=[PlanPeriodBackup.model_validate(row) for row in plan_periods],
         work_periods=[WorkPeriodBackup.model_validate(row) for row in work_periods],
@@ -303,6 +306,8 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await session.execute(delete(WorkPeriod))
         await session.execute(delete(PlanPeriod))
         await session.execute(delete(Plan))
+        # Ставки раньше условий: внешний ключ смотрит на них.
+        await session.execute(delete(CreditRate))
         await session.execute(delete(CreditTerms))
         await session.execute(delete(TransactionItem))
         await session.execute(delete(Product))
@@ -381,6 +386,9 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         session.add_all(Product(**row.model_dump()) for row in payload.products)
         session.add_all(TransactionItem(**row.model_dump()) for row in payload.transaction_items)
         session.add_all(CreditTerms(**row.model_dump()) for row in payload.credit_terms)
+        # Ставки после условий: внешний ключ смотрит на credit_terms.
+        await session.flush()
+        session.add_all(CreditRate(**row.model_dump()) for row in payload.credit_rates)
         session.add_all(Plan(**row.model_dump()) for row in payload.plans)
         # Отрезки после планов: внешний ключ смотрит на план, и обратный
         # порядок не прошёл бы даже до конца транзакции.

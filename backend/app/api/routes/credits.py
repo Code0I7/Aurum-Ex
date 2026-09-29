@@ -10,7 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
-from app.schemas.credit import CreditSummary, CreditTermsRead, CreditTermsWrite
+from app.schemas.credit import (
+    CreditPlanRequest,
+    CreditPlanResponse,
+    CreditSummary,
+    CreditTermsRead,
+    CreditTermsWrite,
+)
+from app.services.credit_plan_service import build_plan
 from app.services.credit_service import (
     delete_credit_terms,
     get_credit_summary,
@@ -34,6 +41,17 @@ async def read_credit_summary(session: AsyncSession = Depends(get_session)) -> C
         debt=totals["debt"],
         estimated_monthly_interest=totals["estimated_monthly_interest"],
     )
+
+
+@router.post("/credits/plan", response_model=CreditPlanResponse)
+async def plan_credit(payload: CreditPlanRequest) -> CreditPlanResponse:
+    """Калькулятор: «взял столько-то — что будет дальше».
+
+    Ничего не читает и не пишет, поэтому и сессия не нужна. Живёт на
+    сервере, а не в браузере, по одной причине: расчёт переплаты — то
+    место, где ошибка стоит дорого, а на сервере он покрыт тестами.
+    """
+    return build_plan(payload)
 
 
 @router.get("/accounts/{account_id}/credit-terms", response_model=CreditTermsRead)

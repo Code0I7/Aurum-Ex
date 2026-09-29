@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { TransitByPersonCard } from "@/components/debts/TransitByPersonCard";
 import { SettlementTable } from "@/components/debts/SettlementTable";
 import { CreditList } from "@/components/debts/CreditList";
+import { CreditCalculator } from "@/components/debts/CreditCalculator";
 import { CreditTermsModal } from "@/components/debts/CreditTermsModal";
+import { PillSelector } from "@/components/layout/PillSelector";
 import { useAccounts } from "@/hooks/useAccounts";
 import {
   useCredits,
@@ -46,6 +48,10 @@ export function DebtsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTerms, setEditingTerms] = useState<CreditTerms | null>(null);
+  // Калькулятор вкладкой, а не карточкой в общей ленте: он отвечает на
+  // вопрос «брать или не брать», который задают до того, как долг
+  // появился, и мешать его с картиной уже случившихся долгов не стоит.
+  const [view, setView] = useState<"debts" | "calculator">("debts");
 
   // Кандидаты на заведение условий — счета-обязательства, у которых условий
   // ещё нет. Счёт с условиями в список не попадает: его правят карандашом на
@@ -67,8 +73,24 @@ export function DebtsPage() {
     setModalOpen(true);
   }
 
+  const viewOptions: Array<{ value: "debts" | "calculator"; label: string }> = [
+    { value: "debts", label: t("debts.viewDebts") },
+    { value: "calculator", label: t("credit.calculatorTab") },
+  ];
+
+  if (view === "calculator") {
+    return (
+      <div className="space-y-5">
+        <PillSelector options={viewOptions} value={view} onChange={setView} />
+        <CreditCalculator />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      <PillSelector options={viewOptions} value={view} onChange={setView} />
+
       {/* Три числа сверху: сколько должны вам, сколько должны вы людям,
           сколько банкам. Долг банку и долг брату разделены намеренно —
           у первого есть ставка, и он растёт сам. */}

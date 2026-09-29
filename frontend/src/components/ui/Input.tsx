@@ -3,6 +3,7 @@ import type {
   LabelHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
+  TextareaHTMLAttributes,
 } from "react";
 import { HelpBadge } from "@/components/ui/HelpBadge";
 import type { TranslationKey } from "@/lib/i18n";
@@ -13,6 +14,21 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
     <input
       className={cn(
         "h-9 w-full rounded-lg border border-border bg-surface-1 px-3 text-sm text-text-primary outline-none focus:border-series-1",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Многострочное поле там, где текст заведомо не в одну строку: условия
+ *  по кредиту, заметка к цели. Высота задаётся строками, а не пикселями,
+ *  чтобы поле следовало за размером интерфейса. */
+export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn(
+        "w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm text-text-primary outline-none focus:border-series-1",
         className
       )}
       {...props}

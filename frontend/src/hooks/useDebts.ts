@@ -7,9 +7,10 @@ import {
   fetchSettlementSummary,
   fetchTransitByPerson,
   fetchTransitSummary,
+  planCredit,
   saveCreditTerms,
 } from "@/api/debts";
-import type { CreditTermsInput } from "@/types";
+import type { CreditPlanInput, CreditTermsInput } from "@/types";
 
 // Правка условий меняет и список кредитов, и сводку, и карточку счёта
 // (доступный остаток считается из лимита) — поэтому сбрасываются все три.
@@ -55,6 +56,12 @@ export function useSaveCreditTerms() {
       saveCreditTerms(accountId, input),
     onSuccess: invalidate,
   });
+}
+
+/** Расчёт по кредиту. Мутация, а не запрос: считается по кнопке, и
+ *  промежуточные значения полей в адрес запроса попадать не должны. */
+export function useCreditPlan() {
+  return useMutation({ mutationFn: (input: CreditPlanInput) => planCredit(input) });
 }
 
 export function useDeleteCreditTerms() {

@@ -765,11 +765,30 @@ export interface CreditTerms {
   grace_days: number | null;
   payment_day: number | null;
   minimum_payment: string | null;
+  // Доля от долга: банк задаёт минимальный платёж правилом, а не суммой.
+  minimum_payment_percent: string | null;
+  // Сколько это в рублях от сегодняшнего долга — считает сервер.
+  minimum_payment_due: string | null;
   // Оценка, а не банковское число: льготный период здесь не воспроизводится.
   estimated_monthly_interest: string | null;
   opened_on: string | null;
   closes_on: string | null;
   notes: string | null;
+  rates: CreditRate[];
+}
+
+/** Строка матрицы ставок: покупки, снятие наличных, платы — у каждой своя. */
+export interface CreditRate {
+  id: number;
+  name: string;
+  percent: string;
+  condition: string | null;
+}
+
+export interface CreditRateInput {
+  name: string;
+  percent: string;
+  condition?: string | null;
 }
 
 export interface CreditTermsInput {
@@ -778,9 +797,56 @@ export interface CreditTermsInput {
   grace_days?: number | null;
   payment_day?: number | null;
   minimum_payment?: string | null;
+  minimum_payment_percent?: string | null;
   opened_on?: string | null;
   closes_on?: string | null;
   notes?: string | null;
+  // Список заменяет матрицу целиком; не передан — матрица остаётся как была.
+  rates?: CreditRateInput[];
+}
+
+/** Вопрос калькулятора: взял столько-то — что дальше. */
+export interface CreditPlanInput {
+  amount: string;
+  annual_rate_percent: string;
+  minimum_percent?: string | null;
+  minimum_floor?: string | null;
+  fixed_payment?: string | null;
+  target_months?: number | null;
+  /** Плата за операцию: «2,9% плюс 290 ₽» за снятие или перевод. */
+  fee_percent?: string | null;
+  fee_fixed?: string | null;
+}
+
+export interface CreditPlanStep {
+  number: number;
+  payment: string;
+  interest: string;
+  principal: string;
+  balance: string;
+}
+
+export interface CreditPlanOutcome {
+  payment: string;
+  first_payment: string;
+  last_payment: string;
+  months: number;
+  total_paid: string;
+  total_interest: string;
+  /** Платёж не покрывает процентов: долг не уменьшается никогда. */
+  never_closes: boolean;
+  schedule: CreditPlanStep[];
+}
+
+export interface CreditPlan {
+  minimum: CreditPlanOutcome | null;
+  recommended: CreditPlanOutcome | null;
+  fixed: CreditPlanOutcome | null;
+  /** Закрыть в льготный период — ровно сумма покупки, без процентов. */
+  in_grace: string;
+  /** Плата за операцию и долг вместе с ней. */
+  fee: string;
+  amount_with_fee: string;
 }
 
 export interface CreditSummary {

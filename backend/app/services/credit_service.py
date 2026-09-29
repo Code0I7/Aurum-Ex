@@ -18,13 +18,14 @@ from datetime import date as date_
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
-from app.models.credit import CreditTerms
+from app.models.credit import CreditRate, CreditTerms
 from app.models.enums import AccountNature
-from app.schemas.credit import CreditTermsRead, CreditTermsWrite
+from app.schemas.credit import CreditRateRead, CreditTermsRead, CreditTermsWrite
+from app.services.credit_plan_service import minimum_payment_for
 from app.services.account_service import get_balances_by_account
 from app.services.currency_service import quantize_money
 
@@ -88,6 +89,13 @@ def _build_read(account: Account, terms: CreditTerms, debt: Decimal) -> CreditTe
         grace_days=terms.grace_days,
         payment_day=terms.payment_day,
         minimum_payment=terms.minimum_payment,
+        minimum_payment_percent=terms.minimum_payment_percent,
+        # Минимальный платёж от сегодняшнего долга: банк посчитает свой на
+        # дату выписки, но порядок суммы человеку нужен раньше.
+        minimum_payment_due=minimum_payment_for(
+            debt, terms.minimum_payment_percent, terms.minimum_payment
+        ),
+        rates=[CreditRateRead.model_validate(rate) for rate in terms.rates],
         estimated_monthly_interest=monthly_interest,
         opened_on=terms.opened_on,
         closes_on=terms.closes_on,
@@ -105,7 +113,9 @@ async def _debt_of(session: AsyncSession, account_id: int) -> Decimal:
 
 async def get_credit_terms(session: AsyncSession, account_id: int) -> CreditTermsRead | None:
     account = await _require_liability(session, account_id)
-    terms = await session.get(CreditTerms, account_id)
+    terms = (
+        await session.execute(select(CreditTerms).where(CreditTerms.account_id == account_id))
+    ).scalar_one_or_none()
     if terms is None:
         return None
     return _build_read(account, terms, await _debt_of(session, account_id))
@@ -140,13 +150,53 @@ async def save_credit_terms(
     заставили бы интерфейс сначала выяснять, какой из них звать.
     """
     account = await _require_liability(session, account_id)
-    terms = await session.get(CreditTerms, account_id)
+    terms = (
+        await session.execute(select(CreditTerms).where(CreditTerms.account_id == account_id))
+    ).scalar_one_or_none()
     if terms is None:
         terms = CreditTerms(account_id=account_id)
         session.add(terms)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+        await session.flush()
+
+    fields = payload.model_dump(exclude_unset=True)
+    # Ставки — не колонка, а список строк, и присвоение их сломало бы
+    # отношение. Переданный список заменяет матрицу целиком: правка ставки
+    # и удаление ставки с точки зрения формы — одно и то же действие
+    # «вот как теперь выглядит матрица».
+    rates = fields.pop("rates", None)
+    for field, value in fields.items():
         setattr(terms, field, value)
+
+    if rates is not None:
+        # Старые строки удаляются запросом, новые добавляются по одной.
+        # Через коллекцию terms.rates было бы короче, но обращение к
+        # незагруженной коллекции в асинхронной сессии — это падение
+        # (MissingGreenlet), а загружена она не всегда.
+        await session.execute(delete(CreditRate).where(CreditRate.account_id == account_id))
+        for order, rate in enumerate(rates):
+            session.add(
+                CreditRate(
+                    account_id=account_id,
+                    name=rate["name"].strip(),
+                    percent=rate["percent"],
+                    condition=(rate.get("condition") or "").strip() or None,
+                    sort_order=order,
+                )
+            )
+        await session.flush()
+
     await session.commit()
+    # Сессия живёт с expire_on_commit=False, поэтому после записи в
+    # identity map остаётся прежний объект с прежним списком ставок —
+    # удалённые строки в ответе выглядели бы живыми. Сброс состояния
+    # заставляет следующий запрос прочитать базу заново; обращений к
+    # незагруженным коллекциям при этом не происходит, и MissingGreenlet
+    # здесь неоткуда взяться.
+    session.expire_all()
+    terms = (
+        await session.execute(select(CreditTerms).where(CreditTerms.account_id == account_id))
+    ).scalar_one()
+    account = await _require_liability(session, account_id)
     return _build_read(account, terms, await _debt_of(session, account_id))
 
 

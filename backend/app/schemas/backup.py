@@ -465,9 +465,23 @@ class CreditTermsBackup(BaseModel):
     grace_days: int | None = None
     payment_day: int | None = None
     minimum_payment: Decimal | None = None
+    # Со значением по умолчанию, как и всё, что появилось после первой
+    # версии формата: копия, снятая раньше, восстанавливается без правки.
+    minimum_payment_percent: Decimal | None = None
     opened_on: date_ | None = None
     closes_on: date_ | None = None
     notes: str | None = None
+
+
+class CreditRateBackup(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    account_id: int
+    name: str
+    percent: Decimal
+    condition: str | None = None
+    sort_order: int = 0
 
 
 class PlanBackup(BaseModel):
@@ -647,6 +661,7 @@ class BackupPayload(BaseModel):
     products: list[ProductBackup] = Field(default_factory=list)
     transaction_items: list[TransactionItemBackup] = Field(default_factory=list)
     credit_terms: list[CreditTermsBackup] = Field(default_factory=list)
+    credit_rates: list[CreditRateBackup] = Field(default_factory=list)
     plans: list[PlanBackup] = Field(default_factory=list)
     plan_periods: list[PlanPeriodBackup] = Field(default_factory=list)
     work_periods: list[WorkPeriodBackup] = Field(default_factory=list)

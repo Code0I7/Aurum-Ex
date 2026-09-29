@@ -1,5 +1,7 @@
 import { api } from "@/api/client";
 import type {
+  CreditPlan,
+  CreditPlanInput,
   CreditSummary,
   CreditTerms,
   CreditTermsInput,
@@ -48,4 +50,10 @@ export function saveCreditTerms(accountId: number, input: CreditTermsInput) {
 
 export function deleteCreditTerms(accountId: number) {
   return api.delete<void>(`/accounts/${accountId}/credit-terms`);
+}
+
+// Калькулятор ничего не сохраняет и ни к какому счёту не привязан: считать
+// хочется и до того, как карта заведена в приложении.
+export function planCredit(input: CreditPlanInput) {
+  return api.post<CreditPlan>("/credits/plan", input);
 }
