@@ -86,7 +86,15 @@ export function MonthlyFlowCard({ points }: { points: DashboardMonthPoint[] }) {
                 }}
               />
               <Bar dataKey="income" fill="var(--success)" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="expense" fill="var(--danger)" radius={[0, 0, 2, 2]} />
+              {/* Тот же радиус, что у дохода, и это не опечатка. Скругляться
+                  должен свободный конец столбца: у дохода верхний, у расхода
+                  нижний. Но recharts задаёт радиус так, будто столбец растёт
+                  вверх, и у отрицательного значения отражает фигуру вместе с
+                  углами: объявленное «снизу» выходит наверху, у самой оси.
+                  Проверено на стенде — у столбца от оси (y 135) до конца
+                  (y 200) радиус [0,0,2,2] даёт дуги на 135…147, а [2,2,0,0]
+                  на 188…200. */}
+              <Bar dataKey="expense" fill="var(--danger)" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           </div>
