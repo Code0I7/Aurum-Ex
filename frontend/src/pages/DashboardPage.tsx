@@ -216,12 +216,14 @@ export function DashboardPage() {
             title={t("dashboard.incomeByCategoryTitle")}
             emptyLabel={t("dashboard.noIncomeThisPeriod")}
             items={data?.income_by_category ?? []}
+            viewKey="income"
             className="h-full"
           />
           <CategoryBreakdownCard
             title={t("dashboard.spendingByCategoryTitle")}
             emptyLabel={t("dashboard.noExpensesThisMonth")}
             items={data?.spending_by_category ?? []}
+            viewKey="spending"
             className="h-full"
           />
         </div>

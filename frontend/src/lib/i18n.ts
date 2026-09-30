@@ -585,6 +585,8 @@ const ru = {
   // человек уверенно понимает его неправильно.
   "dashboard.statNetLabel": "Итог за период",
   "dashboard.statSavingsRateLabel": "Норма сбережений",
+  "dashboard.breakdownAsBars": "Показать полосами",
+  "dashboard.breakdownAsDonut": "Показать кругом",
   "dashboard.incomeByCategoryTitle": "Доходы по категориям",
   "dashboard.noIncomeThisPeriod": "За этот период доходов нет.",
   "dashboard.spendingByCategoryTitle": "Расходы по категориям",
@@ -1803,6 +1805,8 @@ const en: Record<keyof typeof ru, string> = {
   "dashboard.statSpentLabel": "Spending",
   "dashboard.statNetLabel": "Period net",
   "dashboard.statSavingsRateLabel": "Savings rate",
+  "dashboard.breakdownAsBars": "Show as bars",
+  "dashboard.breakdownAsDonut": "Show as donut",
   "dashboard.incomeByCategoryTitle": "Income by category",
   "dashboard.noIncomeThisPeriod": "No income in this period.",
   "dashboard.spendingByCategoryTitle": "Spending by category",
