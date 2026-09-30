@@ -369,3 +369,43 @@ async def test_incoming_transfer_sits_where_the_list_shows_it(client: AsyncClien
     # ввода и для покупки не засчитывали, хотя в списке он стоит ниже неё.
     assert [row["balance_after"] for row in reversed(listing)] == ["1000.00", "700.00"]
 
+async def test_statement_balance_counts_the_account_own_history(
+    client: AsyncClient, account_id, categories
+):
+    """В выписке счёта строка прихода знает про его прошлые траты.
+
+    Строка перевода принадлежит отправителю, и её накопительная сумма
+    считается по нему. Раньше для выписки получателя эту сумму обнуляли
+    целиком — вместе с чужим числом пропадала и вся своя история: у
+    строки прихода оставались только начальный остаток и приходы. В
+    колонке получалась сумма всех переводов, когда-либо пришедших на
+    счёт, при остатке около нуля.
+    """
+    source = (
+        await client.post("/accounts", json={"name": "Карта", "kind": "checking", "currency": "RUB"})
+    ).json()
+
+    # Сначала трата по самому счёту, потом приход переводом на него.
+    await client.post(
+        "/transactions",
+        json=_txn(account_id, amount="500.00", category_id=categories["Groceries"]["id"]),
+    )
+    transfer = (
+        await client.post(
+            "/transactions",
+            json={
+                "account_id": source["id"],
+                "type": "transfer",
+                "amount": "2000.00",
+                "transfer_account_id": account_id,
+                "date": DAY,
+            },
+        )
+    ).json()
+
+    statement = (await client.get("/transactions", params={"account_id": account_id})).json()["items"]
+    assert [row["id"] for row in statement][0] == transfer["id"]
+
+    # Снизу вверх: ушло 500, пришло 2000 — значит 1500, а не 2000.
+    assert [row["balance_after"] for row in reversed(statement)] == ["-500.00", "1500.00"]
+

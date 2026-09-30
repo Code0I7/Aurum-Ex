@@ -172,9 +172,13 @@ async def running_balances(
     перевода в выписке получателя показывался бы остаток отправителя: на
     паре счетов вроде «карта и рассрочка того же магазина» это выглядит как
     деньги, взявшиеся ниоткуда, и запутывает ровно там, где выписка и нужна.
+    Для этого случая счёт идёт отдельным путём — см. _statement_balances.
     """
     if not transaction_ids:
         return {}
+
+    if for_account_id is not None:
+        return await _statement_balances(session, transaction_ids, for_account_id)
 
     sub = running_balance_subquery()
     rows = (
@@ -186,21 +190,6 @@ async def running_balances(
     ).all()
     if not rows:
         return {}
-
-    if for_account_id is not None:
-        # Смотрим выписку одного счёта: перевод, пришедший на него, в
-        # накопительной сумме по account_id не отражён вовсе (там он числится
-        # за отправителем), поэтому дельту для таких строк обнуляем — приход
-        # добавится ниже вместе с остальными входящими переводами.
-        own = {
-            transaction_id
-            for transaction_id, account_id, _ in rows
-            if account_id == for_account_id
-        }
-        rows = [
-            (transaction_id, for_account_id, delta if transaction_id in own else Decimal("0"))
-            for transaction_id, account_id, delta in rows
-        ]
 
     account_ids = {account_id for _, account_id, _ in rows}
     openings = dict(
@@ -267,6 +256,94 @@ async def running_balances(
                 if (tx_date, tx_order, other_id) <= (anchor_date, anchor_order, tx_id):
                     incoming += amount
         balances[tx_id] = (openings.get(account_id) or Decimal("0")) + (delta or Decimal("0")) + incoming
+
+    return balances
+
+
+async def _statement_balances(
+    session: AsyncSession, transaction_ids: list[int], account_id: int
+) -> dict[int, Decimal]:
+    """Баланс счёта после каждой строки его выписки.
+
+    Выписка показывает обе стороны перевода, и строка, пришедшая переводом,
+    принадлежит другому счёту. Оконная функция по account_id для неё
+    бесполезна: там накопительная сумма отправителя. Поэтому здесь берутся
+    все движения счёта разом — свои операции со знаком и приходы по
+    переводам, — выстраиваются в порядке показа и складываются нарастающим
+    итогом. Нужная строка находится по своему месту в этом ряду.
+
+    Так «баланс после» у строки означает ровно то, что написано: сколько
+    было на счёте сразу после неё. Прежняя схема обнуляла для чужих строк
+    накопительную сумму целиком, и вместе с чужим числом пропадала вся
+    собственная история счёта: оставались начальный остаток и приходы.
+    """
+    own = (
+        await session.execute(
+            select(
+                Transaction.id,
+                Transaction.date,
+                Transaction.day_order,
+                Transaction.type,
+                Transaction.amount,
+                Transaction.is_excluded,
+            ).where(Transaction.account_id == account_id)
+        )
+    ).all()
+
+    incoming = (
+        await session.execute(
+            select(
+                Transaction.id,
+                Transaction.date,
+                Transaction.day_order,
+                func.coalesce(Transaction.transfer_amount, Transaction.amount),
+            ).where(
+                Transaction.type == TransactionType.TRANSFER,
+                Transaction.is_excluded.is_(False),
+                Transaction.transfer_account_id == account_id,
+            )
+        )
+    ).all()
+
+    movements: list[tuple[tuple, int, Decimal]] = []
+    for tx_id, tx_date, day_order, tx_type, amount, is_excluded in own:
+        if is_excluded:
+            # Помеченное «не учитывать» остаётся в списке, но на деньги не
+            # влияет: баланс после такой строки равен балансу до неё.
+            delta = Decimal("0")
+        elif tx_type in (TransactionType.INCOME, TransactionType.EXTERNAL_IN):
+            delta = amount
+        elif tx_type in (
+            TransactionType.EXPENSE,
+            TransactionType.EXTERNAL_OUT,
+            TransactionType.TRANSFER,
+        ):
+            delta = -amount
+        else:
+            delta = Decimal("0")
+        movements.append(((tx_date, day_order, tx_id), tx_id, delta))
+
+    for tx_id, tx_date, day_order, amount in incoming:
+        # Перевод между своими счетами попадает сюда и как своя операция
+        # (ушло), и как приход (пришло) — для перевода на самого себя это
+        # верно: две записи одной строки гасят друг друга.
+        movements.append(((tx_date, day_order, tx_id), tx_id, amount))
+
+    movements.sort(key=lambda item: item[0])
+
+    opening = (
+        await session.execute(select(Account.opening_balance).where(Account.id == account_id))
+    ).scalar_one_or_none() or Decimal("0")
+
+    wanted = set(transaction_ids)
+    balances: dict[int, Decimal] = {}
+    total = opening
+    for _key, tx_id, delta in movements:
+        total += delta
+        # У перевода на самого себя две записи подряд; баланс строки — тот,
+        # что получился после обеих, поэтому значение перезаписывается.
+        if tx_id in wanted:
+            balances[tx_id] = total
 
     return balances
 
