@@ -87,7 +87,11 @@ export function DashboardPage() {
             переключатель, который ничего не меняет, — обещание, которого
             приложение не выполняет. */}
         {range !== "all" && (
-          <div className="flex items-center gap-3">
+          // Выравнивание вправо, под даты периода строкой выше. При выборе
+          // месяца год и так стоит справа — месяц перед ним занимает всё
+          // свободное место; а когда выбран год, он оставался один и
+          // прилипал к левому краю, хотя место его не менялось.
+          <div className="flex items-center justify-end gap-3">
             {range === "month" && (
               <div className="min-w-0 flex-1">
                 <MonthSelector month={month} onChange={setMonth} />
