@@ -24,7 +24,8 @@ function NavEntry({
 }) {
   const { t } = useTranslation();
   const Icon = item.icon;
-  const label = t(item.labelKey);
+  // В панели — короткое имя, если оно задано: полное здесь обрезается.
+  const label = t(item.shortLabelKey ?? item.labelKey);
 
   if (item.disabled) {
     return (

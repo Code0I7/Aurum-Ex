@@ -26,6 +26,9 @@ import type { TranslationKey } from "@/lib/i18n";
 
 export interface NavItem {
   labelKey: TranslationKey;
+  /** Короткое имя для боковой панели: там ширина ограничена, и длинное
+   *  название обрезается многоточием. Пусто — панель берёт обычное. */
+  shortLabelKey?: TranslationKey;
   to: string;
   icon: LucideIcon;
   disabled?: boolean;
@@ -68,7 +71,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { labelKey: "nav.netWorth", to: "/net-worth", icon: TrendingUp, hintKey: "help.netWorth" },
       { labelKey: "nav.reports", to: "/reports", icon: PieChart, hintKey: "help.reports" },
-      { labelKey: "nav.cashFlow", to: "/cash-flow", icon: Activity, hintKey: "help.cashFlow" },
+      {
+        labelKey: "nav.cashFlow",
+        shortLabelKey: "nav.cashFlowShort",
+        to: "/cash-flow",
+        icon: Activity,
+        hintKey: "help.cashFlow",
+      },
       { labelKey: "nav.advice", to: "/advice", icon: Lightbulb, hintKey: "help.advice" },
     ],
   },
