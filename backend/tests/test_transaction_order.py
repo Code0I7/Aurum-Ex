@@ -320,3 +320,52 @@ async def test_a_block_with_an_unknown_row_is_rejected(client: AsyncClient, acco
         "/transactions/reorder-block", json={"ids": [known["id"], 999_999], "position": 0}
     )
     assert resp.status_code == 404
+
+async def test_incoming_transfer_sits_where_the_list_shows_it(client: AsyncClient, account_id, categories):
+    """Приход по переводу учитывается там, где строка стоит в списке.
+
+    Случай, на котором «баланс после» и разъезжался с реальностью: в один
+    день перевод введён раньше соседней операции, а показан ниже неё —
+    после перестановки внутри дня. Пока приход искали по порядку ввода, а
+    список шёл по порядку показа, колонка прыгала вверх и возвращалась: в
+    ней стояли суммы, которых на счёте не было.
+    """
+    other = (
+        await client.post("/accounts", json={"name": "Копилка", "kind": "savings", "currency": "RUB"})
+    ).json()
+
+    # Покупка введена первой, перевод — вторым, поэтому id у перевода
+    # больше.
+    purchase = (
+        await client.post(
+            "/transactions",
+            json=_txn(account_id, amount="300.00", category_id=categories["Groceries"]["id"]),
+        )
+    ).json()
+    transfer = (
+        await client.post(
+            "/transactions",
+            json={
+                "account_id": other["id"],
+                "type": "transfer",
+                "amount": "1000.00",
+                "transfer_account_id": account_id,
+                "date": DAY,
+            },
+        )
+    ).json()
+
+    # А человек перетащил перевод в начало дня: теперь он показан ниже
+    # покупки, хотя введён позже. Порядок показа и порядок ввода разошлись.
+    moved = await client.post(f"/transactions/{transfer['id']}/reorder", json={"position": 0})
+    assert moved.status_code == 200, moved.text
+
+    listing = (await client.get("/transactions", params={"account_id": account_id})).json()["items"]
+    # Сверху новое: покупка, под ней перевод.
+    assert [row["id"] for row in listing] == [purchase["id"], transfer["id"]]
+
+    # Читаем снизу вверх, как деньги и двигались: пришла тысяча, ушли триста.
+    # До исправления в верхней строке стояло −300: приход искали по порядку
+    # ввода и для покупки не засчитывали, хотя в списке он стоит ниже неё.
+    assert [row["balance_after"] for row in reversed(listing)] == ["1000.00", "700.00"]
+

@@ -211,19 +211,26 @@ async def running_balances(
 
     # Приходы по переводам, адресованным этим счетам.
     #
-    # Сравниваются по дате и идентификатору, а НЕ по day_order — и это не
-    # упрощение, а единственный осмысленный вариант. Номер внутри дня
-    # локален для счёта: у перевода он проставлен в нумерации
-    # счёта-источника, а сравнивать его надо с операциями получателя, где
-    # своя нумерация с нуля. Сравнение чисел из двух разных нумераций даёт
-    # произвольный результат — именно на этом первая версия и уронила тест,
-    # потеряв приход. Идентификатор же растёт по времени ввода и одинаков
-    # для всех счетов, поэтому внутри дня порядок задаёт он.
+    # Порядок ровно тот же, каким список идёт на экране: (дата, номер в дне,
+    # id). Раньше здесь сравнивались только дата и id — считалось, что номер
+    # в дне локален для счёта и сравнивать его с чужой нумерацией нельзя. С
+    # тех пор номер стал сквозным по дню (см. next_day_order), а сравнение
+    # осталось прежним, и приход попадал в накопительную сумму не там, где
+    # строка стоит в списке: в дне, где перевод введён раньше соседней
+    # операции, но показан ниже неё, «баланс после» прыгал вверх и обратно.
+    # Чем больше переводов в дне, тем дальше уезжала колонка.
+    #
+    # Ключ сортировки должен совпадать с тем, по которому список
+    # выводится, иначе колонка перестаёт быть балансом: она обязана
+    # читаться сверху вниз как последовательность остатков.
     anchors = (
         await session.execute(
-            select(Transaction.id, Transaction.account_id, Transaction.date).where(
-                Transaction.id.in_(transaction_ids)
-            )
+            select(
+                Transaction.id,
+                Transaction.account_id,
+                Transaction.date,
+                Transaction.day_order,
+            ).where(Transaction.id.in_(transaction_ids))
         )
     ).all()
 
@@ -232,6 +239,7 @@ async def running_balances(
             select(
                 Transaction.transfer_account_id,
                 Transaction.date,
+                Transaction.day_order,
                 Transaction.id,
                 # Тоже в валюте счёта — см. running_balance выше. Для
                 # перевода между валютами это пришедшая сумма: на счёт
@@ -250,13 +258,13 @@ async def running_balances(
         anchor = next((a for a in anchors if a[0] == tx_id), None)
         incoming = Decimal("0")
         if anchor is not None:
-            _, _, anchor_date = anchor
-            for dest_id, tx_date, other_id, amount in incoming_rows:
+            _, _, anchor_date, anchor_order = anchor
+            for dest_id, tx_date, tx_order, other_id, amount in incoming_rows:
                 if dest_id != account_id:
                     continue
-                # «Не позже» этой операции: по дате, а внутри дня — по
-                # порядку ввода.
-                if (tx_date, other_id) <= (anchor_date, tx_id):
+                # «Не позже» этой операции в том порядке, в каком список
+                # показан: дата, номер в дне, идентификатор.
+                if (tx_date, tx_order, other_id) <= (anchor_date, anchor_order, tx_id):
                     incoming += amount
         balances[tx_id] = (openings.get(account_id) or Decimal("0")) + (delta or Decimal("0")) + incoming
 

@@ -8,8 +8,8 @@
 
 A self-hosted personal finance app built to replace the kind of hand-made spreadsheet people keep for years — and to answer the questions such a spreadsheet cannot.
 
-![Version](https://img.shields.io/badge/version-1.0.0--beta.80-e0a400.svg)
-![Tests](https://img.shields.io/badge/tests-589%20passing-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-1.0.0--beta.81-e0a400.svg)
+![Tests](https://img.shields.io/badge/tests-590%20passing-brightgreen.svg)
 [![Fork of Zproger/Aurum](https://img.shields.io/badge/fork%20of-Zproger%2FAurum-6E7B74.svg)](https://github.com/Zproger/Aurum)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 
