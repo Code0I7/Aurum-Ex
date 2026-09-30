@@ -59,6 +59,14 @@ export function AccountBalancesCard({
   // вовсе. Число над списком обязано быть суммой этого списка.
   const total = accounts.reduce((sum, account) => sum + Number(account.balance_base), 0);
   const mixed = new Set(accounts.map((account) => account.currency)).size > 1;
+  // Мерка для полос — самый крупный остаток по модулю, в валюте установки.
+  // По модулю, потому что долг сравнивается с деньгами по размеру: кредитка
+  // на 54 тысячи рядом со счётом на 62 — это про одно и то же. В валюте
+  // установки, потому что иначе сто евро оказались бы короче ста рублей.
+  const largest = accounts.reduce(
+    (top, account) => Math.max(top, Math.abs(Number(account.balance_base))),
+    0,
+  );
 
   return (
     <Card className={className}>
@@ -126,6 +134,7 @@ export function AccountBalancesCard({
                 </button>
                 <AccountBar
                   balance={balance}
+                  share={largest > 0 ? Math.abs(Number(account.balance_base)) / largest : 0}
                   segments={byAccount.get(account.account_id) ?? []}
                   freeLabel={t("dashboard.freeSegment")}
                   currency={account.currency}
@@ -147,14 +156,21 @@ export function AccountBalancesCard({
 }
 
 /**
- * Полоса остатка: свободное одним куском, отложенное — отдельными.
+ * Полоса остатка: длина — сколько денег, деление — что из них обещано.
  *
- * Смысл в том, чтобы отложенное было видно как часть счёта, а не как
- * отдельная сумма где-то ещё. Деньги никуда не перекладывались: это тот же
- * остаток, часть которого обещана другой задаче.
+ * Длина считается от крупнейшего остатка в списке, и весь список читается
+ * как горизонтальная гистограмма: видно, где лежат деньги, без чтения
+ * шести чисел подряд. Раньше полоса была у всех одинаковой ширины и
+ * появлялась только при отложенном — то есть отвечала на второй вопрос и
+ * молчала о первом.
  *
- * Отрезков нет — нет и полосы: у большинства счетов резерва не бывает, и
- * ровная зелёная черта под каждой строкой была бы украшением без смысла.
+ * Отложенное видно как часть счёта, а не как отдельная сумма где-то ещё.
+ * Деньги никуда не перекладывались: это тот же остаток, часть которого
+ * обещана другой задаче. Теперь отрезки делят не всю строку, а длину
+ * самой полосы — иначе деление противоречило бы длине.
+ *
+ * Долг — сплошной красный во всю свою длину. Отрезков на нём не бывает:
+ * отложить с кредитки нельзя.
  *
  * Сверх остатка отрезки не рисуются: отложить больше, чем лежит на счёте,
  * нельзя, и доля считается от самого остатка.
@@ -167,6 +183,7 @@ export function AccountBalancesCard({
  */
 function AccountBar({
   balance,
+  share,
   segments,
   freeLabel,
   // Валюта счёта. Отложенное лежит на нём же, в его валюте: подписать его
@@ -175,16 +192,24 @@ function AccountBar({
   currency,
 }: {
   balance: number;
+  /** Доля от крупнейшего остатка в списке, 0…1. */
+  share: number;
   segments: AccountReservation[];
   freeLabel: string;
   currency: string;
 }) {
   const [hover, setHover] = useState<{ label: string; amount: number; x: number; y: number } | null>(null);
 
-  if (segments.length === 0 || balance <= 0) return null;
-
   const reserved = segments.reduce((sum, item) => sum + Number(item.amount), 0);
   const free = Math.max(0, balance - reserved);
+  const owed = balance < 0;
+  // Делить есть что, только когда на счёте что-то лежит и что-то из этого
+  // обещано целям. В остальных случаях полоса сплошная.
+  const divided = balance > 0 && segments.length > 0;
+  // Доля приходит долей, а не процентом: ширина в разметке — проценты.
+  // Ограничение сверху на случай, если мерка отстанет от данных на один
+  // ответ сервера: полоса шире дорожки выглядела бы поломкой.
+  const width = `${Math.min(100, Math.max(0, share * 100))}%`;
 
   function follow(label: string, amount: number) {
     return (event: React.PointerEvent) => setHover({ label, amount, x: event.clientX, y: event.clientY });
@@ -201,12 +226,23 @@ function AccountBar({
           границы находились только наведением. Просвет — это настоящая
           пустота, сквозь неё виден фон, какой бы он ни был, и граница
           видна в любой теме. */}
+      {/* Дорожка во всю ширину строки, полоса внутри неё — своей длиной.
+          Без дорожки пустой счёт выглядел бы как строка, у которой полосу
+          забыли нарисовать, а не как счёт, на котором ничего нет. */}
+      <span className="mt-1.5 block h-2 w-full overflow-hidden rounded-full bg-surface-2">
       <span
-        className="mt-1.5 flex h-2 gap-[3px]"
+        className="flex h-full gap-[3px] transition-[width]"
+        style={{ width }}
         role="presentation"
         onPointerLeave={() => setHover(null)}
         onPointerCancel={() => setHover(null)}
       >
+        {!divided && (
+          <span
+            className={`block h-full w-full rounded-full ${owed ? "bg-danger/70" : "bg-success/70"}`}
+          />
+        )}
+        {divided && (
         <span
           className="block h-full rounded-full bg-success/70 transition-[width,filter] hover:brightness-125"
           style={{ width: `${(free / balance) * 100}%` }}
@@ -214,7 +250,8 @@ function AccountBar({
           onPointerMove={follow(freeLabel, free)}
           onPointerDown={follow(freeLabel, free)}
         />
-        {segments.map((item, index) => (
+        )}
+        {divided && segments.map((item, index) => (
           <span
             key={item.goal_id}
             // Золотом, а не цветом цели: цвет у целей не задаётся, а
@@ -232,6 +269,7 @@ function AccountBar({
             onPointerDown={follow(item.goal_name, Number(item.amount))}
           />
         ))}
+      </span>
       </span>
 
       {/* Своя подсказка вместо браузерной. Нативный title появляется через
