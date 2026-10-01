@@ -405,6 +405,14 @@ export interface DashboardMonthPoint {
   net: string;
 }
 
+/** День внутри выбранного месяца. Приходит только когда выбран месяц. */
+export interface DashboardDayPoint {
+  date: string;
+  income: string;
+  expense: string;
+  net: string;
+}
+
 export interface DashboardSummary {
   year: number;
   month: number;
@@ -425,6 +433,7 @@ export interface DashboardSummary {
   earned_per_hour: string | null;
   largest_expenses: LargestExpense[];
   monthly: DashboardMonthPoint[];
+  daily: DashboardDayPoint[];
 }
 
 export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals" | "other";

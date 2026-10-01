@@ -27,11 +27,12 @@ from app.schemas.dashboard import (
     CategoryBreakdownChildItem,
     CategoryBreakdownItem,
     DashboardSummary,
+    DayPoint,
     LargestTransactionItem,
     MonthPoint,
 )
 from app.services.account_service import get_balances_by_account
-from app.services.cash_flow_service import get_cash_flow
+from app.services.cash_flow_service import get_cash_flow, get_daily_flow
 from app.services.currency_service import convert_balance, get_current_rates, quantize_money
 from app.services.hourly_service import elapsed_hours
 from app.services.category_rollup import rollup_spending_by_top_level_category
@@ -338,6 +339,9 @@ async def get_dashboard_summary(
     # денег: два разных ответа на один вопрос — худшее, что приложение может
     # показать про деньги.
     cash_flow = await get_cash_flow(session, start, end)
+    # Дни считаются только для месяца: за год это 365 столбцов, из которых
+    # не прочитать ничего, а весить ответ будет втрое больше.
+    daily = await get_daily_flow(session, start, end) if range_key == "month" else []
 
     return DashboardSummary(
         year=year,
@@ -363,5 +367,9 @@ async def get_dashboard_summary(
                 net=point.net,
             )
             for point in cash_flow.points
+        ],
+        daily=[
+            DayPoint(date=point.date, income=point.income, expense=point.expense, net=point.net)
+            for point in daily
         ],
     )

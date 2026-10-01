@@ -77,6 +77,16 @@ class MonthPoint(BaseModel):
     net: Decimal
 
 
+class DayPoint(BaseModel):
+    """День внутри выбранного месяца. Пустой список, когда выбран не месяц:
+    за год дневных столбцов 365, и ни один из них ничего не показывает."""
+
+    date: date_
+    income: Decimal
+    expense: Decimal
+    net: Decimal
+
+
 class DashboardSummary(BaseModel):
     year: int
     month: int
@@ -104,3 +114,4 @@ class DashboardSummary(BaseModel):
     largest_expenses: list[LargestTransactionItem] = []
     # Помесячная картина внутри периода.
     monthly: list[MonthPoint] = []
+    daily: list[DayPoint] = []

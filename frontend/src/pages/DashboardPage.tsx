@@ -184,7 +184,7 @@ export function DashboardPage() {
         />
       </div>
 
-      <MonthlyFlowCard points={data?.monthly ?? []} />
+      <MonthlyFlowCard points={data?.monthly ?? []} daily={data?.daily ?? []} />
 
       {/* Пять карточек в две колонки, каждая на своём месте в сетке.
 

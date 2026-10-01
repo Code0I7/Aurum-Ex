@@ -10,7 +10,7 @@ accounts are excluded from both totals, same as the Dashboard breakdown.
 попадает в расход: направление денег важнее удобной подписи.
 """
 from collections import defaultdict
-from datetime import date as date_
+from datetime import date as date_, timedelta
 from decimal import Decimal
 
 from sqlalchemy import extract, func, select
@@ -25,7 +25,7 @@ from app.services.transaction_service import (
     counted_only,
     earnings_and_spending_only,
 )
-from app.schemas.cash_flow import CashFlowPoint, CashFlowResponse
+from app.schemas.cash_flow import CashFlowPoint, CashFlowResponse, DayPoint
 
 
 def _next_month(year: int, month: int) -> tuple[int, int]:
@@ -167,3 +167,74 @@ async def get_cash_flow(
         total_net=total_income - total_expense,
         total_opening=sum((p.opening for p in points), Decimal("0")),
     )
+async def get_daily_flow(
+    session: AsyncSession, start_date: date_, end_date: date_
+) -> list[DayPoint]:
+    """Приход и расход по каждому дню отрезка, включая пустые дни.
+
+    Те же фильтры и та же валюта, что у месячного расчёта: это одна и та
+    же величина, просто нарезанная мельче. Пустые дни остаются в ряду —
+    выкинуть их значит сжать календарь и показать три траты подряд там,
+    где между ними неделя.
+
+    Начальные остатки раскладываются по дню открытия счёта. Счёт без даты
+    открытия в дневной ряд не попадает: у месяца «до начала учёта» нет
+    своего дня, и приписать остаток первому числу значило бы придумать
+    событие, которого не было.
+    """
+    rows = (
+        await session.execute(
+            select(
+                Transaction.date,
+                Transaction.type,
+                func.sum(Transaction.amount_base).label("amount"),
+            )
+            .where(
+                earnings_and_spending_only(),
+                counted_only(),
+                converted_only(),
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+            )
+            .group_by(Transaction.date, Transaction.type)
+        )
+    ).all()
+
+    by_day: dict[date_, dict[TransactionType, Decimal]] = defaultdict(dict)
+    for day, tx_type, amount in rows:
+        by_day[day][tx_type] = amount
+
+    opening_by_day: dict[date_, Decimal] = defaultdict(Decimal)
+    for opening_date, amount, currency in (
+        await session.execute(
+            select(Account.opening_date, Account.opening_balance, Account.currency).where(
+                Account.opening_balance.is_not(None),
+                Account.opening_balance != 0,
+                Account.opening_date.is_not(None),
+                Account.opening_date >= start_date,
+                Account.opening_date <= end_date,
+            )
+        )
+    ).all():
+        _, amount_base = await to_base(session, amount, currency, opening_date)
+        if amount_base is not None:
+            opening_by_day[opening_date] += amount_base
+
+    points: list[DayPoint] = []
+    day = start_date
+    while day <= end_date:
+        totals = by_day.get(day, {})
+        income = totals.get(TransactionType.INCOME, Decimal("0"))
+        expense = totals.get(TransactionType.EXPENSE, Decimal("0"))
+        opening = opening_by_day.get(day, Decimal("0"))
+        # Знак решает сторону, как и у месяца: счёт, открытый с долгом, —
+        # это расход, а не отрицательный доход.
+        if opening >= 0:
+            income += opening
+        else:
+            expense += -opening
+        points.append(
+            DayPoint(date=day, income=income, expense=expense, net=income - expense, opening=opening)
+        )
+        day += timedelta(days=1)
+    return points
