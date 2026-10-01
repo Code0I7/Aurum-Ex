@@ -754,6 +754,9 @@ might never have happened.
 }
 ```
 
+`notes` is a note on the template itself and does not travel to the posted transaction — a
+transaction has no notes field of its own, its `description` took that role.
+
 `anchor_date` is the first due date; each `/post` call advances `last_posted_date` and recomputes
 `next_due_date` (monthly clamps to the shortest month, e.g. day 31 → day 28/29/30; yearly Feb 29
 falls back to Feb 28 in non-leap years).

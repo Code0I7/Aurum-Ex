@@ -169,7 +169,11 @@ async def post_recurring(session: AsyncSession, recurring_id: int) -> RecurringT
             amount_base=amount_base,
             description=recurring.description,
             merchant=recurring.merchant,
-            notes=recurring.notes,
+            # Заметки у операции больше нет: описание перестало быть
+            # обязательным и забрало её роль (миграция 0005). Шаблон своё
+            # поле notes сохранил, но переносить его некуда — и попытка
+            # этого роняла проведение целиком, с пятисотой ошибкой на
+            # каждое нажатие «Провести».
             date=today,
         )
     )
