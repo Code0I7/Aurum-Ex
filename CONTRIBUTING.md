@@ -47,6 +47,9 @@ uvicorn app.main:app --reload
 - **Frontend:** `npm run build` (runs `tsc -b` then `vite build`) must pass with no type errors.
 - **Backend:** new tables or columns need an Alembic migration (`alembic revision --autogenerate -m "..."`) — check the generated migration by hand, autogenerate isn't always right.
 - **Tests:** `pytest` in `backend/` must pass (it needs a Postgres — the compose one will do).
+  The runner isn't in the production image, so install it first:
+  `docker compose exec backend pip install -r requirements-dev.txt`, then
+  `docker compose exec backend pytest -q`. See [backend/tests/README.md](backend/tests/README.md).
 - **New user-facing text** goes through the translation system in `frontend/src/lib/i18n.ts` (both `ru` and `en` — the `en` object is typed against `ru`'s keys, so a missing translation is a build error, not a runtime surprise) rather than being hardcoded in a component.
 - **Mobile:** check your change at a narrow viewport — Aurum-Ex is designed mobile-first.
 - Keep PRs focused. A bug fix doesn't need an accompanying refactor.
@@ -61,4 +64,4 @@ Open an [Issue](../../issues) first for anything that changes the data model or 
 
 ## License
 
-Aurum-Ex is licensed under [PolyForm Noncommercial 1.0.0](LICENSE) — the original's license, unchanged — not a traditional OSI open source license — see the [README's License section](README.md#-license) for what that means in practice. By submitting a PR, you agree your contribution is licensed under the same terms as the rest of the project.
+Aurum-Ex is licensed under [PolyForm Noncommercial 1.0.0](LICENSE) — the original's license, unchanged — not a traditional OSI open source license — see the [README's License section](README.md#license) for what that means in practice. By submitting a PR, you agree your contribution is licensed under the same terms as the rest of the project.

@@ -24,6 +24,19 @@ down with `docker compose down -v` on exit (even on failure/Ctrl-C), so no
 test data is left behind and your real instance is never touched, restarted,
 or read from.
 
+## Status: these specs predate the login
+
+They were written before Aurum-Ex had a login of its own, and **they do not
+pass today**. Neither `helpers.ts` nor the Playwright config performs first-run
+setup or signs in, so on a fresh stack `request.get("/api/accounts")` gets a
+`428` ("set a password first") and the browser lands on the login screen.
+
+Bringing them back needs one step before the run: `POST /auth/setup` in a
+`globalSetup`, and a saved session (`storageState`) handed to both the browser
+and the `request` fixture. Until that exists, the command below will raise the
+stack and then fail honestly on the first API call. The rest of this file is
+still accurate, which is why it stays.
+
 ## Running
 
 ```bash

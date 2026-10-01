@@ -15,6 +15,17 @@ import subprocess
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 
+# Кука сессии без флага Secure — до любого импорта приложения, потому что
+# настройки читаются один раз при импорте и кешируются.
+#
+# На опубликованном экземпляре в .env стоит AURUM_SECURE_COOKIES=true, и это
+# правильно. Но тестовый клиент ходит по http://test: браузерное правило
+# «Secure только по HTTPS» соблюдает и httpx, кука до запроса не доезжает, и
+# падает весь набор разом — на ровном месте, из-за настройки, к которой ни
+# один тест отношения не имеет. Команда из tests/README.md обязана работать
+# на любом экземпляре, а не только на локальном.
+os.environ["AURUM_SECURE_COOKIES"] = "false"
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

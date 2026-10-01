@@ -8,8 +8,8 @@
 
 A self-hosted personal finance app built to replace the kind of hand-made spreadsheet people keep for years — and to answer the questions such a spreadsheet cannot.
 
-![Version](https://img.shields.io/badge/version-1.0.0--beta.82-e0a400.svg)
-![Tests](https://img.shields.io/badge/tests-591%20passing-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-1.0.0--beta.93-e0a400.svg)
+![Tests](https://img.shields.io/badge/tests-620%20passing-brightgreen.svg)
 [![Fork of Zproger/Aurum](https://img.shields.io/badge/fork%20of-Zproger%2FAurum-6E7B74.svg)](https://github.com/Zproger/Aurum)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 
@@ -106,10 +106,10 @@ The interface is fully translated: the same screens in Russian live in
 
 ### Analysis
 
-- **Dashboard** — real income, spending, net, savings rate, hourly earnings, spending by category, largest expenses, month-by-month flow.
+- **Dashboard** — real income, spending, net, savings rate, hourly earnings, spending by category, largest expenses, month-by-month flow — day by day when the period is a single month.
 - **Cash flow** — income against expense over any range, opening balance included.
 - **Reports** — category spending over time, opening on the largest category rather than the first alphabetically.
-- **Net worth** — assets minus liabilities over time, never drawn earlier than the first record: a flat zero line is a claim the data does not support.
+- **Net worth** — assets minus liabilities over time, never drawn earlier than the first record: a flat zero line is a claim the data does not support. Each asset keeps a price history, so a flat that gained and a car that lost are both visible as curves.
 - **Advice** — plain observations drawn from your own numbers, not generic tips.
 
 ### Plans
@@ -119,7 +119,7 @@ The interface is fully translated: the same screens in Russian live in
 - **Watchlist** — the few categories you are watching right now, month by month, next to last year's total.
 - **Goals** with contributions, linked to a real account.
 - **Recurring payments** with a posting schedule.
-- **Debts and settlements** — who owes whom, kept out of income entirely.
+- **Debts and settlements** — who owes whom, kept out of income entirely. Whether money lent counts as spending is a setting, not the author's decision: it left the account, and it is coming back, and both answers are honest.
 
 ### Investments
 

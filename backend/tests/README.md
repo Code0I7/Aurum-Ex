@@ -6,6 +6,12 @@ run. They never touch the real `aurum` database or its data: the app's
 `lifespan` startup (which seeds against the real DB) is never triggered, and
 every route's DB dependency is overridden to point at `aurum_test` instead.
 
+The harness also pins `AURUM_SECURE_COOKIES=false` for the run (see the top
+of `conftest.py`). A published instance sets it to `true` in `.env`, and
+rightly so — but the test client speaks plain `http://test`, a Secure cookie
+never reaches it, and the whole suite would fail over a setting no test is
+about.
+
 ## Running
 
 The stack must already be up (`docker compose up -d`). Test dependencies
@@ -20,6 +26,10 @@ docker compose exec backend pytest -v
 
 Re-run just `pytest -v` for subsequent runs; the `pip install` only needs
 repeating after a container restart/rebuild.
+
+**One run at a time.** The database name is fixed, so a second run drops and
+recreates `aurum_test` from under the first — hundreds of unrelated failures
+that look like a broken branch.
 
 ## Adding a test
 
