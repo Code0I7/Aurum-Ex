@@ -49,7 +49,10 @@ uvicorn app.main:app --reload
 - **Tests:** `pytest` in `backend/` must pass (it needs a Postgres — the compose one will do).
   The runner isn't in the production image, so install it first:
   `docker compose exec backend pip install -r requirements-dev.txt`, then
-  `docker compose exec backend pytest -q`. See [backend/tests/README.md](backend/tests/README.md).
+  `docker compose exec backend pytest -q` (about two minutes). Tests live in six
+  folders by area — `tests/money`, `tests/debts`, `tests/capital`, `tests/plans`,
+  `tests/analysis`, `tests/platform` — so you can run just the one you're
+  touching. See [backend/tests/README.md](backend/tests/README.md).
 - **New user-facing text** goes through the translation system in `frontend/src/lib/i18n.ts` (both `ru` and `en` — the `en` object is typed against `ru`'s keys, so a missing translation is a build error, not a runtime surprise) rather than being hardcoded in a component.
 - **Mobile:** check your change at a narrow viewport — Aurum-Ex is designed mobile-first.
 - Keep PRs focused. A bug fix doesn't need an accompanying refactor.

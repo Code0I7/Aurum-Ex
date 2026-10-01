@@ -9,6 +9,7 @@
 from httpx import AsyncClient
 
 from app.services.category_grouping import build_nesting, group_by_meaning, group_by_shared_prefix, split_prefix
+from tests.helpers import csv_of, row
 
 
 def test_a_dash_in_the_name_is_read_as_hierarchy():
@@ -114,7 +115,6 @@ def test_nothing_is_renamed():
 async def test_the_import_builds_the_deeper_tree(client: AsyncClient):
     """Раскладка применяется при переносе, а не отдельной кнопкой потом:
     разбирать 123 плоские строки руками никто не станет."""
-    from tests.test_spreadsheet_import import csv_of, row
 
     content = csv_of(
         row(dds="Расходы", category="Электроника - Аксессуары", sub="Наушники", amount="1 000,00"),
@@ -142,7 +142,6 @@ async def test_the_import_builds_the_deeper_tree(client: AsyncClient):
 async def test_amounts_still_reach_the_root_after_regrouping(client: AsyncClient):
     """Раскладка бесполезна, если суммы по ней не поднимаются: дерево,
     в котором наушники не попадают в электронику, хуже плоского списка."""
-    from tests.test_spreadsheet_import import csv_of, row
 
     content = csv_of(
         row(dds="Расходы", category="Электроника - Аксессуары", sub="Наушники", amount="1 000,00", date="05.03.2026"),

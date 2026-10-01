@@ -13,6 +13,7 @@ import asyncio
 import os
 import subprocess
 from collections.abc import AsyncGenerator, Generator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Кука сессии без флага Secure — до любого импорта приложения, потому что
@@ -34,6 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.api.deps import get_session
 from app.core.config import get_settings
+from app.core.security import (
+    hash_password,
+    new_session_token,
+    session_token_fingerprint,
+)
 from app.db.base import Base
 from app.db.seed import (
     seed_default_account,
@@ -43,6 +49,8 @@ from app.db.seed import (
     seed_default_units,
 )
 from app.main import app
+from app.models.user import Session as UserSession, User
+from app.services.auth_service import SESSION_COOKIE
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_DB_NAME = "aurum_test"
@@ -96,13 +104,21 @@ def _test_database() -> Generator[None, None, None]:
     asyncio.run(_drop_test_database())
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_sessionmaker(_test_database) -> AsyncGenerator[async_sessionmaker[AsyncSession], None]:
-    # Function-scoped, not session-scoped: pytest-asyncio gives each test
-    # function its own event loop, and an asyncpg engine/pool created under
-    # one loop can't be reused from another ("attached to a different
-    # loop"). Recreating the engine per test keeps it bound to whichever
-    # loop is actually running.
+    """Один движок на весь прогон.
+
+    Был свой на каждый тест, и причина была настоящая: pytest-asyncio
+    давал каждому тесту отдельный цикл событий, а соединение asyncpg
+    принадлежит тому циклу, в котором открыто, — пул из чужого цикла
+    выдавал «attached to a different loop». Расплатой было пересоздание
+    движка и холодное соединение на каждый тест.
+
+    Теперь цикл один на прогон (см. pytest.ini), и оговорка перестала
+    действовать. pool_pre_ping остаётся: соединение, которое Postgres
+    закрыл со своей стороны за долгий прогон, должно замениться, а не
+    уронить тест.
+    """
     engine = create_async_engine(_url(TEST_DB_NAME), pool_pre_ping=True)
     yield async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     await engine.dispose()
@@ -152,10 +168,23 @@ async def _clean_database(test_sessionmaker):
     yield
 
 
-# Пароль тестовой установки. Задаётся через первичную настройку, как это
-# делает живой пользователь, а не подсовыванием готового хеша в базу — так
-# тесты заодно проверяют, что настройка и вход действительно работают.
+# Пароль тестовой установки.
 TEST_PASSWORD = "test-password-123"
+
+
+@pytest.fixture(scope="session")
+def test_password_hash() -> str:
+    """Хеш тестового пароля — один на весь прогон.
+
+    scrypt дорог намеренно: 16 МБ памяти и около 79 мс на хеш, чтобы
+    перебор пароля не окупался. Для живого входа это ровно то, что нужно, а
+    для подготовки каждого из шестисот тестов — две минуты прогона на одно
+    и то же вычисление с одним и тем же ответом.
+
+    Сам scrypt при этом проверяется: параметры и формат строки — в
+    tests/platform/test_auth.py, через настоящие эндпоинты входа и смены
+    пароля."""
+    return hash_password(TEST_PASSWORD)
 
 
 @pytest_asyncio.fixture
@@ -185,13 +214,41 @@ async def anon_client(test_sessionmaker) -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest_asyncio.fixture
-async def client(anon_client: AsyncClient) -> AsyncClient:
+async def client(
+    anon_client: AsyncClient, test_sessionmaker, test_password_hash: str
+) -> AsyncClient:
     """Клиент с открытой сессией — то, чем пользуется подавляющее
-    большинство тестов. Проходит первичную настройку и остаётся с кукой
-    сессии: httpx хранит её сам, поэтому дальше запросы идут как из
-    браузера вошедшего пользователя."""
-    resp = await anon_client.post("/auth/setup", json={"username": "admin", "password": TEST_PASSWORD})
-    assert resp.status_code == 201, resp.text
+    большинство тестов.
+
+    Раньше фикстура проходила настоящую первичную настройку через HTTP.
+    Путь честный, но дорогой: внутри scrypt, и 220 мс уходило на каждый из
+    шестисот тестов, которые проверяют не вход, а деньги.
+
+    Поэтому учётная запись и сессия заводятся прямо в базе, с заранее
+    посчитанным хешем. Состояние получается то же, что после настройки:
+    есть пользователь — значит установка завершена, есть запись сессии —
+    значит клиент вошёл. Что настоящая настройка и настоящий вход работают,
+    проверяют tests/platform/test_auth.py и test_first_run_setup.py: они
+    берут `anon_client` и ходят по эндпоинтам.
+    """
+    token = new_session_token()
+    now = datetime.now(timezone.utc)
+    async with test_sessionmaker() as db:
+        user = User(username="admin", password_hash=test_password_hash)
+        db.add(user)
+        await db.flush()
+        db.add(
+            UserSession(
+                id=session_token_fingerprint(token),
+                user_id=user.id,
+                created_at=now,
+                expires_at=now + timedelta(hours=get_settings().session_ttl_hours),
+            )
+        )
+        await db.commit()
+    # Кука ставится руками, как её поставил бы ответ эндпоинта входа: httpx
+    # дальше носит её сам, и запросы идут как из браузера.
+    anon_client.cookies.set(SESSION_COOKIE, token)
     return anon_client
 
 

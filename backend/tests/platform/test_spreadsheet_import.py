@@ -12,43 +12,11 @@ from decimal import Decimal
 
 from app.services.spreadsheet_import_service import build_plan, parse_amount, parse_date
 
+from tests.helpers import csv_of, row
+
 # Глобальной метки asyncio здесь нет намеренно: pytest.ini включает
 # asyncio_mode = auto, и async-тесты подхватываются сами, а синхронные
 # проверки разбора от такой метки только ломаются.
-
-HEADER = (
-    "Дата,Комментарий статьи Расходов или Доходов,Кол-во,Цена,Сумма в ₽,В раб.час.,"
-    "Карта / Счет,Персона,Валюта,ДДС,Подкатегории ДДС,Ед.изм-ия,Категория ДДС,Цель,"
-    "День,Месяц,Год,Обозн.Валюты,Сумма,Сумма / Конверт"
-)
-
-
-def row(
-    date="28.08.2022",
-    comment="Операция",
-    qty="1",
-    price="100,00",
-    account="Карта 1234",
-    person="Работа",
-    dds="Расходы",
-    sub="Выпечка",
-    unit="Шт",
-    category="Быстропит",
-    goal="",
-    amount="100,00",
-) -> str:
-    # Суммы закавычены: в русской выгрузке десятичный разделитель — запятая,
-    # и без кавычек «10 900,00» разбирается как два поля, съезжая на колонку
-    # всю остальную строку. В настоящем файле Google Sheets кавычит их сам.
-    return (
-        f'{date},{comment},{qty},"{price}","{amount} ₽",0:15:00,{account},{person},₽,{dds},'
-        f'{sub},{unit},{category},{goal},28,8,2022,RUBRUB,"{amount}","{amount}"'
-    )
-
-
-def csv_of(*rows: str) -> str:
-    return "\n".join([HEADER, *rows]) + "\n"
-
 
 # --- Разбор чисел и дат ---
 
