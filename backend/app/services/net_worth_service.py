@@ -35,6 +35,7 @@ from app.models.enums import (
 )
 from app.models.transaction import Transaction
 from app.services.account_service import get_balances_by_account
+from app.services.settings_service import get_or_create_app_settings
 from app.services.currency_service import (
     convert_balance,
     get_base_currency,
@@ -75,7 +76,11 @@ _CLASS_META: dict[str, tuple[str, str, str]] = {
     AssetClass.REAL_ESTATE.value: ("Недвижимость", "#eda100", "building-2"),  # slot 4 yellow
     AssetClass.VEHICLES.value: ("Транспорт", "#e87ba4", "car"),  # slot 5 magenta
     AssetClass.PRECIOUS_METALS.value: ("Драгметаллы", "#008300", "gem"),  # slot 6 green
-    AssetClass.OTHER.value: ("Прочее", "#4a3aa7", "package"),  # slot 7 violet
+    AssetClass.PERSONAL_ITEMS.value: ("Личные вещи", "#4a3aa7", "armchair"),  # slot 7 violet
+    # «Прочее» вне категориальной шкалы намеренно: это не вид имущества, а
+    # его отсутствие, и серый говорит об этом сам. Заодно освобождает
+    # фиолетовый под личные вещи, не переставляя проверенный порядок.
+    AssetClass.OTHER.value: ("Прочее", "#6e7b74", "package"),  # нейтральный, вне восьми слотов
 }
 
 _ROLE_META: dict[CapitalRole, tuple[str, str]] = {
@@ -347,6 +352,7 @@ async def _risk_level_summary(
     current_by_asset: dict[int, Decimal],
     cash_today: Decimal,
     currency: str,
+    count_personal_use: bool = True,
 ) -> list[RiskLevelSummary]:
     """Cross-cuts Cash + assets by user-tagged risk of loss — unlike
     capital_roles, Cash participates here: it's the zero-risk anchor an
@@ -354,14 +360,23 @@ async def _risk_level_summary(
     exposed") is measured against. Always all three tiers, even at zero,
     same reasoning as capital_roles. Each tier's item list *is* its
     diversification view — a tier that's one holding at 100% is
-    concentrated, several even-sized holdings aren't, no separate index."""
+    concentrated, several even-sized holdings aren't, no separate index.
+
+    `count_personal_use` — выбор из настроек
+    (AppSettings.risk_counts_personal_use). Правило выше про размещение, а
+    компьютер, на котором работают, никто не размещал: с выключенной
+    настройкой личные вещи из разреза уходят, и предупреждение о
+    рискованном размещении перестаёт срабатывать на наушники. Включена по
+    умолчанию — обесценивается и телефон, и считать его имуществом под
+    риском тоже честно."""
     # Только активы показанной валюты — по той же причине, что и в
     # разрезе по типу.
-    assets_result = await session.execute(
-        select(Asset.id, Asset.name, Asset.risk_level).where(
-            func.upper(Asset.currency) == currency.upper()
-        )
+    assets_stmt = select(Asset.id, Asset.name, Asset.risk_level).where(
+        func.upper(Asset.currency) == currency.upper()
     )
+    if not count_personal_use:
+        assets_stmt = assets_stmt.where(Asset.is_personal_use.is_(False))
+    assets_result = await session.execute(assets_stmt)
     asset_rows = assets_result.all()
 
     totals: dict[RiskLevel, Decimal] = defaultdict(Decimal)
@@ -559,7 +574,13 @@ async def get_net_worth_summary(
         float(change_amount / start_value * 100) if range_key != "all" and start_value else None
     )
 
-    risk_levels = await _risk_level_summary(session, current_by_asset, money_today, target)
+    risk_levels = await _risk_level_summary(
+        session,
+        current_by_asset,
+        money_today,
+        target,
+        (await get_or_create_app_settings(session)).risk_counts_personal_use,
+    )
 
     # Проценты разбивки — от того, что есть, а не от капитала за вычетом
     # долгов: разбивка отвечает на «из чего состоит имущество», и доли в ней

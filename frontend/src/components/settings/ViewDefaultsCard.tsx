@@ -115,6 +115,27 @@ export function ViewDefaultsCard() {
           </span>
         </label>
 
+        {/* Считать ли личные вещи размещением. Та же причина, что и у
+            настройки выше: правило «столько-то под риском» задумано про
+            размещение, а компьютер, на котором работают, никто не
+            размещал — но обесценивается и телефон. */}
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.risk_counts_personal_use}
+            onChange={(event) =>
+              update.mutate({ risk_counts_personal_use: event.target.checked })
+            }
+            className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+          />
+          <span>
+            {t("settings.riskCountsPersonalUse")}
+            <span className="block text-xs text-text-muted">
+              {t("settings.riskCountsPersonalUseHint")}
+            </span>
+          </span>
+        </label>
+
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"

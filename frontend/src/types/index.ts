@@ -444,7 +444,17 @@ export interface DashboardSummary {
   lent_net: string;
 }
 
-export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals" | "other";
+export type AssetClass =
+  | "investments"
+  | "crypto"
+  | "real_estate"
+  | "vehicles"
+  | "precious_metals"
+  // Техника, мебель, инструменты — то, чем пользуются, а не во что
+  // вложились. Это вид вещи, а не признак «личного пользования»: тот
+  // отвечает на «можно ли это потратить» и лежит отдельной осью.
+  | "personal_items"
+  | "other";
 // «custom» — не длина, а признак того, что период задан датами.
 export type NetWorthRange = "30d" | "90d" | "1y" | "5y" | "all" | "custom";
 export type CapitalRole = "income" | "neutral" | "drain";
@@ -1095,6 +1105,10 @@ export interface AppSettings {
    *  со счёта ушли — значит трата; но они вернутся — значит не трата.
    *  Выбор за владельцем денег. */
   lending_is_spending: boolean;
+  /** Считать ли личные вещи в разрезе по риску. Правило «столько-то под
+   *  риском» задумано про размещение, а компьютер, на котором работают,
+   *  никто не размещал; но обесценивается и телефон — поэтому выбор. */
+  risk_counts_personal_use: boolean;
   default_page_size: number;
   group_repeats_by_default: boolean;
   day_dividers_by_default: boolean;

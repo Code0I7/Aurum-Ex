@@ -13,7 +13,17 @@ interface AssetFormModalProps {
   asset?: Asset | null;
 }
 
-const ASSET_CLASSES: AssetClass[] = ["investments", "crypto", "real_estate", "vehicles", "precious_metals", "other"];
+const ASSET_CLASSES: AssetClass[] = [
+  "investments",
+  "crypto",
+  "real_estate",
+  "vehicles",
+  "precious_metals",
+  "personal_items",
+  // «Прочее» последним: это не вид имущества, а его отсутствие, и
+  // предлагать его наравне с остальными значит предлагать не выбирать.
+  "other",
+];
 const CAPITAL_ROLES: CapitalRole[] = ["income", "neutral", "drain"];
 const RISK_LEVELS: RiskLevel[] = ["low", "medium", "high"];
 

@@ -10,6 +10,7 @@ const CLASS_ICONS: Record<Asset["asset_class"], string> = {
   real_estate: "building-2",
   vehicles: "car",
   precious_metals: "gem",
+  personal_items: "laptop",
   other: "package",
 };
 
