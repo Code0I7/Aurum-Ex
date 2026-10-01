@@ -315,11 +315,13 @@ export function TransactionsPage() {
       <TransferMatchesNotice />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className={`min-w-0 flex-1 space-y-3 ${isSearching ? "pointer-events-none opacity-50" : ""}`}>
-          {/* Выбор года стоит здесь, рядом с выбором периода, а не сбоку от
-              полосы месяцев. Раньше он висел справа от месяцев и при
-              переключении на «год» перескакивал влево: одна и та же кнопка
-              оказывалась то посреди строки, то у края. */}
-          <div className="flex items-center justify-between gap-3">
+          {/* Верхняя строка — только период. Год когда-то висел справа от
+              месяцев и при переключении на «год» перескакивал влево: одна и
+              та же кнопка оказывалась то посреди строки, то у края, — и его
+              подняли сюда. Теперь он живёт в нижней строке у правого края и
+              не двигается оттуда ни при каком выборе, так что держать его
+              наверху, отдельно от месяцев, больше незачем. */}
+          <div className="flex items-center gap-3">
             <div className="flex flex-wrap items-center gap-1">
               {scopes.map((item) => (
               <button
@@ -339,7 +341,29 @@ export function TransactionsPage() {
                 </button>
               ))}
             </div>
-            {scope !== "all" && (
+          </div>
+          {/* Месяцы и год — одной строкой, как на обзоре. Выбор одного и
+              того же периода, разнесённый по двум строкам, читается как два
+              разных переключателя, и между ними оставалась пустота.
+
+              Полоса месяцев прячется, когда она ни на что не влияет:
+              переключатель, который ничего не меняет, — обещание, которого
+              приложение не выполняет. Год при этом никуда не прыгает: он
+              всегда в этой строке у правого края, и при выборе года просто
+              остаётся в ней один. */}
+          {scope !== "all" && (
+            <div className="flex items-center justify-end gap-3">
+              {scope === "month" && (
+                <div className="min-w-0 flex-1">
+                  <MonthSelector
+                    month={month}
+                    onChange={(value) => {
+                      setMonth(value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+              )}
               <YearSelector
                 years={years ?? [now.getFullYear()]}
                 year={year}
@@ -348,19 +372,7 @@ export function TransactionsPage() {
                   setPage(1);
                 }}
               />
-            )}
-          </div>
-          {/* Полоса месяцев прячется, когда она ни на что не влияет:
-              переключатель, который ничего не меняет, — обещание, которого
-              приложение не выполняет. Год при этом остаётся на месте выше. */}
-          {scope === "month" && (
-            <MonthSelector
-              month={month}
-              onChange={(value) => {
-                setMonth(value);
-                setPage(1);
-              }}
-            />
+            </div>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
