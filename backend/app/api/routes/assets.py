@@ -6,7 +6,15 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_session
 from app.models.asset import Asset, AssetValuation
-from app.schemas.asset import AssetCreate, AssetRead, AssetUpdate, AssetValuationCreate, AssetValuationRead
+from app.schemas.asset import (
+    AssetBase,
+    AssetCreate,
+    AssetRead,
+    AssetUpdate,
+    AssetValuationCreate,
+    AssetValuationRead,
+)
+from app.services.currency_service import get_base_currency
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -14,16 +22,19 @@ _EAGER = (selectinload(Asset.valuations),)
 
 
 def _to_read(asset: Asset) -> AssetRead:
+    """Ответ собирается по списку полей схемы, а не по памяти автора.
+
+    Перечисленные руками, они однажды разошлись: `is_personal_use` в этот
+    список не попал, и флаг не возвращался никогда. Форма правки читает
+    ответ, видит пусто и при следующем сохранении отправляет «нет» — то
+    есть отметка не только не показывалась, но и стиралась. Теперь новое
+    поле схемы попадает в ответ само.
+    """
     latest = asset.valuations[-1] if asset.valuations else None
+    stored = {field: getattr(asset, field) for field in AssetBase.model_fields}
     return AssetRead(
+        **stored,
         id=asset.id,
-        name=asset.name,
-        asset_class=asset.asset_class,
-        currency=asset.currency,
-        notes=asset.notes,
-        capital_role=asset.capital_role,
-        monthly_cash_flow=asset.monthly_cash_flow,
-        risk_level=asset.risk_level,
         current_value=latest.value if latest else 0,
         as_of_date=latest.as_of_date if latest else asset.created_at.date(),
     )
@@ -37,15 +48,14 @@ async def list_assets(session: AsyncSession = Depends(get_session)) -> list[Asse
 
 @router.post("", response_model=AssetRead, status_code=201)
 async def create_asset(payload: AssetCreate, session: AsyncSession = Depends(get_session)) -> AssetRead:
-    asset = Asset(
-        name=payload.name,
-        asset_class=payload.asset_class,
-        currency=payload.currency,
-        notes=payload.notes,
-        capital_role=payload.capital_role,
-        monthly_cash_flow=payload.monthly_cash_flow,
-        risk_level=payload.risk_level,
-    )
+    # Поля — из схемы, по той же причине, что и в _to_read: перечисленные
+    # руками, они теряли «личное пользование» при каждом создании.
+    data = payload.model_dump(exclude={"value", "as_of_date"})
+    # Валюта по умолчанию — валюта установки, как у счёта. Имущество за
+    # границей бывает, но это редкий случай, а не умолчание.
+    if not data.get("currency"):
+        data["currency"] = (await get_base_currency(session)).upper()
+    asset = Asset(**data)
     session.add(asset)
     await session.flush()
     session.add(AssetValuation(asset_id=asset.id, value=payload.value, as_of_date=payload.as_of_date))

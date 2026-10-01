@@ -20,7 +20,7 @@ from datetime import timedelta
 from decimal import Decimal
 from itertools import groupby
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import Account
@@ -292,7 +292,10 @@ async def _asset_events_and_class_totals(
 
 
 async def _capital_role_summary(
-    session: AsyncSession, current_by_asset: dict[int, Decimal], cash_total: Decimal
+    session: AsyncSession,
+    current_by_asset: dict[int, Decimal],
+    cash_total: Decimal,
+    currency: str,
 ) -> list[CapitalRoleSummary]:
     """Cross-cuts the same assets by how the user tagged them (income /
     neutral / drain) instead of by asset class — always all three roles,
@@ -305,7 +308,15 @@ async def _capital_role_summary(
     пустым у любого, кто пока не завёл ни одного актива, а доли не
     сходились с капиталом — и человек видел «капитал 55 214», а под ним
     три нуля."""
-    roles_result = await session.execute(select(Asset.id, Asset.capital_role, Asset.monthly_cash_flow))
+    # Только активы показанной валюты. Капитал считается в одной валюте и
+    # ничего не переводит, а разрез брал все: в рублёвом виде долларовая
+    # машина давала «1 актив · 0,00 ₽» и «−500,00 ₽/мес» — её содержание в
+    # долларах, подписанное рублём.
+    roles_result = await session.execute(
+        select(Asset.id, Asset.capital_role, Asset.monthly_cash_flow).where(
+            func.upper(Asset.currency) == currency.upper()
+        )
+    )
 
     totals_value: dict[CapitalRole, Decimal] = defaultdict(Decimal)
     totals_flow: dict[CapitalRole, Decimal] = defaultdict(Decimal)
@@ -332,7 +343,10 @@ async def _capital_role_summary(
 
 
 async def _risk_level_summary(
-    session: AsyncSession, current_by_asset: dict[int, Decimal], cash_today: Decimal
+    session: AsyncSession,
+    current_by_asset: dict[int, Decimal],
+    cash_today: Decimal,
+    currency: str,
 ) -> list[RiskLevelSummary]:
     """Cross-cuts Cash + assets by user-tagged risk of loss — unlike
     capital_roles, Cash participates here: it's the zero-risk anchor an
@@ -341,7 +355,13 @@ async def _risk_level_summary(
     same reasoning as capital_roles. Each tier's item list *is* its
     diversification view — a tier that's one holding at 100% is
     concentrated, several even-sized holdings aren't, no separate index."""
-    assets_result = await session.execute(select(Asset.id, Asset.name, Asset.risk_level))
+    # Только активы показанной валюты — по той же причине, что и в
+    # разрезе по типу.
+    assets_result = await session.execute(
+        select(Asset.id, Asset.name, Asset.risk_level).where(
+            func.upper(Asset.currency) == currency.upper()
+        )
+    )
     asset_rows = assets_result.all()
 
     totals: dict[RiskLevel, Decimal] = defaultdict(Decimal)
@@ -506,7 +526,7 @@ async def get_net_worth_summary(
     # Разрезы по роли и по риску — про то, в чём лежит капитал, а долг ни в
     # чём не лежит. Отдавать им чистый итог значило бы получить отрицательную
     # «долю денег» у всякого, кто должен по карте больше, чем держит на счетах.
-    capital_roles = await _capital_role_summary(session, current_by_asset, money_today)
+    capital_roles = await _capital_role_summary(session, current_by_asset, money_today, target)
 
     end = min(end_date, today) if end_date is not None else today
     if start_date is not None:
@@ -539,7 +559,7 @@ async def get_net_worth_summary(
         float(change_amount / start_value * 100) if range_key != "all" and start_value else None
     )
 
-    risk_levels = await _risk_level_summary(session, current_by_asset, money_today)
+    risk_levels = await _risk_level_summary(session, current_by_asset, money_today, target)
 
     # Проценты разбивки — от того, что есть, а не от капитала за вычетом
     # долгов: разбивка отвечает на «из чего состоит имущество», и доли в ней

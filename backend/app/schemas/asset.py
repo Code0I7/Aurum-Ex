@@ -22,7 +22,10 @@ class AssetValuationRead(BaseModel):
 class AssetBase(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     asset_class: AssetClass
-    currency: str = Field(default="USD", min_length=3, max_length=3)
+    # Пусто — валюта установки: её подставляет маршрут, как и у счёта.
+    # Раньше здесь стоял доллар, и на рублёвой установке новый актив
+    # оказывался долларовым, а в рублёвый капитал не попадал вовсе.
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
     notes: str | None = None
     capital_role: CapitalRole = CapitalRole.NEUTRAL
     # Rough self-reported monthly net cash flow — informational, not tracked
@@ -54,6 +57,8 @@ class AssetUpdate(BaseModel):
 class AssetRead(AssetBase):
     model_config = ConfigDict(from_attributes=True)
 
+    # У записанного актива валюта есть всегда: в ответе она не пустая.
+    currency: str
     id: int
     current_value: Decimal
     as_of_date: date_

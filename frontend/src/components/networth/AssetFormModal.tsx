@@ -10,6 +10,7 @@ import {
   useDeleteAssetValuation,
   useUpdateAsset,
 } from "@/hooks/useAssets";
+import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Asset, AssetClass, CapitalRole, RiskLevel } from "@/types";
@@ -31,6 +32,8 @@ function todayIso() {
 const EMPTY_FORM = {
   name: "",
   asset_class: "investments" as AssetClass,
+  // Пусто до открытия формы: валюта установки известна только там.
+  currency: "",
   value: "",
   as_of_date: todayIso(),
   notes: "",
@@ -41,7 +44,7 @@ const EMPTY_FORM = {
 };
 
 export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
-  const { t } = useTranslation();
+  const { t, language, currency: installCurrency } = useTranslation();
   const createAsset = useCreateAsset();
   const updateAsset = useUpdateAsset();
   const { data: valuations } = useAssetValuations(asset?.id ?? null);
@@ -57,6 +60,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
       setForm({
         name: asset.name,
         asset_class: asset.asset_class,
+        currency: asset.currency,
         value: asset.current_value,
         as_of_date: todayIso(),
         notes: asset.notes ?? "",
@@ -66,10 +70,13 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
         is_personal_use: asset.is_personal_use,
       });
     } else {
-      setForm(EMPTY_FORM);
+      // У нового актива валюта установки. Имущество за границей бывает, но
+      // это редкий случай, а не умолчание: раньше здесь молча стоял
+      // доллар, и на рублёвой установке актив не попадал в капитал вовсе.
+      setForm({ ...EMPTY_FORM, currency: installCurrency });
     }
     setError(null);
-  }, [open, asset]);
+  }, [open, asset, installCurrency]);
 
   const isSaving = createAsset.isPending || updateAsset.isPending || addValuation.isPending;
 
@@ -84,6 +91,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
           input: {
             name: form.name,
             asset_class: form.asset_class,
+            currency: form.currency,
             notes: form.notes || null,
             capital_role: form.capital_role,
             monthly_cash_flow: form.monthly_cash_flow || null,
@@ -98,6 +106,7 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
         await createAsset.mutateAsync({
           name: form.name,
           asset_class: form.asset_class,
+          currency: form.currency,
           value: form.value,
           as_of_date: form.as_of_date,
           notes: form.notes || null,
@@ -137,6 +146,24 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
             {ASSET_CLASSES.map((value) => (
               <option key={value} value={value}>
                 {t(`netWorth.assetClass.${value}` as TranslationKey)}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {/* Валюта актива. Капитал считается в одной валюте и ничего не
+            переводит, поэтому от неё зависит, в какую колонку актив
+            попадёт, — и выбирать её должен человек, а не умолчание. */}
+        <div>
+          <Label htmlFor="asset-currency">{t("netWorth.form.currencyLabel")}</Label>
+          <Select
+            id="asset-currency"
+            value={form.currency}
+            onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value }))}
+          >
+            {CURRENCIES.map((option) => (
+              <option key={option.code} value={option.code}>
+                {getCurrencyLabel(option.code, language)}
               </option>
             ))}
           </Select>

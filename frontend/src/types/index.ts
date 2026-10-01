@@ -483,6 +483,10 @@ export interface AssetUpdateInput {
   is_personal_use?: boolean;
   name?: string;
   asset_class?: AssetClass;
+  /** Капитал считается в одной валюте и ничего не переводит, так что от
+   *  валюты зависит, в какую колонку попадёт актив. Менять её можно: она
+   *  описывает, в чём записана стоимость, а не событие. */
+  currency?: string;
   notes?: string | null;
   capital_role?: CapitalRole;
   monthly_cash_flow?: string | null;
