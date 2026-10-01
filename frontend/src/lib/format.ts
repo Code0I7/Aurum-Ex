@@ -115,7 +115,11 @@ export function maskAmount(formatted: string, hidden: boolean): string {
 export function trimTrailingZeros(value: string): string {
   if (!value.includes(".")) return value;
   const trimmed = value.replace(/0+$/, "").replace(/\.$/, "");
-  return trimmed === "" || trimmed === "-" ? "0" : trimmed;
+  // «-0» тоже ноль: от «-0.000» после обрезки остаётся минус перед нулём, и
+  // в поле ввода он выглядит опечаткой. Нашлось тестом — на настоящих
+  // количествах такого не бывает, они положительные.
+  if (trimmed === "" || trimmed === "-" || trimmed === "-0") return "0";
+  return trimmed;
 }
 
 /** Количество бумаг, монет или единиц товара — для показа, не для ввода.

@@ -44,7 +44,11 @@ uvicorn app.main:app --reload
 
 ## Before opening a PR
 
-- **Frontend:** `npm run build` (runs `tsc -b` then `vite build`) must pass with no type errors.
+- **Frontend:** `npm run build` (runs `tsc -b` then `vite build`) must pass with no type errors,
+  and `npm run test` (Vitest) must be green — a few seconds. The suite covers the pure logic in
+  `src/lib`: bank-statement parsing, money formatting, the plan schedule, work-hour pricing, the
+  return calculator. `npm run test:watch` while you work. Components aren't covered yet; that
+  would need jsdom, which is deliberately not installed until something needs it.
 - **Backend:** new tables or columns need an Alembic migration (`alembic revision --autogenerate -m "..."`) — check the generated migration by hand, autogenerate isn't always right.
 - **Tests:** `pytest` in `backend/` must pass (it needs a Postgres — the compose one will do).
   The runner isn't in the production image, so install it first:

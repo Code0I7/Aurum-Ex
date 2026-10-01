@@ -8,8 +8,8 @@
 
 A self-hosted personal finance app built to replace the kind of hand-made spreadsheet people keep for years — and to answer the questions such a spreadsheet cannot.
 
-![Version](https://img.shields.io/badge/version-1.0.0--beta.96-e0a400.svg)
-![Tests](https://img.shields.io/badge/tests-627%20passing-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-1.0.0--beta.97-e0a400.svg)
+![Tests](https://img.shields.io/badge/tests-741%20passing-brightgreen.svg)
 [![Fork of Zproger/Aurum](https://img.shields.io/badge/fork%20of-Zproger%2FAurum-6E7B74.svg)](https://github.com/Zproger/Aurum)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 
@@ -198,7 +198,7 @@ Unlike the original, Aurum-Ex has a login of its own:
 
 ## Tech stack
 
-- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts, Vitest
 - **Backend:** FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2
 - **Database:** PostgreSQL 16
 - **Deployment:** Docker Compose, optional nginx + Let's Encrypt front door
