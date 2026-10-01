@@ -15,7 +15,7 @@ import { useAssets, useDeleteAsset } from "@/hooks/useAssets";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
 import { useTransactionYears } from "@/hooks/useTransactions";
-import { computeRange, type CustomYearRange } from "@/lib/dateRange";
+import { computeRange, defaultCustomRange, type CustomDateRange } from "@/lib/dateRange";
 import { useSessionState } from "@/hooks/useSessionState";
 import type { Asset, NetWorthRange } from "@/types";
 
@@ -26,10 +26,12 @@ export function NetWorthPage() {
   // the long-run trend is up — 5y is long enough to make that trend visible.
   const [range, setRange] = useSessionState<NetWorthRange>("aurum:networth-range", "5y");
   const now = new Date();
-  const [customRange, setCustomRange] = useSessionState<CustomYearRange>("aurum:networth-custom", {
-    fromYear: now.getFullYear(),
-    toYear: now.getFullYear(),
-  });
+  // Ключ сменился вместе с формой значения: в старом лежит {fromYear,
+  // toYear}, и прочитанное как {from, to} ушло бы на сервер пустым.
+  const [customRange, setCustomRange] = useSessionState<CustomDateRange>(
+    "aurum:networth-dates",
+    defaultCustomRange(now)
+  );
   const { data: years } = useTransactionYears();
   // Даты уходят на сервер только для своего периода: у готовых начало
   // считает сервер, и присылать ему заодно даты значило бы описать одно и

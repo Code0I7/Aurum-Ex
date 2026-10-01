@@ -2,8 +2,8 @@ import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YA
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { RangeSelector } from "@/components/layout/RangeSelector";
-import { YearRangeSelector } from "@/components/layout/YearSelector";
-import type { CustomYearRange } from "@/lib/dateRange";
+import { DateRangeSelector } from "@/components/layout/YearSelector";
+import type { CustomDateRange } from "@/lib/dateRange";
 import { formatCurrency, formatSignedCurrency, getIntlLocale } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -19,8 +19,8 @@ interface NetWorthChartProps {
   // Свой период. Годы для выпадающих списков берутся из истории операций:
   // предлагать 1998-й, когда записи начинаются с 2022-го, незачем.
   years: number[];
-  customRange: CustomYearRange;
-  onCustomRangeChange: (range: CustomYearRange) => void;
+  customRange: CustomDateRange;
+  onCustomRangeChange: (range: CustomDateRange) => void;
   // Валюта, в которой смотрят капитал. Пусто — своя: подставит сервер.
   currency: string;
   onCurrencyChange: (currency: string) => void;
@@ -293,10 +293,9 @@ export function NetWorthChart({
           )}
           <RangeSelector value={range} onChange={onRangeChange} />
           {range === "custom" && (
-            <YearRangeSelector
+            <DateRangeSelector
               years={years}
-              fromYear={customRange.fromYear}
-              toYear={customRange.toYear}
+              value={customRange}
               onChange={onCustomRangeChange}
             />
           )}

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Label, Select } from "@/components/ui/Input";
 import { PillSelector } from "@/components/layout/PillSelector";
-import { YearRangeSelector } from "@/components/layout/YearSelector";
+import { DateRangeSelector } from "@/components/layout/YearSelector";
 import { CategoryRankingCard } from "@/components/reports/CategoryRankingCard";
 import { CategorySpendingChart } from "@/components/reports/CategorySpendingChart";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
@@ -12,7 +12,12 @@ import { useCategories } from "@/hooks/useCategories";
 import { useCategoryRanking, useCategorySpendingReport } from "@/hooks/useReports";
 import { useDeleteTransaction, useTransactions, useTransactionYears } from "@/hooks/useTransactions";
 import type { TransactionSort } from "@/api/transactions";
-import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
+import {
+  computeRange,
+  defaultCustomRange,
+  type CustomDateRange,
+  type RangePreset,
+} from "@/lib/dateRange";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useTranslation } from "@/lib/i18n";
 import { useConfirm } from "@/components/ui/ConfirmProvider";
@@ -34,10 +39,12 @@ export function ReportsPage() {
   const { data: years } = useTransactionYears();
   const [categoryId, setCategoryId] = useSessionState<number | null>("aurum:reports-category", null);
   const [range, setRange] = useSessionState<RangePreset>("aurum:reports-range", "all");
-  const [customRange, setCustomRange] = useSessionState<CustomYearRange>("aurum:reports-custom", {
-    fromYear: now.getFullYear(),
-    toYear: now.getFullYear(),
-  });
+  // Ключ сменился вместе с формой значения: в старом лежит {fromYear,
+  // toYear}, и прочитанное как {from, to} ушло бы на сервер пустым.
+  const [customRange, setCustomRange] = useSessionState<CustomDateRange>(
+    "aurum:reports-dates",
+    defaultCustomRange(now)
+  );
   const [sort, setSort] = useState<TransactionSort>("date_desc");
   const [page, setPage] = useState(1);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -125,10 +132,9 @@ export function ReportsPage() {
             }}
           />
           {range === "custom" && (
-            <YearRangeSelector
+            <DateRangeSelector
               years={years ?? [now.getFullYear()]}
-              fromYear={customRange.fromYear}
-              toYear={customRange.toYear}
+              value={customRange}
               onChange={(value) => {
                 setCustomRange(value);
                 setPage(1);

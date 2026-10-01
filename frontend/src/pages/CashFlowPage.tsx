@@ -1,9 +1,14 @@
 import { PillSelector } from "@/components/layout/PillSelector";
-import { YearRangeSelector } from "@/components/layout/YearSelector";
+import { DateRangeSelector } from "@/components/layout/YearSelector";
 import { CashFlowChart } from "@/components/cashflow/CashFlowChart";
 import { useCashFlow } from "@/hooks/useCashFlow";
 import { useTransactionYears } from "@/hooks/useTransactions";
-import { computeRange, type CustomYearRange, type RangePreset } from "@/lib/dateRange";
+import {
+  computeRange,
+  defaultCustomRange,
+  type CustomDateRange,
+  type RangePreset,
+} from "@/lib/dateRange";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useTranslation } from "@/lib/i18n";
 
@@ -12,10 +17,10 @@ export function CashFlowPage() {
   const now = new Date();
   const { data: years } = useTransactionYears();
   const [range, setRange] = useSessionState<RangePreset>("aurum:cashflow-range", "this_year");
-  const [customRange, setCustomRange] = useSessionState<CustomYearRange>("aurum:cashflow-custom", {
-    fromYear: now.getFullYear(),
-    toYear: now.getFullYear(),
-  });
+  const [customRange, setCustomRange] = useSessionState<CustomDateRange>(
+    "aurum:cashflow-dates",
+    defaultCustomRange(now)
+  );
 
   const RANGE_OPTIONS: Array<{ value: RangePreset; label: string }> = [
     { value: "all", label: t("reports.rangeAll") },
@@ -32,10 +37,9 @@ export function CashFlowPage() {
       <div className="flex flex-wrap items-center justify-end gap-2">
         <PillSelector options={RANGE_OPTIONS} value={range} onChange={setRange} />
         {range === "custom" && (
-          <YearRangeSelector
+          <DateRangeSelector
             years={years ?? [now.getFullYear()]}
-            fromYear={customRange.fromYear}
-            toYear={customRange.toYear}
+            value={customRange}
             onChange={setCustomRange}
           />
         )}

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import type { CustomDateRange } from "@/lib/dateRange";
+import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface YearDropdownProps {
@@ -9,7 +11,7 @@ interface YearDropdownProps {
 }
 
 /** Compact single-year dropdown, most recent year first. Shared building
- * block behind both YearSelector and YearRangeSelector below. */
+ * block behind YearSelector below. */
 function YearDropdown({ years, year, onChange }: YearDropdownProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -85,22 +87,70 @@ export function YearSelector(props: YearDropdownProps) {
   return <YearDropdown {...props} />;
 }
 
-interface YearRangeSelectorProps {
+interface DateRangeSelectorProps {
+  /** Годы, в которых есть записи. Нужны не для выбора, а для границ: дальше
+   *  них данных нет, и предлагать 1998-й незачем. */
   years: number[];
-  fromYear: number;
-  toYear: number;
-  onChange: (range: { fromYear: number; toYear: number }) => void;
+  value: CustomDateRange;
+  onChange: (range: CustomDateRange) => void;
 }
 
-/** Two year dropdowns for picking an arbitrary "from year – to year" span
- * (CashFlow/Reports "custom" range preset). Keeps fromYear <= toYear by
- * dragging the other bound along instead of allowing an inverted range. */
-export function YearRangeSelector({ years, fromYear, toYear, onChange }: YearRangeSelectorProps) {
+/**
+ * Свой период двумя датами — для пресета «свой» на страницах капитала,
+ * движения денег и отчётов.
+ *
+ * Раньше здесь стояли два списка лет, и срез за март–май 2024 выразить было
+ * нечем. Пресеты рядом никуда не делись: «этот год» и «пять лет» отвечают
+ * на частые вопросы одним щелчком, а даты нужны там, где вопрос редкий.
+ *
+ * Границы не дают уйти туда, где записей нет, а порядок сохраняется
+ * подтягиванием второй даты, а не отказом: перевёрнутый период — это не
+ * выбор, а опечатка, и чинить её молча лучше, чем спорить с человеком.
+ */
+export function DateRangeSelector({ years, value, onChange }: DateRangeSelectorProps) {
+  const { t } = useTranslation();
+  const known = years.length > 0 ? years : [new Date().getFullYear()];
+  const min = `${Math.min(...known)}-01-01`;
+  const max = `${Math.max(...known, new Date().getFullYear())}-12-31`;
+
+  const field =
+    "h-9 shrink-0 rounded-lg border border-border bg-surface-1 px-2 text-sm text-text-primary transition-colors hover:bg-surface-2";
+
   return (
     <div className="flex shrink-0 items-center gap-1.5">
-      <YearDropdown years={years} year={fromYear} onChange={(value) => onChange({ fromYear: value, toYear: Math.max(toYear, value) })} />
+      <input
+        type="date"
+        value={value.from}
+        min={min}
+        max={max}
+        aria-label={t("reports.rangeFrom")}
+        onChange={(event) =>
+          onChange({ from: event.target.value, to: laterOf(value.to, event.target.value) })
+        }
+        className={field}
+      />
       <span className="text-sm text-text-muted">–</span>
-      <YearDropdown years={years} year={toYear} onChange={(value) => onChange({ fromYear: Math.min(fromYear, value), toYear: value })} />
+      <input
+        type="date"
+        value={value.to}
+        min={min}
+        max={max}
+        aria-label={t("reports.rangeTo")}
+        onChange={(event) =>
+          onChange({ from: earlierOf(value.from, event.target.value), to: event.target.value })
+        }
+        className={field}
+      />
     </div>
   );
+}
+
+/** Сравнение «ГГГГ-ММ-ДД» строками: формат с фиксированной шириной, и
+ *  лексикографический порядок у него совпадает с хронологическим. */
+function laterOf(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+function earlierOf(a: string, b: string): string {
+  return a <= b ? a : b;
 }

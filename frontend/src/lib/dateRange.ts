@@ -2,9 +2,19 @@
  * period presets over their respective date-ranged endpoints. */
 export type RangePreset = "all" | "this_year" | "5y" | "custom";
 
-export interface CustomYearRange {
-  fromYear: number;
-  toYear: number;
+/**
+ * Свой период — две даты, а не два года.
+ *
+ * Годами он был потому, что выбор рисовался двумя списками лет, и срез за
+ * март–май 2024 выразить было нечем: любой выбор разворачивался в целые
+ * годы. Сервер при этом всегда принимал произвольные даты — ограничение
+ * жило только здесь.
+ */
+export interface CustomDateRange {
+  /** «ГГГГ-ММ-ДД», включительно. */
+  from: string;
+  /** «ГГГГ-ММ-ДД», включительно. */
+  to: string;
 }
 
 /** Дата в виде «ГГГГ-ММ-ДД» по местному времени.
@@ -18,9 +28,18 @@ function isoDate(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/** Период по умолчанию для «своего»: с начала года по сегодня.
+ *
+ * Не по тридцать первое декабря: большую часть года это дата из будущего, а
+ * период, который кончается позже сегодняшнего дня, обещает данные, которых
+ * ещё нет. */
+export function defaultCustomRange(today: Date = new Date()): CustomDateRange {
+  return { from: `${today.getFullYear()}-01-01`, to: isoDate(today) };
+}
+
 export function computeRange(
   preset: RangePreset,
-  custom?: CustomYearRange
+  custom?: CustomDateRange
 ): { startDate?: string; endDate?: string } {
   const today = new Date();
   switch (preset) {
@@ -34,7 +53,7 @@ export function computeRange(
     }
     case "custom": {
       if (!custom) return {};
-      return { startDate: `${custom.fromYear}-01-01`, endDate: `${custom.toYear}-12-31` };
+      return { startDate: custom.from, endDate: custom.to };
     }
   }
 }
