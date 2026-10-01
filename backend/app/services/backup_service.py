@@ -287,6 +287,40 @@ async def _reset_sequence(session: AsyncSession, table: str, rows: list) -> None
     )
 
 
+def _categories_parents_first(rows: list) -> list:
+    """Категории в порядке, при котором родитель всегда вставлен раньше ребёнка.
+
+    Раньше здесь стояла сортировка на два ведра — сначала корневые, потом
+    всё остальное, — и для одного уровня вложенности этого хватало. С
+    произвольной вложенностью хватать перестало: во втором ведре внук может
+    оказаться раньше своего родителя, потому что порядок там остаётся по
+    номеру, а номер у ребёнка бывает меньше — ветку перенесли под категорию,
+    созданную позже.
+
+    На рабочей установке это означало, что копия не восстанавливается вовсе:
+    «Key (parent_id)=(7) is not present in table categories». Выгрузка при
+    этом работала, и выглядело всё целым.
+
+    Поэтому обход по слоям: сначала всё, у чего родителя нет, затем всё,
+    чей родитель уже выложен, и так до конца. Глубина при этом не важна.
+    """
+    remaining = list(rows)
+    placed: set[int] = set()
+    ordered: list = []
+    while remaining:
+        ready = [row for row in remaining if row.parent_id is None or row.parent_id in placed]
+        if not ready:
+            # Круг в дереве: приложение такого не создаёт, но копия могла
+            # быть поправлена руками. Отказ с понятной причиной лучше, чем
+            # бесконечный цикл или отказ самой базы.
+            raise HTTPException(400, "Restore failed: the category tree in the backup has a cycle")
+        for row in ready:
+            ordered.append(row)
+            placed.add(row.id)
+        remaining = [row for row in remaining if row.id not in placed]
+    return ordered
+
+
 async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
     if payload.aurum_backup_version != BACKUP_FORMAT_VERSION:
         raise HTTPException(
@@ -339,10 +373,10 @@ async def restore_backup(session: AsyncSession, payload: BackupPayload) -> None:
         await session.execute(delete(Currency))
 
         # Parents before children. Categories are additionally self-referential
-        # (parent_id points at another row in the same table) — sort
-        # top-level categories first so a subcategory's FK is never inserted
-        # ahead of the row it points to.
-        categories_in_order = sorted(payload.categories, key=lambda row: row.parent_id is not None)
+        # (parent_id points at another row in the same table) and nest to any
+        # depth, so their order is worked out layer by layer — see
+        # _categories_parents_first.
+        categories_in_order = _categories_parents_first(payload.categories)
 
         # Справочники раньше всего: на них ссылаются и счета, и операции.
         session.add_all(Bank(**row.model_dump()) for row in payload.banks)

@@ -92,3 +92,68 @@ async def test_backup_roundtrip_preserves_transaction_splits(client: AsyncClient
     splits_by_note = {s["note"]: s for s in refetched["splits"]}
     assert splits_by_note["candy and snacks"]["category_id"] == sweets
     assert refetched["category"] is None
+
+async def test_a_branch_moved_under_a_newer_category_still_restores(
+    client: AsyncClient, account_id, categories
+):
+    """Копия восстанавливается, даже если ребёнок записан раньше родителя.
+
+    Так и выглядела настоящая поломка. Восстановление раскладывало
+    категории на два ведра — сначала корневые, потом все остальные, — и для
+    одного уровня вложенности этого хватало. С произвольной вложенностью
+    во втором ведре внук оказывается раньше родителя: порядок там по
+    номеру, а номер у ребёнка меньше, если ветку перенесли под категорию,
+    созданную позже.
+
+    На рабочей установке с её деревом из 177 категорий копия не
+    восстанавливалась вовсе: «Key (parent_id)=(7) is not present in table
+    categories». Выгрузка при этом работала, и файл выглядел целым —
+    заметить можно было только попыткой восстановить.
+    """
+    root = (await client.post(
+        "/categories", json={"name": "Корень", "kind": "expense", "color": "#e34948"}
+    )).json()
+    first = (await client.post(
+        "/categories",
+        json={"name": "Переносимая", "kind": "expense", "color": "#e34948", "parent_id": root["id"]},
+    )).json()
+    second = (await client.post(
+        "/categories",
+        json={"name": "Новый родитель", "kind": "expense", "color": "#e34948", "parent_id": root["id"]},
+    )).json()
+    # Ветку переносят под категорию с бо́льшим номером — обычное дело, когда
+    # дерево перестраивают по ходу.
+    moved = await client.patch(f"/categories/{first['id']}", json={"parent_id": second["id"]})
+    assert moved.status_code == 200, moved.text
+    assert first["id"] < second["id"]
+
+    payload = (await client.get("/backup/export")).json()
+    # Список переворачивается намеренно: порядок в файле — не договор, и
+    # восстановление не должно от него зависеть. На рабочей установке
+    # ребёнок оказался раньше родителя сам, без всякого перевёртывания.
+    payload["categories"].reverse()
+
+    resp = await client.post("/backup/import", json=payload)
+    assert resp.status_code == 200, resp.text
+
+    restored = {row["id"]: row for row in (await client.get("/categories")).json()}
+    assert restored[first["id"]]["parent_id"] == second["id"]
+    assert restored[second["id"]]["parent_id"] == root["id"]
+
+
+async def test_a_backup_with_a_cycle_is_refused_with_a_reason(
+    client: AsyncClient, account_id, categories
+):
+    """Круг в дереве приложение не создаёт, но файл могли поправить руками.
+
+    Отказ с понятной причиной лучше, чем вечный цикл в обходе или отказ
+    самой базы с текстом про внешний ключ.
+    """
+    payload = (await client.get("/backup/export")).json()
+    first, second = payload["categories"][0], payload["categories"][1]
+    first["parent_id"] = second["id"]
+    second["parent_id"] = first["id"]
+
+    resp = await client.post("/backup/import", json=payload)
+    assert resp.status_code == 400, resp.text
+    assert "cycle" in resp.json()["detail"].lower()
