@@ -21,6 +21,7 @@
   * **отрицательный** — вы должны ему.
 """
 from collections import defaultdict
+from datetime import date as date_
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -204,11 +205,13 @@ async def get_settlements(session: AsyncSession) -> list[SettlementTotals]:
 
 
 async def get_settlement_summary(session: AsyncSession) -> dict[str, Decimal]:
-    """Две итоговые суммы для карточки капитала.
+    """Две итоговые суммы для страницы долгов, в валюте установки.
 
-    Показываются рядом с капиталом, но НЕ входят в него: деньги, которые
-    вам должны, лежат не у вас, а обещание вернуть — не актив, пока его не
-    вернули.
+    В капитал они НЕ входят, и это решение, а не недоделка. У вклада есть
+    хоть какая-то гарантия возврата, у одолженной человеку тысячи — никакой:
+    вернуть могут через год, а могут не вернуть вовсе. Запись о таком долге
+    держат не ради капитала, а чтобы было чем напомнить. Капитал остаётся
+    тем, что действительно есть.
     """
     settlements = await get_settlements(session)
     return {

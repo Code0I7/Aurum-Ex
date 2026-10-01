@@ -87,6 +87,15 @@ class AppSettings(Base):
     # удлиняют число. Правильного ответа на оба случая нет, поэтому
     # переключатель.
     show_cents: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Считать ли данное в долг тратой. Правильного ответа нет: деньги со
+    # счёта ушли — значит трата; но они вернутся — значит не трата. Оба
+    # ответа честные, и выбор за тем, чьи это деньги.
+    #
+    # Включено: итог за период сходится с деньгами, и месяц, в котором со
+    # счетов ушло больше, чем пришло, не выглядит сбережением. Выключено:
+    # долг из расхода уходит, а сколько ушло людям в долг, подписывается
+    # под итогом — разрыв назван, но в норму сбережений не входит.
+    lending_is_spending: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     default_page_size: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     # Склеивать ли одинаковые траты дня и рисовать ли разделители дней.
     group_repeats_by_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

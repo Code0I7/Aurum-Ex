@@ -97,6 +97,24 @@ export function ViewDefaultsCard() {
           </span>
         </label>
 
+        {/* Считать ли данное в долг тратой. Правильного ответа нет, и
+            поэтому это переключатель, а не решение автора: деньги со счёта
+            ушли — значит трата; но они вернутся — значит не трата. */}
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.lending_is_spending}
+            onChange={(event) => update.mutate({ lending_is_spending: event.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 accent-text-primary"
+          />
+          <span>
+            {t("settings.lendingIsSpending")}
+            <span className="block text-xs text-text-muted">
+              {t("settings.lendingIsSpendingHint")}
+            </span>
+          </span>
+        </label>
+
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"

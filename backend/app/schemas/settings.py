@@ -28,6 +28,15 @@ class AppSettingsRead(BaseModel):
     # удлиняют число. Правильного ответа на оба случая нет, поэтому
     # переключатель.
     show_cents: bool = True
+    # Считать ли данное в долг тратой. Правильного ответа нет: деньги со
+    # счёта ушли — значит трата; но они вернутся — значит не трата. Оба
+    # ответа честные, и выбор за тем, чьи это деньги.
+    #
+    # Включено: итог за период сходится с деньгами, и месяц, в котором со
+    # счетов ушло больше, чем пришло, не выглядит сбережением. Выключено:
+    # долг из расхода уходит, а сколько ушло людям в долг, подписывается
+    # под итогом — разрыв назван, но в норму сбережений не входит.
+    lending_is_spending: bool = True
     default_page_size: int = 50
     group_repeats_by_default: bool = True
     day_dividers_by_default: bool = True
@@ -61,6 +70,8 @@ class AppSettingsUpdate(BaseModel):
     default_dashboard_range: Literal["month", "year", "all"] | None = None
     default_account_id: int | None = None
     show_cents: bool | None = None
+    # Считать ли данное в долг тратой — см. AppSettingsRead.
+    lending_is_spending: bool | None = None
     # Сколько операций подгружать за раз. Верхняя граница есть: страница на
     # тысячу строк грузится дольше, чем прокручиваются пятьдесят.
     default_page_size: int | None = Field(default=None, ge=10, le=500)

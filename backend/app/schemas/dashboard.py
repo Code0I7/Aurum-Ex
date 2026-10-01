@@ -95,6 +95,15 @@ class DashboardSummary(BaseModel):
     start_date: date_ | None = None
     end_date: date_ | None = None
     real_income: Decimal
+    # Сколько из расхода ушло людям: отдано насовсем и дано в долг, за
+    # вычетом вернувшегося. Входит в spent, но статьи не имеет и в
+    # spending_by_category не попадает. Бывает отрицательным — в месяце,
+    # где вернули больше, чем отдали.
+    to_people: Decimal = Decimal("0")
+    # Сколько за период ушло людям в долг, за вычетом вернувшегося. При
+    # включённом «считать долг тратой» уже сидит внутри spent; при
+    # выключенном — подписывается под итогом.
+    lent_net: Decimal = Decimal("0")
     spent: Decimal
     net: Decimal
     transferred_out: Decimal

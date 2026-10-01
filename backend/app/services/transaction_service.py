@@ -18,12 +18,12 @@
 from datetime import date as date_
 from decimal import Decimal
 
-from sqlalchemy import Select, case, func, select
+from sqlalchemy import Select, and_, case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.account import Account
-from app.models.enums import TransactionType
+from app.models.enums import SettlementKind, TransactionType
 from app.models.transaction import Transaction
 
 # Порядок, в котором операции идут по времени. Один и тот же кортеж нужен и
@@ -359,17 +359,108 @@ def counted_only():
     return Transaction.is_excluded.is_(False)
 
 
-def earnings_and_spending_only():
-    """Условие «это заработок или трата».
+# Виды расчёта, которые двигают деньги между вами и человеком насовсем
+# или в долг. Подарок полученный сюда не входит намеренно — см.
+# money_flow_only; транзит не входит вовсе: чужие деньги прошли насквозь.
+_LOAN_KINDS = [SettlementKind.LOAN_OUT, SettlementKind.LOAN_IN, SettlementKind.REPAYMENT]
 
-    Переводы между своими счетами деньгами не становятся, а EXTERNAL_IN и
-    EXTERNAL_OUT меняют баланс, но заработком не являются: жена передала на
-    продукты — это не доход, и в норму сбережений попадать не должно.
-    Поэтому фильтр перечисляет разрешённое, а не исключает переводы: при
-    добавлении нового вида операции «всё, кроме перевода» тихо включило бы
-    его в доходы.
+
+def money_flow_only(count_loans: bool = True):
+    """Условие «операция двигает заработок или трату».
+
+    Переводы между своими счетами деньгами не становятся. Остальное —
+    по тому, осталась ли сумма у вас:
+
+    * покупка и доход — очевидно;
+    * отданное безвозвратно — трата: требования не осталось, вернуть
+      нечего, кошелёк похудел ровно как от покупки;
+    * данное в долг — тоже трата: денег на счёте нет, а требование к
+      человеку активом не считается (см. settlement_service), и не
+      посчитать его значило бы сказать «сохранено» там, где денег стало
+      меньше;
+    * возврат долга — трата со знаком минус: деньги вернулись, и отчёт
+      обязан это заметить, иначе итог занижен навсегда. Занятое у человека
+      работает так же зеркально, и за круг «занял и вернул» выходит ноль;
+    * полученное безвозмездно — не входит никуда. Асимметрия с отданным
+      намеренная: норма сбережений отвечает на «какая доля ЗАРАБОТАННОГО
+      осталась», и чужие деньги в заработок не идут. Иначе сто процентов
+      можно «заработать», попросив у родных.
+
+    `count_loans` — выбор из настроек (AppSettings.lending_is_spending).
+    Выключен — долги и их возвраты не считаются вовсе, и расход снова
+    состоит из покупок и отданного насовсем. Отданное безвозвратно от
+    этого выбора не зависит: оно трата при любом ответе.
+
+    Фильтр перечисляет разрешённое, а не исключает лишнее: при добавлении
+    нового вида операции «всё, кроме перевода» тихо включило бы его в
+    деньги.
     """
-    return Transaction.type.in_([TransactionType.INCOME, TransactionType.EXPENSE])
+    out_kinds = [SettlementKind.GIFT, *_LOAN_KINDS] if count_loans else [SettlementKind.GIFT]
+    allowed = [
+        Transaction.type.in_([TransactionType.INCOME, TransactionType.EXPENSE]),
+        and_(
+            Transaction.type == TransactionType.EXTERNAL_OUT,
+            Transaction.settlement_kind.in_(out_kinds),
+        ),
+    ]
+    if count_loans:
+        allowed.append(
+            and_(
+                Transaction.type == TransactionType.EXTERNAL_IN,
+                Transaction.settlement_kind.in_(_LOAN_KINDS),
+            )
+        )
+    return or_(*allowed)
+
+
+def lending_amount():
+    """Сколько за период ушло людям в долг, со знаком.
+
+    Нужно, когда долг тратой не считается: разрыв между итогом и деньгами
+    от этого никуда не девается, и назвать его на экране честнее, чем
+    оставить загадкой. Знак тот же, что у расхода: ушло — плюс, вернулось
+    — минус.
+    """
+    return case(
+        (
+            and_(
+                Transaction.type == TransactionType.EXTERNAL_OUT,
+                Transaction.settlement_kind.in_(_LOAN_KINDS),
+            ),
+            Transaction.amount_base,
+        ),
+        (
+            and_(
+                Transaction.type == TransactionType.EXTERNAL_IN,
+                Transaction.settlement_kind.in_(_LOAN_KINDS),
+            ),
+            -Transaction.amount_base,
+        ),
+        else_=literal(0),
+    )
+
+
+def income_amount():
+    """Сколько операция добавляет к заработку. Только доход и ничего больше."""
+    return case(
+        (Transaction.type == TransactionType.INCOME, Transaction.amount_base),
+        else_=literal(0),
+    )
+
+
+def spending_amount():
+    """Сколько операция забирает из денег, со знаком.
+
+    Работает только вместе с money_flow_only: без него сюда попали бы
+    переводы между своими счетами и полученное безвозмездно, и каждый из
+    них испортил бы итог по-своему. Знак — по направлению: ушло со счёта
+    прибавляет к расходу, пришло обратно вычитает.
+    """
+    return case(
+        (Transaction.type == TransactionType.INCOME, literal(0)),
+        (Transaction.type == TransactionType.EXTERNAL_IN, -Transaction.amount_base),
+        else_=Transaction.amount_base,
+    )
 
 
 def converted_only():

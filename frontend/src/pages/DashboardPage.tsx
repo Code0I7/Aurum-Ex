@@ -11,6 +11,7 @@ import { AlertBanner } from "@/components/insights/AlertBanner";
 import { useDashboardSummary } from "@/hooks/useDashboard";
 import { useTransactionYears } from "@/hooks/useTransactions";
 import { formatCurrency, formatSignedCurrency, formatTransactionDate } from "@/lib/format";
+import { getShowCents } from "@/lib/i18n";
 import { useViewDefault } from "@/hooks/useViewDefault";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useAppSettings } from "@/hooks/useSettings";
@@ -23,9 +24,12 @@ function savingsRate(realIncome: number, net: number): number | null {
   return realIncome > 0 ? (net / realIncome) * 100 : null;
 }
 
+/** Норма сбережений. Знаки после запятой — по той же настройке, что и
+ *  копейки в суммах: кому важны копейки, тому важна и разница между
+ *  «почти ничего» и «три процента», а округление 2,95 до 3 её прячет. */
 function formatPercent(value: number): string {
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(0)}%`;
+  return `${sign}${value.toFixed(getShowCents() ? 2 : 0)}%`;
 }
 
 export function DashboardPage() {
@@ -47,6 +51,12 @@ export function DashboardPage() {
 
   const { data, isLoading, isError } = useDashboardSummary(year, month, range);
   const rate = data ? savingsRate(Number(data.real_income), Number(data.net)) : null;
+  // Сколько из расхода ушло людям. Ноль — подписи нет: объяснять нечего.
+  const toPeople = data ? Number(data.to_people) : 0;
+  // Долг в расход не считают — тогда разрыв между итогом и деньгами
+  // подписывается под самим итогом. Иначе он уже внутри расхода, и
+  // повторять его второй раз незачем.
+  const lentNet = settings?.lending_is_spending === false && data ? Number(data.lent_net) : 0;
 
   const ranges: Array<{ key: DashboardRange; label: string }> = [
     { key: "month", label: t("dashboard.rangeMonth") },
@@ -147,12 +157,27 @@ export function DashboardPage() {
           label={t("dashboard.statSpentLabel")}
           value={isLoading ? "…" : formatCurrency(data?.spent ?? 0)}
           hintKey="help.spent"
+          // Ушедшее людям входит в расход, но статьи у него нет и в круг
+          // по категориям оно не попадает. Без этой подписи круг не
+          // сходился бы с числом над ним, и объяснения этому не нашлось бы
+          // нигде. Второй вариант — для месяца, где вернули больше, чем
+          // отдали: тогда расход меньше суммы круга, и странно уже это.
+          caption={toPeople > 0
+            ? t("dashboard.statSpentToPeople", { amount: formatCurrency(toPeople) })
+            : toPeople < 0
+              ? t("dashboard.statSpentFromPeople", { amount: formatCurrency(-toPeople) })
+              : undefined}
           tone="danger"
         />
         <StatCard
           label={t("dashboard.statNetLabel")}
           value={isLoading ? "…" : formatSignedCurrency(data?.net ?? 0)}
           hintKey="help.net"
+          caption={lentNet > 0
+            ? t("dashboard.statNetLent", { amount: formatCurrency(lentNet) })
+            : lentNet < 0
+              ? t("dashboard.statNetReturned", { amount: formatCurrency(-lentNet) })
+              : undefined}
           tone={Number(data?.net ?? 0) >= 0 ? "success" : "danger"}
         />
         <StatCard

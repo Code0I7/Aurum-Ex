@@ -37,7 +37,14 @@ from app.services.currency_service import convert_balance, get_current_rates, qu
 from app.services.hourly_service import elapsed_hours
 from app.services.category_rollup import rollup_spending_by_top_level_category
 from app.services.settlement_service import get_reserved_by_account
-from app.services.transaction_service import converted_only, counted_only
+from app.services.settings_service import get_or_create_app_settings
+from app.services.transaction_service import (
+    converted_only,
+    counted_only,
+    lending_amount,
+    money_flow_only,
+    spending_amount,
+)
 
 # Categorical slots are capped at 8 (dataviz skill: a 9th series folds into "Other",
 # never a generated hue) — this is also the exact size of the default category set.
@@ -319,15 +326,51 @@ async def get_dashboard_summary(
     totals: dict[TransactionType, Decimal] = {row[0]: row[1] for row in totals_result.all()}
 
     real_income = totals.get(TransactionType.INCOME, Decimal("0"))
-    spent = totals.get(TransactionType.EXPENSE, Decimal("0"))
+    # Расход считается по money_flow_only: кроме покупок в него входит всё,
+    # что ушло человеку, — отданное насовсем и данное в долг, — а возвраты
+    # его уменьшают. Правила и причины там же.
+    count_loans = (await get_or_create_app_settings(session)).lending_is_spending
+    spent = (
+        await session.execute(
+            select(func.coalesce(func.sum(spending_amount()), 0)).where(
+                Transaction.date >= start,
+                Transaction.date <= end,
+                counted_only(),
+                converted_only(),
+                money_flow_only(count_loans),
+            )
+        )
+    ).scalar_one()
+    # Сколько за период ушло людям в долг. Считается всегда: при включённом
+    # выборе это часть расхода, при выключенном — подпись под итогом,
+    # объясняющая, куда делись деньги, которых в расходе нет.
+    lent_net = (
+        await session.execute(
+            select(func.coalesce(func.sum(lending_amount()), 0)).where(
+                Transaction.date >= start,
+                Transaction.date <= end,
+                counted_only(),
+                converted_only(),
+            )
+        )
+    ).scalar_one()
+    # Покупки — часть расхода, у которой есть статья. Разница между ними и
+    # есть то, что ушло людям: статьи у таких трат нет, в круг по
+    # категориям они не попадают, и без подписи под «Расходом» круг не
+    # сходился бы с числом над ним.
+    purchases = totals.get(TransactionType.EXPENSE, Decimal("0"))
+    to_people = spent - purchases
     transferred_out = totals.get(TransactionType.TRANSFER, Decimal("0"))
 
     # A subcategory's spending rolls up into its parent's slice, and a split
     # transaction's category_id=NULL means its category lives on its split
     # lines instead — rollup_spending_by_top_level_category handles both
     # the same way a plain transaction's category already was.
+    # Доли считаются от покупок, а не от всего расхода: ушедшего людям в
+    # этом круге нет, и считать доли от суммы с ним значило бы, что они не
+    # складываются в сто процентов.
     spending_by_category = await _category_breakdown(
-        session, TransactionType.EXPENSE, start, end, spent
+        session, TransactionType.EXPENSE, start, end, purchases
     )
     # Доходы тем же расчётом: карточка стоит рядом с расходами.
     income_by_category = await _category_breakdown(
@@ -350,6 +393,8 @@ async def get_dashboard_summary(
         end_date=end,
         real_income=real_income,
         spent=spent,
+        to_people=to_people,
+        lent_net=lent_net,
         net=real_income - spent,
         transferred_out=transferred_out,
         spending_by_category=spending_by_category,

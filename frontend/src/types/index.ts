@@ -434,6 +434,14 @@ export interface DashboardSummary {
   largest_expenses: LargestExpense[];
   monthly: DashboardMonthPoint[];
   daily: DashboardDayPoint[];
+  /** Сколько из расхода ушло людям: отдано насовсем и дано в долг, за
+   *  вычетом вернувшегося. Входит в spent, но статьи не имеет и в
+   *  разбивку по категориям не попадает. Бывает отрицательным — в месяце,
+   *  где вернули больше, чем отдали. */
+  to_people: string;
+  /** Сколько за период ушло людям в долг. При включённом «считать долг
+   *  тратой» уже внутри spent; при выключенном — подпись под итогом. */
+  lent_net: string;
 }
 
 export type AssetClass = "investments" | "crypto" | "real_estate" | "vehicles" | "precious_metals" | "other";
@@ -1072,6 +1080,10 @@ export interface AppSettings {
   // Показывать ли копейки. В операции они и есть данные; в годовом
   // итоге только удлиняют число.
   show_cents: boolean;
+  /** Считать ли данное в долг тратой. Правильного ответа нет: деньги
+   *  со счёта ушли — значит трата; но они вернутся — значит не трата.
+   *  Выбор за владельцем денег. */
+  lending_is_spending: boolean;
   default_page_size: number;
   group_repeats_by_default: boolean;
   day_dividers_by_default: boolean;

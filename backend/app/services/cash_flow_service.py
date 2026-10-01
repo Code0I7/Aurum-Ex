@@ -20,10 +20,13 @@ from app.models.account import Account
 from app.models.enums import TransactionType
 from app.models.transaction import Transaction
 from app.services.currency_service import to_base
+from app.services.settings_service import get_or_create_app_settings
 from app.services.transaction_service import (
     converted_only,
     counted_only,
-    earnings_and_spending_only,
+    income_amount,
+    money_flow_only,
+    spending_amount,
 )
 from app.schemas.cash_flow import CashFlowPoint, CashFlowResponse, DayPoint
 
@@ -35,8 +38,13 @@ def _next_month(year: int, month: int) -> tuple[int, int]:
 async def get_cash_flow(
     session: AsyncSession, start_date: date_ | None, end_date: date_ | None
 ) -> CashFlowResponse:
+    # Считать ли данное в долг тратой — выбор владельца денег, см.
+    # money_flow_only. Спрашивается один раз на весь расчёт: внутри он
+    # нужен и границам диапазона, и самим суммам.
+    count_loans = (await get_or_create_app_settings(session)).lending_is_spending
+
     bounds_stmt = select(func.min(Transaction.date), func.max(Transaction.date)).where(
-        earnings_and_spending_only(),
+        money_flow_only(count_loans),
         counted_only(),
     )
     if start_date:
@@ -99,24 +107,24 @@ async def get_cash_flow(
         select(
             extract("year", Transaction.date).label("year"),
             extract("month", Transaction.date).label("month"),
-            Transaction.type,
             # В валюте установки: месяц складывает операции всех счетов.
-            func.sum(Transaction.amount_base).label("amount"),
+            func.sum(income_amount()).label("income"),
+            func.sum(spending_amount()).label("expense"),
         )
         .where(
-            earnings_and_spending_only(),
+            money_flow_only(count_loans),
             counted_only(),
             converted_only(),
             Transaction.date >= effective_start,
             Transaction.date <= effective_end,
         )
-        .group_by("year", "month", Transaction.type)
+        .group_by("year", "month")
     )
     rows = (await session.execute(rows_stmt)).all()
 
-    by_month: dict[tuple[int, int], dict[TransactionType, Decimal]] = defaultdict(dict)
-    for year, month, tx_type, amount in rows:
-        by_month[(int(year), int(month))][tx_type] = amount
+    by_month: dict[tuple[int, int], tuple[Decimal, Decimal]] = {}
+    for year, month, income, expense in rows:
+        by_month[(int(year), int(month))] = (income or Decimal("0"), expense or Decimal("0"))
 
     # Остатки раскладываются по месяцам открытия счетов. Счёт без даты
     # открытия относится к первому месяцу диапазона: «до начала учёта» — это
@@ -133,9 +141,7 @@ async def get_cash_flow(
     points: list[CashFlowPoint] = []
     year, month = effective_start.year, effective_start.month
     while (year, month) <= (effective_end.year, effective_end.month):
-        totals = by_month.get((year, month), {})
-        income = totals.get(TransactionType.INCOME, Decimal("0"))
-        expense = totals.get(TransactionType.EXPENSE, Decimal("0"))
+        income, expense = by_month.get((year, month), (Decimal("0"), Decimal("0")))
         opening = opening_by_month.get((year, month), Decimal("0"))
         # Знак решает, в какую сторону попадёт остаток. Счёт, открытый с
         # долгом, — это не отрицательный доход, а расход.
@@ -182,27 +188,28 @@ async def get_daily_flow(
     своего дня, и приписать остаток первому числу значило бы придумать
     событие, которого не было.
     """
+    count_loans = (await get_or_create_app_settings(session)).lending_is_spending
     rows = (
         await session.execute(
             select(
                 Transaction.date,
-                Transaction.type,
-                func.sum(Transaction.amount_base).label("amount"),
+                func.sum(income_amount()).label("income"),
+                func.sum(spending_amount()).label("expense"),
             )
             .where(
-                earnings_and_spending_only(),
+                money_flow_only(count_loans),
                 counted_only(),
                 converted_only(),
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
             )
-            .group_by(Transaction.date, Transaction.type)
+            .group_by(Transaction.date)
         )
     ).all()
 
-    by_day: dict[date_, dict[TransactionType, Decimal]] = defaultdict(dict)
-    for day, tx_type, amount in rows:
-        by_day[day][tx_type] = amount
+    by_day: dict[date_, tuple[Decimal, Decimal]] = {}
+    for day, income, expense in rows:
+        by_day[day] = (income or Decimal("0"), expense or Decimal("0"))
 
     opening_by_day: dict[date_, Decimal] = defaultdict(Decimal)
     for opening_date, amount, currency in (
@@ -223,9 +230,7 @@ async def get_daily_flow(
     points: list[DayPoint] = []
     day = start_date
     while day <= end_date:
-        totals = by_day.get(day, {})
-        income = totals.get(TransactionType.INCOME, Decimal("0"))
-        expense = totals.get(TransactionType.EXPENSE, Decimal("0"))
+        income, expense = by_day.get(day, (Decimal("0"), Decimal("0")))
         opening = opening_by_day.get(day, Decimal("0"))
         # Знак решает сторону, как и у месяца: счёт, открытый с долгом, —
         # это расход, а не отрицательный доход.
