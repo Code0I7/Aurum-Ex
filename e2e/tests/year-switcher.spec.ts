@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createTransaction, getCategoryId, getDefaultAccountId } from "./helpers";
+import { createTransaction, getCategoryId, getDefaultAccountId, openDashboardMonth } from "./helpers";
 
 // Regression for v0.16.0/v0.16.1: `year` on Dashboard/Transactions/Budget
 // used to be `const [year] = useState(...)` — no setter, so no UI could
@@ -21,10 +21,11 @@ test("switching the Dashboard year picker changes the displayed income", async (
     date: "2017-08-01",
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: "Авг", exact: true }).click();
+  await openDashboardMonth(page, "2026", "Авг");
 
-  const realIncomeValue = page.locator('xpath=//p[text()="Реальный доход"]/following-sibling::p[1]');
+  // Карточка называется «Доход»: слово «реальный» ушло из подписи, когда
+  // полученное от людей перестало в неё попадать и объяснять стало нечего.
+  const realIncomeValue = page.locator('xpath=//p[text()="Доход"]/following-sibling::p[1]');
   await expect(realIncomeValue).not.toContainText("999"); // fresh stack: nothing in the current year yet
 
   await page.getByRole("button", { name: /^\d{4}$/ }).first().click();

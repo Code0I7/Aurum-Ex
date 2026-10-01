@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createTransaction, getCategoryId, getDefaultAccountId } from "./helpers";
+import { createTransaction, getCategoryId, getDefaultAccountId, openDashboardMonth } from "./helpers";
 
 // Regression for v0.17.1: the "All transactions" link on Dashboard always
 // went to /transactions with no params, so it silently reset to the
@@ -18,10 +18,7 @@ test("Dashboard's All transactions link opens Transactions on the same month", a
     date: "2018-03-15",
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: /^\d{4}$/ }).first().click();
-  await page.getByRole("option", { name: "2018" }).click();
-  await page.getByRole("button", { name: "Мар", exact: true }).click();
+  await openDashboardMonth(page, "2018", "Мар");
 
   await page.getByRole("link", { name: "Все транзакции" }).click();
 

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createTransaction, getCategoryId, getDefaultAccountId } from "./helpers";
+import { createTransaction, getCategoryId, getDefaultAccountId, openDashboardMonth } from "./helpers";
 
 // Regression for v0.15.4: a transaction description with no spaces (so it
 // can't wrap) blew out the Dashboard's CSS Grid because Card had no
@@ -21,11 +21,14 @@ test("a long unbroken transaction description never causes horizontal page overf
     date: "2016-08-01",
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: /^\d{4}$/ }).first().click();
-  await page.getByRole("option", { name: "2016" }).click();
-  await page.getByRole("button", { name: "Авг", exact: true }).click();
-  await expect(page.getByText(LONG_DESCRIPTION.slice(0, 20), { exact: false })).toBeVisible();
+  await openDashboardMonth(page, "2016", "Авг");
+  // .first(), и это не придирка к строгому режиму: описание попадает и в
+  // «Последние транзакции», и в «Крупнейшие расходы», а попадает ли во
+  // второй список — зависит от того, что ещё лежит в этом месяце. Без
+  // .first() тест то проходит, то падает на неоднозначном селекторе, а
+  // проверка здесь предварительная: лишь бы строка вообще отрисовалась.
+  // Настоящая проверка ниже — про переполнение страницы.
+  await expect(page.getByText(LONG_DESCRIPTION.slice(0, 20), { exact: false }).first()).toBeVisible();
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -47,10 +50,7 @@ test("same check on a narrow mobile viewport", async ({ page, request }) => {
     date: "2016-09-01",
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: /^\d{4}$/ }).first().click();
-  await page.getByRole("option", { name: "2016" }).click();
-  await page.getByRole("button", { name: "Сен", exact: true }).click();
+  await openDashboardMonth(page, "2016", "Сен");
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,

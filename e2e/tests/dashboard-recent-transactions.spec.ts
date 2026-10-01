@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createTransaction, getCategoryId, getDefaultAccountId } from "./helpers";
+import { createTransaction, getCategoryId, getDefaultAccountId, openDashboardMonth } from "./helpers";
 
 // Regression for the Aug 2026 bug: RecentTransactionsCard queried
 // transactions without year/month at all, so switching the Dashboard's
@@ -27,10 +27,7 @@ test("Recent Transactions on Dashboard only shows the selected month", async ({ 
     date: "2015-08-08",
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: /^\d{4}$/ }).first().click();
-  await page.getByRole("option", { name: "2015" }).click();
-  await page.getByRole("button", { name: "Авг", exact: true }).click();
+  await openDashboardMonth(page, "2015", "Авг");
 
   const recentCard = page.locator("div.rounded-xl", { has: page.getByText("Последние транзакции", { exact: true }) });
   await expect(recentCard.getByText("august-2015-only-txn")).toBeVisible();

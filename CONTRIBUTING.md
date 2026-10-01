@@ -59,6 +59,9 @@ uvicorn app.main:app --reload
   touching. See [backend/tests/README.md](backend/tests/README.md).
 - **New user-facing text** goes through the translation system in `frontend/src/lib/i18n.ts` (both `ru` and `en` — the `en` object is typed against `ru`'s keys, so a missing translation is a build error, not a runtime surprise) rather than being hardcoded in a component.
 - **Mobile:** check your change at a narrow viewport — Aurum-Ex is designed mobile-first.
+- **E2E:** not on every change. `./e2e/run.sh` (eight tests, ~25s plus the stack) is worth running
+  when you touch layout, navigation between pages, or UI state that must survive a reload — what
+  unit tests cannot see. See [e2e/README.md](e2e/README.md).
 - Keep PRs focused. A bug fix doesn't need an accompanying refactor.
 
 ## Reporting bugs

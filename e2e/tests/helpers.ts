@@ -1,4 +1,4 @@
-import type { APIRequestContext } from "@playwright/test";
+import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 /** Thin wrapper over the real HTTP API (proxied at /api by nginx, same as
  * the frontend uses) — fast, reliable fixture setup so each spec can drive
@@ -33,4 +33,27 @@ export async function createTransaction(request: APIRequestContext, input: Trans
   if (!resp.ok()) {
     throw new Error(`failed to create transaction: ${resp.status()} ${await resp.text()}`);
   }
+}
+
+
+/**
+ * Открыть дашборд на конкретном месяце.
+ *
+ * Три шага, а не два, и порядок обязателен: дашборд открывается на годе, а
+ * кнопок месяцев в этом режиме нет вовсе — значит сначала «Месяц», и только
+ * потом год и сам месяц.
+ *
+ * Раньше спеки щёлкали год и месяц сразу, потому что месяцы на дашборде
+ * были видны всегда. Период по умолчанию сменился на год, и все пять спек
+ * упали на ожидании кнопки «Авг». Вынесено сюда, чтобы следующая такая
+ * правка интерфейса меняла одно место, а не пять.
+ */
+export async function openDashboardMonth(page: Page, year: string, month: string): Promise<void> {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Месяц", exact: true }).click();
+  await page.getByRole("button", { name: /^\d{4}$/ }).first().click();
+  await page.getByRole("option", { name: year }).click();
+  const pill = page.getByRole("button", { name: month, exact: true });
+  await expect(pill).toBeVisible();
+  await pill.click();
 }
