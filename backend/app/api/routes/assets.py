@@ -13,6 +13,7 @@ from app.schemas.asset import (
     AssetUpdate,
     AssetValuationCreate,
     AssetValuationRead,
+    AssetValuationUpdate,
 )
 from app.services.currency_service import get_base_currency
 
@@ -103,6 +104,50 @@ async def add_asset_valuation(
     refreshed = await session.execute(select(Asset).options(*_EAGER).where(Asset.id == asset_id))
     return _to_read(refreshed.scalar_one())
 
+
+@router.patch("/{asset_id}/valuations/{valuation_id}", response_model=AssetRead)
+async def update_asset_valuation(
+    asset_id: int,
+    valuation_id: int,
+    payload: AssetValuationUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> AssetRead:
+    """Исправляет записанную оценку: опечатку в цене или в дате.
+
+    До этого историю можно было только пополнять и удалять по одной точке,
+    и ошибку в дате приходилось чинить в два приёма — удалить и записать
+    заново. Для ряда, по которому строится кривая капитала, это слишком
+    грубо: между удалением и записью история какое-то время неверна.
+
+    День у оценки один: перенос на занятую дату отклоняется, а не
+    затирает чужую запись. Две цены на один день — это не вторая оценка, а
+    потерянная первая.
+    """
+    valuation = await session.get(AssetValuation, valuation_id)
+    if valuation is None or valuation.asset_id != asset_id:
+        raise HTTPException(status_code=404, detail="Valuation not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    new_date = data.get("as_of_date", valuation.as_of_date)
+    if new_date != valuation.as_of_date:
+        taken = (
+            await session.execute(
+                select(AssetValuation.id).where(
+                    AssetValuation.asset_id == asset_id,
+                    AssetValuation.as_of_date == new_date,
+                    AssetValuation.id != valuation_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if taken is not None:
+            raise HTTPException(status_code=409, detail="A valuation for that date already exists")
+
+    for field, value in data.items():
+        setattr(valuation, field, value)
+    await session.commit()
+
+    refreshed = await session.execute(select(Asset).options(*_EAGER).where(Asset.id == asset_id))
+    return _to_read(refreshed.scalar_one())
 
 @router.get("/{asset_id}/valuations", response_model=list[AssetValuationRead])
 async def list_asset_valuations(asset_id: int, session: AsyncSession = Depends(get_session)) -> list[AssetValuation]:

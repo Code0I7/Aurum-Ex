@@ -11,6 +11,16 @@ class AssetValuationCreate(BaseModel):
     as_of_date: date_ = Field(default_factory=date_.today)
 
 
+class AssetValuationUpdate(BaseModel):
+    """Правка записанной оценки: опечатка в цене или в дате.
+
+    Оба поля необязательны — правят обычно что-то одно.
+    """
+
+    value: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    as_of_date: date_ | None = None
+
+
 class AssetValuationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

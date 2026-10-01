@@ -102,3 +102,65 @@ async def test_the_breakdowns_only_count_assets_of_the_shown_currency(client: As
         )
     ).json()
     assert {item["role"]: item for item in other["capital_roles"]}["drain"]["count"] == 1
+async def test_a_valuation_can_be_corrected(client: AsyncClient):
+    """Опечатка в цене правится, а не удаляется и вводится заново.
+
+    Раньше у точки истории был только крестик: между удалением и повторной
+    записью ряд, по которому строится кривая капитала, какое-то время
+    неверен.
+    """
+    asset = await _create(client)
+    valuations = (await client.get(f"/assets/{asset['id']}/valuations")).json()
+    point = valuations[0]
+
+    resp = await client.patch(
+        f"/assets/{asset['id']}/valuations/{point['id']}", json={"value": "9500000.00"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert Decimal(resp.json()["current_value"]) == Decimal("9500000.00")
+
+
+async def test_a_valuation_can_move_to_another_day(client: AsyncClient):
+    """Ошиблись датой — переносится без потери цены."""
+    asset = await _create(client)
+    point = (await client.get(f"/assets/{asset['id']}/valuations")).json()[0]
+
+    resp = await client.patch(
+        f"/assets/{asset['id']}/valuations/{point['id']}", json={"as_of_date": "2026-09-15"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["as_of_date"] == "2026-09-15"
+
+
+async def test_two_prices_for_one_day_are_refused(client: AsyncClient):
+    """День у оценки один: перенос на занятую дату отклоняется.
+
+    Затереть чужую запись молча было бы хуже отказа — две цены на один
+    день это не вторая оценка, а потерянная первая.
+    """
+    asset = await _create(client)
+    await client.post(
+        f"/assets/{asset['id']}/valuations",
+        json={"value": "9000000.00", "as_of_date": "2026-09-15"},
+    )
+    points = (await client.get(f"/assets/{asset['id']}/valuations")).json()
+    october = next(point for point in points if point["as_of_date"] == "2026-10-01")
+
+    resp = await client.patch(
+        f"/assets/{asset['id']}/valuations/{october['id']}", json={"as_of_date": "2026-09-15"}
+    )
+    assert resp.status_code == 409, resp.text
+    # Обе записи на месте: отказ ничего не испортил.
+    assert len((await client.get(f"/assets/{asset['id']}/valuations")).json()) == 2
+
+
+async def test_someone_elses_valuation_is_not_found(client: AsyncClient):
+    """Точка чужого актива правке не поддаётся."""
+    first = await _create(client)
+    second = await _create(client, name="Дача")
+    point = (await client.get(f"/assets/{first['id']}/valuations")).json()[0]
+
+    resp = await client.patch(
+        f"/assets/{second['id']}/valuations/{point['id']}", json={"value": "1.00"}
+    )
+    assert resp.status_code == 404

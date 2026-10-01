@@ -479,6 +479,13 @@ export interface AssetInput {
   as_of_date: string;
 }
 
+/** Правка записанной оценки: опечатка в цене или в дате. Оба поля
+ *  необязательны — правят обычно что-то одно. */
+export interface AssetValuationUpdateInput {
+  value?: string;
+  as_of_date?: string;
+}
+
 export interface AssetUpdateInput {
   is_personal_use?: boolean;
   name?: string;

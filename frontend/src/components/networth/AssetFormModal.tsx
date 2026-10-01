@@ -2,16 +2,8 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Input";
-import { X } from "lucide-react";
-import {
-  useAddAssetValuation,
-  useAssetValuations,
-  useCreateAsset,
-  useDeleteAssetValuation,
-  useUpdateAsset,
-} from "@/hooks/useAssets";
+import { useAddAssetValuation, useCreateAsset, useUpdateAsset } from "@/hooks/useAssets";
 import { CURRENCIES, getCurrencyLabel } from "@/lib/currency";
-import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Asset, AssetClass, CapitalRole, RiskLevel } from "@/types";
 
@@ -47,8 +39,6 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
   const { t, language, currency: installCurrency } = useTranslation();
   const createAsset = useCreateAsset();
   const updateAsset = useUpdateAsset();
-  const { data: valuations } = useAssetValuations(asset?.id ?? null);
-  const removeValuation = useDeleteAssetValuation();
   const addValuation = useAddAssetValuation();
 
   const [form, setForm] = useState(EMPTY_FORM);
@@ -195,46 +185,6 @@ export function AssetFormModal({ open, onClose, asset }: AssetFormModalProps) {
             />
           </div>
         </div>
-
-        {/* История переоценок. Была в базе с самого начала и строила
-            график капитала, но в интерфейс не выводилась — и получалось
-            непонятно: человек правит цену, а прошлое остаётся, и почему
-            остаётся, взять негде.
-
-            Правка цены историю не затирает намеренно: актив стоил столько-то
-            тогда и столько-то сейчас, и затирание прошлого переписывало бы
-            собственную историю задним числом. А вот ошибку ввода убрать
-            надо, поэтому у каждой точки есть крестик. */}
-        {asset && (
-          <div>
-            <Label>{t("netWorth.form.historyLabel")}</Label>
-            <p className="mb-1.5 text-xs text-text-muted">{t("netWorth.form.historyHint")}</p>
-            {valuations === undefined ? (
-              <p className="py-2 text-xs text-text-muted">{t("common.loading")}</p>
-            ) : (
-              <ul className="divide-y divide-gridline rounded-lg border border-border">
-                {[...valuations].reverse().map((point) => (
-                  <li key={point.id} className="flex items-center justify-between gap-2 px-3 py-1.5">
-                    <span className="text-xs text-text-muted">{formatTransactionDate(point.as_of_date, true)}</span>
-                    <span className="ml-auto text-sm tabular-nums">{formatCurrency(point.value)}</span>
-                    <button
-                      type="button"
-                      aria-label={t("common.delete")}
-                      // Единственную точку убрать нельзя: актив без цены
-                      // не показать нигде, и вместо исправленной ошибки
-                      // получился бы актив-невидимка.
-                      disabled={valuations.length <= 1 || removeValuation.isPending}
-                      onClick={() => removeValuation.mutate({ id: asset.id, valuationId: point.id })}
-                      className="rounded p-1 text-text-muted hover:bg-surface-2 hover:text-danger disabled:opacity-30"
-                    >
-                      <X size={14} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         <div>
           <Label htmlFor="asset-role">{t("netWorth.form.roleLabel")}</Label>

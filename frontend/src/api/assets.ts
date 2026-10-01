@@ -5,6 +5,7 @@ import type {
   AssetUpdateInput,
   AssetValuation,
   AssetValuationInput,
+  AssetValuationUpdateInput,
 } from "@/types";
 
 export function fetchAssets() {
@@ -25,6 +26,14 @@ export function addAssetValuation(id: number, input: AssetValuationInput) {
 
 export function fetchAssetValuations(id: number) {
   return api.get<AssetValuation[]>(`/assets/${id}/valuations`);
+}
+
+export function updateAssetValuation(
+  id: number,
+  valuationId: number,
+  input: AssetValuationUpdateInput,
+) {
+  return api.patch<Asset>(`/assets/${id}/valuations/${valuationId}`, input);
 }
 
 export function deleteAssetValuation(id: number, valuationId: number) {

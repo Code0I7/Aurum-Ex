@@ -4,11 +4,17 @@ import {
   createAsset,
   deleteAsset,
   deleteAssetValuation,
+  updateAssetValuation,
   fetchAssets,
   fetchAssetValuations,
   updateAsset,
 } from "@/api/assets";
-import type { AssetInput, AssetUpdateInput, AssetValuationInput } from "@/types";
+import type {
+  AssetInput,
+  AssetUpdateInput,
+  AssetValuationInput,
+  AssetValuationUpdateInput,
+} from "@/types";
 
 function useInvalidateNetWorth() {
   const queryClient = useQueryClient();
@@ -54,6 +60,26 @@ export function useAssetValuations(id: number | null) {
     queryKey: ["assets", id, "valuations"],
     queryFn: () => fetchAssetValuations(id as number),
     enabled: id !== null,
+  });
+}
+
+export function useUpdateAssetValuation() {
+  const invalidate = useInvalidateNetWorth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      valuationId,
+      input,
+    }: {
+      id: number;
+      valuationId: number;
+      input: AssetValuationUpdateInput;
+    }) => updateAssetValuation(id, valuationId, input),
+    onSuccess: (_data, variables) => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["assets", variables.id, "valuations"] });
+    },
   });
 }
 

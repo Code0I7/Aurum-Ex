@@ -8,6 +8,7 @@ import { CapitalRoleSummaryCard } from "@/components/networth/CapitalRoleSummary
 import { RiskAllocationCard } from "@/components/networth/RiskAllocationCard";
 import { AssetsTable } from "@/components/networth/AssetsTable";
 import { AssetFormModal } from "@/components/networth/AssetFormModal";
+import { AssetHistoryModal } from "@/components/networth/AssetHistoryModal";
 import { AlertBanner } from "@/components/insights/AlertBanner";
 import { useNetWorthSummary } from "@/hooks/useNetWorth";
 import { useAssets, useDeleteAsset } from "@/hooks/useAssets";
@@ -52,6 +53,8 @@ export function NetWorthPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  // Какой актив раскрыт историей переоценок. Null — окно закрыто.
+  const [historyAsset, setHistoryAsset] = useState<Asset | null>(null);
 
   function openCreateModal() {
     setEditingAsset(null);
@@ -121,12 +124,18 @@ export function NetWorthPage() {
           {isAssetsLoading ? (
             <p className="py-10 text-center text-sm text-text-muted">{t("common.loading")}</p>
           ) : (
-            <AssetsTable items={assets ?? []} onEdit={openEditModal} onDelete={handleDelete} />
+            <AssetsTable
+              items={assets ?? []}
+              onEdit={openEditModal}
+              onHistory={setHistoryAsset}
+              onDelete={handleDelete}
+            />
           )}
         </CardContent>
       </Card>
 
       <AssetFormModal open={modalOpen} onClose={() => setModalOpen(false)} asset={editingAsset} />
+      <AssetHistoryModal asset={historyAsset} onClose={() => setHistoryAsset(null)} />
     </div>
   );
 }

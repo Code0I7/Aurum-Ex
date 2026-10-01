@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from "lucide-react";
+import { History, Pencil, Trash2 } from "lucide-react";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
@@ -22,10 +22,13 @@ const ROLE_COLORS: Record<CapitalRole, string> = {
 interface AssetsTableProps {
   items: Asset[];
   onEdit: (asset: Asset) => void;
+  /** История переоценок — отдельным окном, как у целей: это ряд точек во
+   *  времени, и обращаться с ним надо так же. */
+  onHistory: (asset: Asset) => void;
   onDelete: (asset: Asset) => void;
 }
 
-export function AssetsTable({ items, onEdit, onDelete }: AssetsTableProps) {
+export function AssetsTable({ items, onEdit, onHistory, onDelete }: AssetsTableProps) {
   const { t } = useTranslation();
 
   if (items.length === 0) {
@@ -78,6 +81,15 @@ export function AssetsTable({ items, onEdit, onDelete }: AssetsTableProps) {
               )}
             </span>
             <span className="flex shrink-0 gap-1">
+              <button
+                type="button"
+                aria-label={t("netWorth.history.title")}
+                title={t("netWorth.history.title")}
+                onClick={() => onHistory(asset)}
+                className="rounded-md p-1.5 text-text-muted hover:bg-surface-2 hover:text-text-primary"
+              >
+                <History size={15} />
+              </button>
               <button
                 type="button"
                 aria-label={t("common.edit")}
