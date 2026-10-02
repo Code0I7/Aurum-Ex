@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { formatWorkCost, rateForDate, type HourlyRates } from "@/lib/hours";
+import {
+  dayHoursForDate,
+  formatWorkCost,
+  formatWorkHours,
+  rateForDate,
+  type HourlyRates,
+} from "@/lib/hours";
 import { setLanguage } from "@/lib/i18n";
 
 /**
@@ -18,6 +24,9 @@ beforeEach(() => {
 const RATES: HourlyRates = {
   months: { "2026-01": "500", "2026-02": "600" },
   overall: "400",
+  // Свой рабочий день: 10,5 часа в январе, 5,5 в феврале — чтобы было видно,
+  // что перевод в дни берёт день того месяца, а не один на всю историю.
+  day_hours: { months: { "2026-01": "10.5", "2026-02": "5.5" }, overall: "8" },
 };
 
 describe("rateForDate", () => {
@@ -41,14 +50,17 @@ describe("rateForDate", () => {
   });
 
   it("без ставок вовсе отвечает «не из чего»", () => {
-    expect(rateForDate({ months: {}, overall: null }, "2026-01-15")).toBeNull();
+    expect(rateForDate({ months: {}, overall: null, day_hours: { months: {}, overall: null } }, "2026-01-15")).toBeNull();
     expect(rateForDate(undefined, "2026-01-15")).toBeNull();
   });
 
   it("нулевую ставку считает отсутствием ставки", () => {
     // Ноль рублей в час — не ставка, а незаполненные часы: делить на него
     // нельзя, и «бесконечно дорого» на экране не нужно.
-    expect(rateForDate({ months: { "2026-01": "0" }, overall: null }, "2026-01-15")).toBeNull();
+    expect(rateForDate(
+        { months: { "2026-01": "0" }, overall: null, day_hours: { months: {}, overall: null } },
+        "2026-01-15"
+      )).toBeNull();
   });
 });
 
@@ -65,15 +77,38 @@ describe("formatWorkCost", () => {
   });
 
   it("от рабочего дня — днями", () => {
-    // День считается восьмичасовым: не догма, но понятнее, чем спрашивать
-    // длину смены.
-    expect(formatWorkCost(4000, 500)).toBe("1,0 дн");
-    expect(formatWorkCost(17273, 500)).toBe("4,3 дн");
+    // Без своей длины дня — восьмичасовой, как последнее средство.
+    expect(formatWorkCost(4000, 500)).toBe("1,0 раб. дн.");
+    expect(formatWorkCost(17273, 500)).toBe("4,3 раб. дн.");
   });
 
   it("дальше десяти дней округляет до дня", () => {
     // «23,4 дня» точнее, чем нужно, чтобы ужаснуться.
-    expect(formatWorkCost(100000, 500)).toBe("25 дн");
+    expect(formatWorkCost(100000, 500)).toBe("25 раб. дн.");
+  });
+
+  it("считает дни переданной длиной дня, а не восьмёркой", () => {
+    // 36 часов работы. У человека с днём в 10,5 часа это три с половиной
+    // дня, а с днём в 5,5 — больше шести. Восьмёрка не права ни там, ни там,
+    // и завышение на треть обесценивает ровно то число, ради которого эта
+    // колонка существует.
+    expect(formatWorkCost(18000, 500, 10.5)).toBe("3,4 раб. дн.");
+    expect(formatWorkCost(18000, 500, 5.5)).toBe("6,5 раб. дн.");
+    expect(formatWorkCost(18000, 500, 8)).toBe("4,5 раб. дн.");
+  });
+
+  it("порог перехода к дням — та же длина дня", () => {
+    // Пока покупка не стоит целого рабочего дня, показывать её в днях
+    // нечем: при дне 10,5 девять часов — это ещё часы.
+    expect(formatWorkCost(4500, 500, 10.5)).toBe("9,0 ч");
+    expect(formatWorkCost(5250, 500, 10.5)).toBe("1,0 раб. дн.");
+    // А при коротком дне те же девять часов — уже больше дня.
+    expect(formatWorkCost(4500, 500, 5.5)).toBe("1,6 раб. дн.");
+  });
+
+  it("нулевую длину дня не принимает за правду", () => {
+    // Иначе деление на ноль дало бы бесконечность вместо числа.
+    expect(formatWorkCost(18000, 500, 0)).toBe("4,5 раб. дн.");
   });
 
   it("смотрит на величину, а не на знак", () => {
@@ -95,5 +130,48 @@ describe("formatWorkCost", () => {
     setLanguage("en");
     expect(formatWorkCost(250, 500)).toContain("min");
     expect(formatWorkCost(1000, 500)).toMatch(/2\.0/);
+  });
+});
+
+describe("dayHoursForDate", () => {
+  it("берёт длину дня того месяца, в котором была покупка", () => {
+    // Покупка 2022 года переводится в дни по дню 2022 года: если тогда
+    // работали по 5,5 часа, двадцать два часа — это четыре дня, а не два с
+    // половиной.
+    expect(dayHoursForDate(RATES, "2026-01-15")).toBe(10.5);
+    expect(dayHoursForDate(RATES, "2026-02-01")).toBe(5.5);
+  });
+
+  it("месяц без своей длины падает на среднюю", () => {
+    expect(dayHoursForDate(RATES, "2025-07-10")).toBe(8);
+  });
+
+  it("без данных вовсе берёт восьмичасовой день", () => {
+    // Последнее средство: для пустой установки восьмёрка лучше отказа.
+    expect(dayHoursForDate({ months: {}, overall: null, day_hours: { months: {}, overall: null } }, "2026-01-15")).toBe(8);
+    expect(dayHoursForDate(undefined, "2026-01-15")).toBe(8);
+  });
+
+  it("нуль в данных считает отсутствием, а не длиной дня", () => {
+    expect(
+      dayHoursForDate(
+        { months: {}, overall: null, day_hours: { months: { "2026-01": "0" }, overall: null } },
+        "2026-01-15"
+      )
+    ).toBe(8);
+  });
+});
+
+describe("formatWorkHours", () => {
+  it("всегда часы, сколько бы их ни было", () => {
+    // Дни отвечают «сколько это в моей работе», а часы остаются точным
+    // числом за ними — в подсказке под курсором.
+    expect(formatWorkHours(18000, 500)).toBe("36,0 ч");
+    expect(formatWorkHours(250, 500)).toBe("0,5 ч");
+  });
+
+  it("без ставки и на нулевой сумме молчит", () => {
+    expect(formatWorkHours(18000, null)).toBeNull();
+    expect(formatWorkHours(0, 500)).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useBubbleShift } from "@/hooks/useBubbleShift";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
-import { currentZoom } from "@/lib/scale";
 
 interface HelpBadgeProps {
   /** Ключ перевода с объяснением раздела. */
@@ -24,8 +24,6 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLSpanElement>(null);
   const tip = useRef<HTMLSpanElement>(null);
-  // Сдвиг подсказки влево, если справа ей не хватает экрана.
-  const [shift, setShift] = useState(0);
 
   /*
    * Подсказка открывается от кружка вправо — и если кружок стоит у правого
@@ -33,25 +31,9 @@ export function HelpBadge({ hintKey }: HelpBadgeProps) {
    * прочитать можно только начало. Поэтому после открытия она меряется и
    * сдвигается ровно настолько, чтобы поместиться, но не левее экрана.
    *
-   * Замер — в пикселях экрана, а сдвиг ставится в пикселях разметки: при
-   * увеличенном интерфейсе это разные единицы (см. lib/scale.ts).
+   * Сам расчёт общий на все пузыри приложения, см. hooks/useBubbleShift.
    */
-  useLayoutEffect(() => {
-    if (!open) {
-      setShift(0);
-      return;
-    }
-    const node = tip.current;
-    if (!node) return;
-    const zoom = currentZoom();
-    const rect = node.getBoundingClientRect();
-    const margin = 8 * zoom;
-    let offset = 0;
-    const overflowRight = rect.right - (window.innerWidth - margin);
-    if (overflowRight > 0) offset = -overflowRight;
-    if (rect.left + offset < margin) offset = margin - rect.left;
-    setShift(offset / zoom);
-  }, [open]);
+  const shift = useBubbleShift(open, tip);
 
   useEffect(() => {
     if (!open) return;

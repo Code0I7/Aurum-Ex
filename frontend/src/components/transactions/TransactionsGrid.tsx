@@ -8,7 +8,8 @@ import { ElidedText } from "@/components/ui/ElidedText";
 import { getCategoryIcon } from "@/lib/icons";
 import { formatCurrency, formatDayHeading, formatTransactionDate } from "@/lib/format";
 import { AccountStartLabel, type AccountStart } from "@/components/transactions/AccountStartRow";
-import { formatWorkCost, rateForDate } from "@/lib/hours";
+import { dayHoursForDate, formatWorkCost, formatWorkHours, rateForDate } from "@/lib/hours";
+import { HintBubble } from "@/components/ui/HintBubble";
 import { useHourlyRates } from "@/hooks/usePlans";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -391,11 +392,16 @@ export function TransactionsGrid({
         // днях ощущается сразу. Ставка берётся за месяц операции: за четыре
         // года заработок меняется втрое.
         const amount = group ? group.total : tx.amount;
-        const cost = formatWorkCost(amount, rateForDate(rates, tx.date));
+        const rate = rateForDate(rates, tx.date);
+        const cost = formatWorkCost(amount, rate, dayHoursForDate(rates, tx.date));
         return cost === null ? (
           <span className="text-text-muted">—</span>
         ) : (
-          <span className="tabular-nums text-text-muted">{cost}</span>
+          // Часы — в пузыре над числом: в колонку они не влезают, а точное
+          // число прятать нельзя. Дни отвечают «сколько это в моей работе».
+          <HintBubble note={formatWorkHours(amount, rate)}>
+            <span className="tabular-nums text-text-muted">{cost}</span>
+          </HintBubble>
         );
       }
 

@@ -93,6 +93,21 @@ async def delete_work_period(period_id: int, session: AsyncSession = Depends(get
     await session.commit()
 
 
+class DayHours(BaseModel):
+    """Длина рабочего дня в часах — по месяцам и в среднем.
+
+    Нужна, чтобы перевести часы в дни. Раньше на её месте стояла константа
+    восемь, и для человека с днём в 10,5 часа покупка показывалась на треть
+    дороже, чем стоила. Считается тем же окном, что и ставка (см.
+    services/hourly_service.py).
+    """
+
+    months: dict[str, str]
+    # None, когда рабочих дней не введено нигде: тогда интерфейс берёт
+    # восьмичасовой день как последнее средство — но уже не молча.
+    overall: str | None
+
+
 class HourlyRates(BaseModel):
     """Ставка за час по месяцам и в среднем.
 
@@ -108,9 +123,14 @@ class HourlyRates(BaseModel):
     # None, когда часов не введено вовсе: выдумывать ставку хуже, чем
     # промолчать.
     overall: str | None
+    day_hours: DayHours
 
 
 @router.get("/hourly-rates", response_model=HourlyRates)
 async def read_hourly_rates(session: AsyncSession = Depends(get_session)) -> HourlyRates:
     rates = await get_hourly_rates(session)
-    return HourlyRates(months=rates["months"], overall=rates["overall"])
+    return HourlyRates(
+        months=rates["months"],
+        overall=rates["overall"],
+        day_hours=DayHours(**rates["day_hours"]),
+    )

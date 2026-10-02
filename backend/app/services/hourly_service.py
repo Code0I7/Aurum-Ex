@@ -32,6 +32,13 @@
 Месяц, в окне которого часов нет вовсе, падает на среднюю за всё время.
 Если часов нет нигде, стоимость в часах не показывается — выдумывать
 ставку хуже, чем промолчать.
+
+Тем же окном считается и **длина рабочего дня** — часы, поделённые на
+рабочие дни. Нужна она для перевода часов в дни, и раньше на её месте стояла
+константа восемь. Восемь — чужая мерка: у одного человека день 5,5 часа, у
+другого 10,5, и «тридцать четыре дня» вместо «двадцати шести» обесценивает
+ровно то число, ради которого всё это считается. Доля прошедшего месяца сюда
+не применяется: от того, сколько месяца прошло, длина дня не меняется.
 """
 import calendar
 from datetime import date as date_
@@ -109,20 +116,31 @@ async def get_hourly_rates(session: AsyncSession, today: date_ | None = None) ->
     today = today or date_.today()
 
     hours_rows = (
-        await session.execute(select(WorkPeriod.year, WorkPeriod.month, WorkPeriod.hours))
+        await session.execute(
+            select(WorkPeriod.year, WorkPeriod.month, WorkPeriod.hours, WorkPeriod.workdays)
+        )
     ).all()
     # Часы месяца — уже с поправкой на прошедшую долю: дальше они только
     # складываются по окну, и незачем помнить, какой из месяцев текущий.
     hours_by_month: dict[tuple[int, int], Decimal] = {}
-    for year, month, total in hours_rows:
+    # А для длины дня нужны часы как есть, вместе с днями: поправка на
+    # прошедшую долю сократилась бы в их отношении, и применять её значило бы
+    # делать лишнюю работу с риском ошибиться в одной из двух половин.
+    raw_hours: dict[tuple[int, int], Decimal] = {}
+    raw_days: dict[tuple[int, int], int] = {}
+    for year, month, total, days in hours_rows:
+        key = (int(year), int(month))
+        if total and days:
+            raw_hours[key] = Decimal(total)
+            raw_days[key] = int(days)
         if not total:
             continue
         counted = elapsed_hours(int(year), int(month), Decimal(total), today)
         if counted > 0:
-            hours_by_month[(int(year), int(month))] = counted
+            hours_by_month[key] = counted
 
     if not hours_by_month:
-        return {"months": {}, "overall": None}
+        return {"months": {}, "overall": None, "day_hours": {"months": {}, "overall": None}}
 
     income_rows = (
         await session.execute(
@@ -157,6 +175,23 @@ async def get_hourly_rates(session: AsyncSession, today: date_ | None = None) ->
             continue
         months[f"{key[0]:04d}-{key[1]:02d}"] = str(quantize_money(income / hours))
 
+    # Длина рабочего дня тем же окном, что и ставка. Отдельным проходом по
+    # тем же месяцам: окно у них общее, а условия разные — ставке нужен
+    # доход, длине дня он безразличен.
+    day_months: dict[str, str] = {}
+    for key in sorted(set(raw_days)):
+        window = [_shift(key, back) for back in range(WINDOW_MONTHS)]
+        window_hours = sum((raw_hours.get(m, Decimal("0")) for m in window), Decimal("0"))
+        window_days = sum((raw_days.get(m, 0) for m in window))
+        if window_days > 0 and window_hours > 0:
+            day_months[f"{key[0]:04d}-{key[1]:02d}"] = str(
+                quantize_money(window_hours / window_days)
+            )
+
+    all_hours = sum(raw_hours.values(), Decimal("0"))
+    all_days = sum(raw_days.values())
+    day_overall = str(quantize_money(all_hours / all_days)) if all_days > 0 else None
+
     total_hours = sum(hours_by_month.values(), Decimal("0"))
     # Средняя считается по тем месяцам, за которые есть часы: иначе доход
     # месяца без учёта времени раздул бы ставку, и покупки казались бы
@@ -166,4 +201,8 @@ async def get_hourly_rates(session: AsyncSession, today: date_ | None = None) ->
     )
     overall = str(quantize_money(total_income / total_hours)) if total_hours > 0 and total_income > 0 else None
 
-    return {"months": months, "overall": overall}
+    return {
+        "months": months,
+        "overall": overall,
+        "day_hours": {"months": day_months, "overall": day_overall},
+    }

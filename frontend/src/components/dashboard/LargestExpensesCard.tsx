@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useTranslation } from "@/lib/i18n";
 import { formatCurrency, formatTransactionDate } from "@/lib/format";
-import { formatWorkCost, rateForDate } from "@/lib/hours";
+import { dayHoursForDate, formatWorkCost, formatWorkHours, rateForDate } from "@/lib/hours";
+import { HintBubble } from "@/components/ui/HintBubble";
 import { useHourlyRates } from "@/hooks/usePlans";
 import type { LargestExpense } from "@/types";
 
@@ -51,9 +52,15 @@ export function LargestExpensesCard({
                       трат и стоит рядом с заработком за час: «монитор — это
                       четыре дня» объясняет месяц лучше любой диаграммы. */}
                   {(() => {
-                    const cost = formatWorkCost(item.amount, rateForDate(rates, item.date));
+                    const rate = rateForDate(rates, item.date);
+                    const cost = formatWorkCost(item.amount, rate, dayHoursForDate(rates, item.date));
                     return cost === null ? null : (
-                      <span className="block text-xs tabular-nums text-text-muted">≈ {cost}</span>
+                      <HintBubble
+                        note={formatWorkHours(item.amount, rate)}
+                        className="text-xs tabular-nums text-text-muted"
+                      >
+                        ≈ {cost}
+                      </HintBubble>
                     );
                   })()}
                 </span>
